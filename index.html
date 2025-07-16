@@ -22,6 +22,18 @@
     <link rel="preload" href="https://pvinis.github.io/iosevka-webfont/3.4.1/iosevka.css" as="style" />
     <link rel="stylesheet" href="https://pvinis.github.io/iosevka-webfont/3.4.1/iosevka.css" />
 
+    <!-- Google tag (gtag.js) -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-F2LNNGM5B3"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag() {
+        dataLayer.push(arguments);
+      }
+      gtag("js", new Date());
+
+      gtag("config", "G-F2LNNGM5B3");
+    </script>
+
     <link rel="icon" href="media/favicon.ico" />
     <style>
       :root {
@@ -1581,8 +1593,15 @@
       const shortcutEl = document.getElementById("h2-shortcut");
 
       // get latest exe file to download
+      function trackClickEvent() {
+        gtag("event", "download_click", {
+          event_category: "Download",
+          event_label: "Windows Setup",
+        });
+      }
       async function handleWindowsDownload(e) {
         e.preventDefault();
+        trackClickEvent();
 
         try {
           const response = await fetch("https://api.github.com/repos/sheetau/monapad/releases/latest");
