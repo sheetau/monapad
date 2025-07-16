@@ -1,0 +1,1726 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Monapad - The Text Editor That Thinks Like a Code Editor</title>
+    <meta
+      name="description"
+      content="Monapad brings code editor-level efficiency to everyday writing, powered by the same engine as VS Code and a language designed for structured text."
+    />
+    <!-- <script src="https://cdn.jsdelivr.net/npm/smooth-scrollbar@latest/dist/smooth-scrollbar.js"></script> -->
+    <link
+      rel="preload"
+      href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap"
+      as="style"
+    />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap"
+    />
+
+    <link rel="preload" href="https://pvinis.github.io/iosevka-webfont/3.4.1/iosevka.css" as="style" />
+    <link rel="stylesheet" href="https://pvinis.github.io/iosevka-webfont/3.4.1/iosevka.css" />
+
+    <link rel="icon" href="media/favicon.ico" />
+    <style>
+      :root {
+        --page-max-width: 1024px;
+        --p-max-width: 40%;
+        --flex-direction: row;
+
+        --font-size-h1: 3.5rem;
+        --font-size-h2: 3rem;
+        --font-size-h3: 1.75rem;
+        --font-size-h4: 1.1rem;
+        --font-size-p: 1rem;
+        --font-size-small: 0.9rem;
+
+        --border-radius-primary: 1.7rem;
+        --border-radius-secondary: 1rem;
+        --border-radius-tertiary: 0.7rem;
+        --border-radius-quaternary: 0.5rem;
+
+        --color-text-primary: #f7f8f8;
+        --color-text-secondary: #d0d6e0;
+        --color-text-tertiary: #8a8f98;
+        --color-text-quaternary: #62666d;
+
+        --color-bg-primary: #0a0a0a;
+        --color-bg-primary-translucent: #0a0a0a00;
+        --color-bg-secondary: #0d0d0d;
+        --color-bg-tertiary: #121212;
+        --color-bg-quaternary: #141414;
+
+        --color-border-primary: #313131;
+        --color-border-translucent: #31313180;
+
+        --font-monospace: Iosevka Web, monospace;
+      }
+
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      *::selection {
+        background: color-mix(in srgb, #569cd6, transparent 50%);
+      }
+
+      body {
+        background: var(--color-bg-primary);
+        color: var(--color-text-primary);
+        font-family: Inter, sans-serif;
+        overflow-y: auto;
+        overflow-x: hidden;
+        width: min(100%, 100vw);
+      }
+
+      .mobile-br {
+        display: none;
+      }
+
+      .desktop-br {
+        display: inline;
+      }
+
+      a {
+        text-decoration: none;
+        color: var(--color-text-secondary);
+        font-size: var(--font-size-small);
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+      }
+
+      p {
+        color: var(--color-text-tertiary);
+        font-size: var(--font-size-p);
+        line-height: 1.6;
+      }
+
+      h1 {
+        font-size: var(--font-size-h1);
+        max-width: 100%;
+        font-weight: 500;
+      }
+
+      /* header */
+      header {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        z-index: 100;
+        display: flex;
+        height: 4.5rem;
+        pointer-events: none;
+        background: linear-gradient(to bottom, var(--color-bg-primary), transparent);
+        width: min(100vw, 100%);
+      }
+      .header-wrapper {
+        width: 100%;
+        padding: 0 1.5rem;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin: 0 auto;
+      }
+      .logo {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        cursor: pointer;
+        user-select: none;
+        pointer-events: auto;
+      }
+      .logo img {
+        height: 1.3rem;
+        width: 1.3rem;
+      }
+      .logo span {
+        font-weight: 400;
+        font-size: 1.2rem;
+        font-family: var(--font-monospace);
+        margin-top: 0.5%;
+      }
+      header .app-download {
+        background: var(--color-text-primary);
+        color: var(--color-bg-primary);
+        border: none;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        padding: 0 1rem;
+        height: 2rem;
+        line-height: 2rem;
+        border-radius: var(--border-radius-tertiary);
+        font-size: 0.9rem;
+        font-weight: 500;
+        transition: background 0.1s ease;
+        pointer-events: auto;
+      }
+
+      header .app-download:hover {
+        background: var(--color-text-secondary);
+      }
+
+      /* hero */
+      .hero {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+        width: var(--page-max-width);
+        max-width: 90%;
+        padding-top: 8rem;
+        margin: 0 auto;
+      }
+      .hero p {
+        margin-top: 1.5rem;
+        max-width: 90%;
+        color: var(--color-text-secondary);
+      }
+      .hero-buttons {
+        margin: 3.5rem 0 4rem;
+        display: flex;
+        gap: 1rem;
+      }
+      .download-main {
+        position: relative;
+        overflow: hidden;
+        background: var(--color-text-primary);
+        color: var(--color-bg-primary);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        height: 3rem;
+        border-radius: var(--border-radius-secondary);
+        padding: 0 1.2rem;
+        position: relative;
+        overflow: hidden;
+        font-weight: 500;
+        box-shadow: 0 0 2rem color-mix(in srgb, var(--color-text-primary), transparent 100%);
+        transition: background 0.3s ease, box-shadow 0.3s ease;
+      }
+      .download-main:hover {
+        background: var(--color-text-secondary);
+        box-shadow: 0 0 2rem color-mix(in srgb, var(--color-text-primary), transparent 80%);
+      }
+      .download-main::before {
+        content: "";
+        position: absolute;
+        top: 0;
+        left: -50%;
+        width: 30%;
+        height: 100%;
+        background: rgba(255, 255, 255, 0.5);
+        transform: skewX(-30deg);
+        animation: none;
+        pointer-events: none;
+        z-index: 1;
+        display: none;
+      }
+      .download-main:hover::before {
+        animation: shine 2s infinite cubic-bezier(0.5, 0, 1, 1);
+        display: block;
+      }
+      @keyframes shine {
+        0% {
+          left: -50%;
+        }
+        50% {
+          left: 120%;
+        }
+        100% {
+          left: 120%;
+        }
+      }
+      .hero-link {
+        background: transparent;
+        color: var(--color-text-primary);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        height: 3rem;
+        border-radius: var(--border-radius-secondary);
+        padding: 0 1.2rem;
+        transition: background 0.3s ease;
+        font-weight: 500;
+      }
+      .hero-link:hover {
+        background: color-mix(in srgb, var(--color-text-tertiary), transparent 80%);
+      }
+      .hero-link svg {
+        margin: 0 0 0 1rem;
+        width: 0.5rem;
+      }
+
+      .screenshot {
+        position: relative;
+        width: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .screenshot::before {
+        content: "";
+        position: absolute;
+        height: 175%;
+        width: min(100vw, 175%);
+        left: 50%;
+        transform: translateX(-50%);
+        background: radial-gradient(
+          ellipse closest-side at 50% 50%,
+          rgba(255, 255, 255, 0.2) 0%,
+          rgba(255, 255, 255, 0.05) 50%,
+          rgba(255, 255, 255, 0.01) 75%,
+          transparent 100%
+        );
+        pointer-events: none;
+      }
+
+      .screenshot img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        box-shadow: 0 0 10px rgba(0, 0, 0, 0.75);
+        border-radius: var(--border-radius-quaternary);
+        z-index: 1;
+      }
+
+      /* feature blocks */
+      .feature-block {
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        text-align: left;
+        padding: 10rem 0;
+        width: var(--page-max-width);
+        max-width: 90%;
+        margin: 0 auto;
+      }
+      .feature-block:not(.language):not(.prefooter)::before {
+        content: "";
+        position: absolute;
+        top: 0;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 100vw;
+        height: 18rem;
+        background: linear-gradient(to bottom, var(--color-bg-tertiary), var(--color-bg-primary));
+        z-index: -1;
+        pointer-events: none;
+      }
+      .feature-block h2 {
+        font-size: var(--font-size-h2);
+        line-height: 1.2;
+        margin-bottom: 2rem;
+        font-weight: 500;
+        width: 100%;
+      }
+      .feature-block h3 {
+        font-size: var(--font-size-h3);
+        line-height: 1.2;
+        font-weight: 500;
+        margin: 3rem 0 2rem;
+      }
+      .feature-block p {
+        max-width: var(--p-max-width);
+        margin-bottom: 3rem;
+        line-height: 1.5;
+      }
+      .feature-block .feature-row {
+        display: flex;
+        flex-direction: var(--flex-direction);
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 3rem;
+      }
+      .feature-block .feature-row h2 {
+        width: fit-content;
+        margin: 0;
+      }
+      .feature-block .feature-row p {
+        max-width: 50%;
+        margin: 0;
+      }
+      .feature-block a svg {
+        margin: 0 0 0 0.75rem;
+        width: 0.4rem;
+        opacity: 0.5;
+        transition: opacity 0.2s ease, margin 0.2s ease;
+      }
+      .feature-block a:hover svg {
+        margin: 0 0 0 1rem;
+        opacity: 1;
+      }
+      .feature-block a svg path {
+        stroke: var(--color-text-secondary);
+      }
+
+      /* language */
+      .language-screenshot-wrapper {
+        align-items: center;
+        text-align: center;
+        margin: 0 auto;
+        height: 35rem;
+        margin-bottom: 5rem;
+        margin-top: -5rem;
+        width: 100%;
+      }
+      .language-screenshot {
+        align-items: center;
+        position: absolute;
+        text-align: center;
+        overflow: hidden;
+        width: min(150%, 100vw);
+        left: 50%;
+        transform: translateX(-50%);
+      }
+      .language-screenshot-img {
+        margin: 0 auto;
+        width: calc(var(--page-max-width) + 10%);
+        min-width: var(--page-max-width);
+        max-width: calc(90% + 10%);
+        overflow: hidden;
+        position: relative;
+        height: 35rem;
+      }
+      .language-screenshot-img::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(to right, transparent 25%, var(--color-bg-primary) 100%),
+          linear-gradient(to bottom, transparent 50%, var(--color-bg-primary) 100%);
+        pointer-events: none;
+      }
+      .language-screenshot img {
+        width: 108%;
+        margin-right: -27%;
+        margin-top: 5%;
+        rotate: -8deg;
+        object-fit: cover;
+        object-position: top left;
+        transform: skewX(15deg);
+        border-radius: var(--border-radius-tertiary);
+      }
+
+      .language-container {
+        width: 100%;
+        display: flex;
+        justify-content: space-between;
+        flex-direction: var(--flex-direction);
+      }
+      .right {
+        width: 55%;
+        height: 30rem;
+      }
+      .right::after {
+        content: "";
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 10rem;
+        height: 10rem;
+        background: linear-gradient(to bottom, var(--color-bg-primary-translucent), var(--color-bg-primary));
+        pointer-events: none;
+      }
+      .block {
+        border: 1px solid var(--color-border-translucent);
+        border-radius: var(--border-radius-quaternary);
+        background: var(--color-bg-secondary);
+        height: 100%;
+      }
+      .block-header {
+        display: flex;
+        align-items: center;
+        padding: 1rem;
+        border-bottom: 1px solid var(--color-border-translucent);
+        font-size: 0.8rem;
+        color: var(--color-text-quaternary);
+      }
+      .block-line-number {
+        line-height: 1.5rem;
+        font-family: var(--font-monospace);
+        padding: 3rem 1rem 3rem 3rem;
+        text-align: right;
+        color: #565b6680;
+      }
+      .block-content-wrapper {
+        display: flex;
+        flex-direction: row;
+      }
+      .block-content {
+        padding: 3rem 3rem 3rem 0;
+        font-family: var(--font-monospace);
+        font-size: var(--font-size-small);
+        line-height: 1.5rem;
+        color: var(--color-text-secondary);
+      }
+      #content-lists {
+        padding: 3rem 3rem 3rem 2rem;
+      }
+      .heading {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+      }
+      .heading div:not(.svg) {
+        width: 100%;
+      }
+      .heading.closed div:not(.svg) {
+        background: color-mix(in srgb, #569cd6, transparent 90%);
+      }
+      #toggle-h1.heading {
+        color: #569cd6;
+      }
+      #toggle-h2.heading {
+        color: #a0bfd9;
+      }
+      .marker {
+        opacity: 0.25;
+      }
+      .list-marker {
+        color: #569cd6;
+      }
+      .quotes {
+        font-style: italic;
+      }
+      .subtext {
+        color: #565b66;
+      }
+      #toggle-code {
+        margin-top: 1.5rem;
+      }
+      #fold-code {
+        color: #63829b;
+        margin-top: 0;
+      }
+      #fold-code .marker {
+        color: var(--color-text-secondary);
+      }
+      .inline-code {
+        color: #cf5d6e;
+      }
+      .heading .svg {
+        display: flex;
+        width: 1rem;
+        min-width: 1rem;
+        height: 1.5rem;
+        cursor: pointer;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+      }
+      .heading svg {
+        width: 0.5rem;
+      }
+      .heading svg path {
+        stroke: var(--color-text-quaternary);
+      }
+      .heading.closed .svg svg {
+        transform: rotate(0deg);
+      }
+      .heading .svg svg {
+        transform: rotate(90deg);
+      }
+      .fold {
+        margin-top: 1.5rem;
+      }
+      .fold-content {
+        padding-left: 2rem;
+      }
+
+      .hidden {
+        display: none;
+      }
+      .tab {
+        position: relative;
+        cursor: pointer;
+        height: 2.25rem;
+        line-height: 2.25rem;
+        padding: 0 0.75rem;
+        margin-bottom: 0.6rem;
+        color: var(--color-text-quaternary);
+        font-size: var(--font-size-h4);
+        font-weight: 500;
+        display: flex;
+        align-items: center;
+        gap: 0.7rem;
+        border-radius: var(--border-radius-quaternary);
+        background: transparent;
+        transition: color 0.3s ease;
+        overflow: hidden;
+      }
+      .tab.active {
+        color: var(--color-text-primary);
+      }
+
+      .tab::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(
+          to right,
+          color-mix(in srgb, var(--color-text-tertiary), transparent 80%),
+          transparent
+        );
+        border-radius: inherit;
+        opacity: 0;
+        transition: opacity 0.3s ease;
+        pointer-events: none;
+        z-index: 0;
+      }
+
+      .tab.active::before {
+        opacity: 1;
+      }
+
+      .tab:not(.active):hover::before {
+        opacity: 0.5; /* 調整可能 */
+      }
+
+      .tab > * {
+        position: relative;
+        z-index: 1; /* 内容が::beforeの上に表示されるように */
+      }
+
+      /* shortcuts */
+      #h2-shortcut {
+        font-family: var(--font-monospace);
+        opacity: 0;
+        filter: blur(0.5rem);
+        transition: opacity 0.3s ease, filter 0.3s ease;
+        will-change: opacity, filter;
+      }
+      #h2-shortcut.visible {
+        opacity: 1;
+        filter: blur(0);
+      }
+      .shortcuts a {
+        margin-top: 2rem;
+      }
+
+      .command-list {
+        width: 50%;
+        font-size: var(--font-size-small);
+        position: relative;
+        margin: -9rem 0 5rem auto;
+        user-select: none;
+      }
+      .command-list-overlay {
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(to right, transparent 0%, var(--color-bg-primary) 100%),
+          linear-gradient(to bottom, transparent 0%, var(--color-bg-primary) 100%);
+        pointer-events: none;
+        z-index: 2;
+        will-change: opacity, filter;
+      }
+      .command-list .command-input,
+      .command-list .command-label {
+        height: 2rem;
+        line-height: 2rem;
+        padding: 0 0.5rem;
+        border-radius: 0.3rem;
+      }
+      .command-list .command-input {
+        border: 1px solid #569cd6;
+        margin-bottom: 0.5rem;
+      }
+      .command-list .command-label {
+        color: var(--color-text-quaternary);
+      }
+      .command-list .command-label.active {
+        background: var(--color-bg-quaternary);
+        color: var(--color-text-primary);
+      }
+
+      .shortcuts-images-wrapper {
+        width: 100%;
+        overflow: visible;
+      }
+      .shortcuts-images {
+        display: flex;
+        gap: 0.6rem;
+        width: 100%;
+        flex-direction: row;
+        overflow-x: scroll;
+        scrollbar-width: none;
+        -ms-overflow-style: none;
+      }
+      .shortcuts-images::-webkit-scrollbar {
+        display: none;
+        width: 0;
+        height: 0;
+      }
+
+      .shortcut-img {
+        flex: 1;
+        min-width: 14rem;
+        background: var(--color-bg-secondary);
+        border: 1px solid var(--color-border-translucent);
+        border-radius: var(--border-radius-primary);
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        padding: 1.7rem;
+        overflow: hidden;
+        position: relative;
+      }
+
+      .shortcut-img-container {
+        position: relative;
+        width: calc(100% - 0.5rem);
+        aspect-ratio: 7/6;
+        overflow: hidden;
+        border-radius: var(--border-radius-tertiary);
+        background: var(--color-bg-quaternary);
+        isolation: isolate; /* for blend-mode containment */
+        margin-left: 0.5rem;
+      }
+      .shortcut-img-container::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(to right, transparent 60%, var(--color-bg-secondary) 100%),
+          linear-gradient(to top, transparent 70%, var(--color-bg-secondary) 100%);
+        pointer-events: none;
+      }
+
+      .shortcut-img-container img {
+        position: absolute;
+        left: 0;
+        bottom: 0;
+        width: 120%;
+        height: 120%;
+        object-fit: cover;
+        object-position: left bottom;
+        mix-blend-mode: screen;
+        border-radius: var(--border-radius-tertiary);
+        border: 1px solid var(--color-border-translucent);
+      }
+
+      .shortcut-label {
+        margin-top: 2.5rem;
+        font-size: var(--font-size-p);
+        font-weight: 500;
+        color: var(--color-text-primary);
+      }
+
+      .shortcut-key {
+        margin-top: 0.6rem;
+        font-size: var(--font-size-small);
+        color: var(--color-text-quaternary);
+      }
+
+      /* tabs */
+      .tabs-video {
+        width: 100%;
+        aspect-ratio: 3 / 1;
+        position: relative;
+        overflow: hidden;
+        display: flex;
+        justify-content: center;
+        align-items: flex-end;
+      }
+      .video-wrapper {
+        position: absolute;
+        aspect-ratio: 3 / 1;
+        width: 100%;
+        height: auto;
+        object-fit: cover;
+        object-position: top;
+        border-top-left-radius: 0.3rem;
+        border-top-right-radius: 0.3rem;
+        overflow: hidden;
+        /* perspective: 900px; */
+        text-align: center;
+        -webkit-mask-image: linear-gradient(to bottom, black 50%, transparent 100%);
+        mask-image: linear-gradient(to bottom, black 50%, transparent 100%);
+        mix-blend-mode: screen;
+      }
+      .video-wrapper video {
+        width: 100%;
+        border: 1px solid var(--color-border-translucent);
+        border-radius: var(--border-radius-quaternary);
+        /* transform: rotateX(30deg); */
+        /* transform-style: preserve-3d; */
+      }
+      .video-overlay {
+        position: absolute;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        bottom: 10%;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 4.25rem;
+        height: 2rem;
+        border-radius: var(--border-radius-secondary);
+        background: var(--color-bg-quaternary);
+        color: var(--color-text-tertiary);
+        font-size: var(--font-size-p);
+        opacity: 0;
+        transition: opacity 0.3s ease, background 0.1s ease;
+        cursor: pointer;
+        line-height: 2rem;
+        line-height: 2rem;
+        border-radius: var(--border-radius-secondary);
+        user-select: none;
+        z-index: 2;
+      }
+      .tabs-video:hover .video-overlay {
+        opacity: 1;
+      }
+      .tabs-video:hover .video-overlay:hover {
+        background: #1f1f1f;
+      }
+
+      /* default themes */
+      .default-themes {
+        display: flex;
+        flex-direction: var(--flex-direction);
+        align-items: flex-start;
+        margin-bottom: 2rem;
+      }
+
+      .default-themes p {
+        max-width: none;
+        width: 83%;
+      }
+      .themes-text {
+        width: 50%;
+      }
+
+      .theme-buttons {
+        display: flex;
+        flex-direction: row;
+        color: var(--color-text-quaternary);
+        font-weight: 500;
+        user-select: none;
+        font-size: var(--font-size-h4);
+      }
+      .theme-button {
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+        transition: color 0.3s ease;
+      }
+      .theme-button.hover,
+      .theme-button:hover {
+        color: var(--color-text-primary);
+      }
+      .theme-button div {
+        width: 1.3rem;
+        height: 0.8rem;
+        border-radius: var(--border-radius-quaternary);
+        border: solid 2px var(--color-text-quaternary);
+        margin-right: 0.7rem;
+      }
+      .theme-button.onyx div {
+        background: #000000;
+      }
+      .theme-button.dark div {
+        background: #121214;
+      }
+      .theme-button.ash div {
+        background: #232428;
+      }
+      .theme-button span {
+        margin-right: 3rem;
+      }
+
+      .themes-group {
+        width: 50%;
+        height: 30rem;
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        font-family: var(--font-monospace);
+        font-size: 0.8rem;
+        line-height: 1.3;
+        color: var(--color-text-secondary);
+        user-select: none;
+        margin-top: -6rem;
+        -webkit-mask-image: linear-gradient(to right, black 50%, transparent 100%),
+          linear-gradient(to top, black 70%, transparent 100%);
+        -webkit-mask-composite: destination-in;
+        mask-composite: intersect;
+        -webkit-mask-repeat: no-repeat;
+        mask-repeat: no-repeat;
+        mask-image: linear-gradient(to right, black 50%, transparent 100%),
+          linear-gradient(to top, black 70%, transparent 100%);
+      }
+      .themes-shadow {
+        width: 42rem;
+        overflow: hidden;
+        position: absolute;
+        transition: 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+        border-radius: var(--border-radius-secondary);
+        border: 1px solid var(--color-border-primary);
+        will-change: transform;
+      }
+      .themes-wrapper {
+        display: flex;
+        flex-direction: row;
+        padding: 1.5rem 1rem;
+      }
+      .themes-shadow:nth-child(1) .themes-wrapper {
+        background: #232428;
+      }
+      .themes-shadow:nth-child(2) .themes-wrapper {
+        background: #121214;
+      }
+      .themes-shadow:nth-child(3) .themes-wrapper {
+        background: #000000;
+      }
+      .themes-shadow:nth-child(1) {
+        z-index: 1;
+        transform: skewY(-10deg) translate(0%, 4rem);
+      }
+      .themes-shadow:nth-child(1):hover,
+      .themes-shadow:nth-child(1).hover {
+        transform: skewY(-10deg) translate(0%, 2rem);
+      }
+      .themes-shadow:nth-child(2) {
+        z-index: 2;
+        box-shadow: -2rem -0.5rem 2rem rgba(0, 0, 0, 0.5);
+        transform: skewY(-10deg) translate(4.7rem, 7rem);
+      }
+      .themes-shadow:nth-child(2):hover,
+      .themes-shadow:nth-child(2).hover {
+        transform: skewY(-10deg) translate(4.7rem, 5rem);
+      }
+      .themes-shadow:nth-child(3) {
+        z-index: 3;
+        box-shadow: -2rem -0.5rem 2rem rgba(0, 0, 0, 0.5);
+        transform: skewY(-10deg) translate(9.4rem, 10rem);
+      }
+      .themes-shadow:nth-child(3):hover,
+      .themes-shadow:nth-child(3).hover {
+        transform: skewY(-10deg) translate(9.4rem, 8rem);
+      }
+
+      .line-number {
+        text-align: right;
+        margin-right: 1rem;
+        color: #565b6680;
+      }
+      .themes-h1 {
+        color: #569cd6;
+      }
+      .themes-h2 {
+        color: #a0bfd9;
+      }
+
+      /* custom theme */
+      .custom-themes {
+        display: flex;
+        flex-direction: var(--flex-direction);
+        width: 100%;
+        height: auto;
+        overflow: hidden;
+        background: var(--color-bg-secondary);
+        border: 1px solid rgba(229, 229, 229, 0.1);
+        border-radius: var(--border-radius-primary);
+      }
+      .custom-theme-left {
+        display: flex;
+        justify-content: space-between;
+        flex-direction: column;
+      }
+      .custom-theme-text {
+        width: 100%;
+        padding-left: 3rem;
+      }
+      .custom-theme-text p {
+        max-width: 77%;
+      }
+      .custom-theme-links {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+        padding: 0 0 3rem 3rem;
+      }
+      .custom-theme-links a {
+        justify-content: flex-start;
+        width: fit-content;
+      }
+      .custom-theme-image {
+        position: relative;
+        width: 50%;
+        height: 25rem;
+        margin-top: 3rem;
+        object-fit: cover;
+        object-position: left top;
+      }
+      .custom-theme-image::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(to right, transparent 25%, var(--color-bg-secondary) 125%),
+          linear-gradient(to bottom, transparent 25%, var(--color-bg-secondary) 125%);
+        pointer-events: none;
+      }
+      .custom-theme-image img {
+        height: 27rem;
+        aspect-ratio: auto;
+        margin-bottom: -7rem;
+        border-radius: var(--border-radius-quaternary);
+        border: solid 1px var(--color-border-translucent);
+      }
+
+      /* prefooter */
+      .prefooter {
+        display: flex;
+        justify-content: space-between;
+        flex-direction: var(--flex-direction);
+        align-items: center;
+        width: var(--page-max-width);
+        max-width: 90%;
+        margin: 0 auto;
+      }
+      .prefooter h2 {
+        width: max-content;
+        margin-bottom: 0;
+      }
+
+      /* footer */
+      footer {
+        border-top: solid 1px var(--color-border-translucent);
+        color: var(--color-text-quaternary);
+        font-size: var(--font-size-small);
+        width: 100%;
+      }
+      .footer-content {
+        height: 10rem;
+        text-align: center;
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: space-between;
+        align-items: center;
+        gap: 2rem;
+        width: var(--page-max-width);
+        max-width: 90%;
+        margin: 0 auto;
+      }
+      footer a {
+        color: var(--color-text-quaternary);
+      }
+      .footer-icons,
+      .footer-links {
+        display: flex;
+        gap: 1.5rem;
+        align-items: center;
+        justify-content: center;
+      }
+      footer a svg {
+        margin: 0;
+        height: 1.5rem;
+        width: 1.5rem;
+      }
+      footer a svg path {
+        fill: var(--color-text-quaternary);
+      }
+      footer a svg:hover path {
+        fill: var(--color-text-primary);
+      }
+      footer a:hover {
+        color: var(--color-text-primary);
+      }
+
+      @media (max-width: 768px) {
+        :root {
+          --p-max-width: 90%;
+          --flex-direction: column;
+
+          --font-size-h1: 3rem;
+          --font-size-h2: 2.5rem;
+          --font-size-h3: 1.75rem;
+          --font-size-h4: 1.1rem;
+          --font-size-p: 1rem;
+          --font-size-small: 0.9rem;
+        }
+        .desktop-br {
+          display: none;
+        }
+        .language-screenshot-wrapper {
+          margin-bottom: 0;
+        }
+        .language-container .right {
+          width: 100%;
+          margin-top: 2rem;
+        }
+        .command-list {
+          width: 100%;
+          margin: 0 0 3rem 0;
+        }
+        .shortcuts-images {
+          width: 95vw;
+          padding-right: 5vw;
+        }
+        .feature-block .feature-row {
+          align-items: flex-start;
+        }
+        .feature-block .feature-row h2 {
+          margin-bottom: 2rem;
+        }
+        .feature-block .feature-row p {
+          max-width: var(--p-max-width);
+        }
+        #h2-shortcut {
+          width: 100%;
+          display: inline-block;
+          white-space: nowrap; /* テキストの折り返しを防ぐ */
+          overflow: hidden; /* はみ出しを隠す */
+          text-overflow: ellipsis; /* 省略記号 */
+        }
+        .themes-text,
+        .themes-group {
+          width: 100%;
+        }
+        .themes-group {
+          margin-top: -1rem;
+        }
+        .custom-theme-image {
+          width: 100%;
+          padding-left: 3rem;
+          margin-top: 0;
+        }
+        .prefooter h2 {
+          margin-bottom: 2rem;
+          width: 90%;
+          text-align: center;
+          white-space: pre-line;
+        }
+        .footer-content {
+          justify-content: center;
+          padding: 2rem;
+        }
+      }
+      @media (max-width: 640px) {
+        .mobile-br {
+          display: inline;
+        }
+        .footer-content {
+          height: auto;
+          flex-direction: var(--flex-direction);
+        }
+        .footer-links {
+          flex-direction: var(--flex-direction);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div class="header-wrapper">
+        <div class="logo" onclick="location.reload()">
+          <img src="media/favicon.ico" />
+          <span>Monapad</span>
+        </div>
+        <a href="#" class="app-download">Download</a>
+      </div>
+    </header>
+
+    <!-- hero -->
+    <section class="hero">
+      <h1>The text editor<br />that thinks like a code editor</h1>
+      <p>
+        With the same core editor used in VSCode and its own language designed for text editing,
+        <span class="desktop-br"><br /></span>Monapad brings code editor-level efficiency and readability to your
+        everyday writing.
+      </p>
+
+      <div class="hero-buttons">
+        <a href="#" class="app-download download-main">Download for Windows</a>
+        <a href="https://github.com/sheetau/monapad/tree/main" target="_blank" class="hero-link">
+          GitHub
+          <svg width="8" height="13" viewBox="0 0 8 13" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path
+              d="M1 12L7 6.5L1 1"
+              stroke="#F7F8F8"
+              stroke-width="1.5"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+          </svg>
+        </a>
+      </div>
+
+      <div class="screenshot">
+        <img src="media/ss_onyx.png" alt="Monapad Screenshot" />
+      </div>
+    </section>
+
+    <!-- language -->
+    <section class="feature-block language">
+      <h2>Language<br />designed for text</h2>
+      <p>
+        Lightweight syntax highlighting makes your writing easier to scan and structure. Combined with heading-level
+        folding, it helps you manage long documents effortlessly. All of this is powered by a built-in language designed
+        specifically for text editing.
+      </p>
+
+      <div class="language-screenshot-wrapper">
+        <div class="language-screenshot">
+          <div class="language-screenshot-img">
+            <img src="media/ss_lang.png" alt="Monapad Screenshot" />
+          </div>
+        </div>
+      </div>
+
+      <div class="language-container">
+        <div class="left">
+          <h3>What you write<br />takes form</h3>
+          <div>
+            <div class="tab active" data-target="headings">Headings</div>
+            <div class="tab" data-target="lists">Lists, Quotes and Subtext</div>
+            <div class="tab" data-target="code">Code</div>
+          </div>
+        </div>
+
+        <div class="right">
+          <div class="block">
+            <div class="block-header">Monapad</div>
+
+            <div class="block-content-wrapper">
+              <div class="block-line-number">
+                1<br />2<br />3<br />4<br />5<br />6<br />7<br />8<br />9<br />10<br />11<br />12<br />13
+              </div>
+
+              <div class="block-content" id="content-headings">
+                <div class="heading" id="toggle-h1">
+                  <div class="svg">
+                    <svg viewBox="0 0 8 13" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path
+                        d="M1 12L7 6.5L1 1"
+                        stroke="#F7F8F8"
+                        stroke-width="1.5"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                      />
+                    </svg>
+                  </div>
+                  <div><span class="marker"># </span>Heading 1</div>
+                </div>
+                <div class="fold" id="fold-h1">
+                  <div class="heading" id="toggle-h2">
+                    <div class="svg">
+                      <svg viewBox="0 0 8 13" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path
+                          d="M1 12L7 6.5L1 1"
+                          stroke="#F7F8F8"
+                          stroke-width="1.5"
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                        />
+                      </svg>
+                    </div>
+                    <div><span class="marker">## </span>Heading 2</div>
+                  </div>
+                  <div class="fold fold-content" id="fold-h2">
+                    heading-level folding can be tested by clicking the arrow to the left of each heading.<br /><br />In
+                    the app, you can press Ctrl+Shift+1-3 to convert the current line to that heading level.
+                  </div>
+                </div>
+              </div>
+
+              <div class="block-content hidden" id="content-lists">
+                <span class="list-marker">1. </span>This is ordered list.<br /><span class="list-marker">- </span>This
+                is unordered list.<br /><span class="list-marker">+ </span>* or + can also be used for unordered
+                list.<br /><br /><span class="quotes"
+                  ><span class="marker">> </span>This is a blockquote. Use it to emphasize external references or
+                  highlights.</span
+                ><br /><br /><span class="subtext"
+                  ><span class="marker">-# </span>This is subtext. In the app, press Ctrl+/ to convert the current line
+                  into subtext.</span
+                >
+              </div>
+
+              <div class="block-content hidden" id="content-code">
+                <div class="fold-content">
+                  To display inline code or highlight specific text, wrap it with backticks like
+                  <span class="inline-code">`example`</span>.
+                </div>
+                <div class="heading" id="toggle-code">
+                  <div class="svg">
+                    <svg viewBox="0 0 8 13" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path
+                        d="M1 12L7 6.5L1 1"
+                        stroke="#F7F8F8"
+                        stroke-width="1.5"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                      />
+                    </svg>
+                  </div>
+                  <div><span class="marker">```</span></div>
+                </div>
+                <div class="fold fold-content" id="fold-code">
+                  This is a code block. You can use it to include code like this:<br /><br />
+                  function greet(name) {<br />
+                  &nbsp&nbspconsole.log("Hello, " + name + "!");<br />
+                  }<br />
+                  greet("World");<br /><span class="marker">```</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- shortcuts -->
+    <section class="feature-block shortcuts">
+      <h2>All the shortcuts you expect<br />starting with<span id="h2-shortcut"> Alt + ArrowUp</span></h2>
+      <p>
+        Powered by the same Monaco Editor used in VSCode, Monapad supports all the familiar shortcuts and editing
+        features that accelerate your workflow.<br />
+        <a href="https://github.com/sheetau/monapad/blob/main/README.md#shortcuts" target="_blank">
+          See all shortcuts
+          <svg width="8" height="13" viewBox="0 0 8 13" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path
+              d="M1 12L7 6.5L1 1"
+              stroke="#F7F8F8"
+              stroke-width="1.5"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+          </svg>
+        </a>
+      </p>
+      <div class="command-list">
+        <div class="command-input">>|</div>
+        <div class="command-label active">Copy Line Up</div>
+        <div class="command-label">Copy Line Down</div>
+        <div class="command-label">Move Line Up</div>
+        <div class="command-label">Move Line Down</div>
+        <div class="command-list-overlay"></div>
+      </div>
+      <div class="shortcuts-images-wrapper">
+        <div class="shortcuts-images">
+          <div class="shortcut-img">
+            <div class="shortcut-img-container">
+              <img src="media/shortcuts_1.png" alt="Find and Replace" />
+            </div>
+            <div class="shortcut-label">Find and Replace</div>
+            <div class="shortcut-key">Ctrl + F/H</div>
+          </div>
+          <div class="shortcut-img">
+            <div class="shortcut-img-container">
+              <img src="media/shortcuts_2.png" alt="Multi Cursor" />
+            </div>
+            <div class="shortcut-label">Multi Cursor</div>
+            <div class="shortcut-key">Alt + Click</div>
+          </div>
+          <div class="shortcut-img">
+            <div class="shortcut-img-container">
+              <img src="media/shortcuts_3.png" alt="Go to Heading" />
+            </div>
+            <div class="shortcut-label">Go to Heading</div>
+            <div class="shortcut-key">Ctrl + Shift + O</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- tabs -->
+    <section class="feature-block tabs">
+      <div class="feature-row">
+        <h2>Tabs that flow</h2>
+        <p>
+          Smooth, responsive tabs — just like Chromium browsers — makes managing multiple tabs effortless. With
+          shortcuts and context menu actions, you can switch and organize tabs even faster.
+        </p>
+      </div>
+      <div class="tabs-video">
+        <div class="video-wrapper">
+          <video id="tabsVideo" src="media/tabs.mp4" muted loop playsinline></video>
+        </div>
+        <span class="video-overlay" id="videoOverlay">Play</span>
+      </div>
+    </section>
+
+    <!-- dark themes -->
+    <section class="feature-block themes">
+      <div class="default-themes">
+        <div class="themes-text">
+          <h2>Focus in the dark</h2>
+          <p>
+            Like a code editor, Monapad focuses on clarity and long-session comfort. It comes with three dark themes by
+            default, offering a focused and distraction-free writing experience.
+          </p>
+          <div class="theme-buttons">
+            <div class="theme-button ash">
+              <div></div>
+              <span class="onyx">Ash</span>
+            </div>
+            <div class="theme-button dark">
+              <div></div>
+              <span class="onyx">Dark</span>
+            </div>
+            <div class="theme-button onyx">
+              <div></div>
+              <span class="onyx">Onyx</span>
+            </div>
+          </div>
+        </div>
+        <div class="themes-group">
+          <div class="themes-shadow">
+            <div class="themes-wrapper">
+              <div class="line-number">
+                1<br />2<br />3<br /><br /><br />4<br />5<br />6<br />7<br />8<br />9<br />10<br />11
+              </div>
+              <div class="themes-content">
+                <span class="themes-h1"><span class="marker"># </span>Marshmallow Engine Protocoll</span><br /><br />
+                Autonomous marshmallow modules are being developed to simulate low-friction mobility in dreamlike
+                terrain. Early prototypes have shown promising bounce efficiency, though flavor stability remains
+                inconsistent.<br /><br />
+                <span class="subtext"
+                  ><span class="marker">-# </span>Initial phase focused on texture-to-thrust correlation in
+                  unpredictable environments.</span
+                ><br /><br />
+                <span class="themes-h2"><span class="marker">## </span>Equipment Summary</span><br /><br />
+                <span class="list-marker">1. </span>Gel-based surface scanner<br /><span class="list-marker">2. </span
+                >Compressed vanilla propulsion unit<br /><span class="list-marker">3. </span>Thermal wobble suppressor
+              </div>
+            </div>
+          </div>
+
+          <div class="themes-shadow">
+            <div class="themes-wrapper">
+              <div class="line-number">
+                1<br />2<br />3<br /><br /><br />4<br />5<br />6<br />7<br />8<br />9<br />10<br />11
+              </div>
+              <div class="themes-content">
+                <span class="themes-h1"><span class="marker"># </span>Marshmallow Engine Protocoll</span><br /><br />
+                Autonomous marshmallow modules are being developed to simulate low-friction mobility in dreamlike
+                terrain. Early prototypes have shown promising bounce efficiency, though flavor stability remains
+                inconsistent.<br /><br />
+                <span class="subtext"
+                  ><span class="marker">-# </span>Initial phase focused on texture-to-thrust correlation in
+                  unpredictable environments.</span
+                ><br /><br />
+                <span class="themes-h2"><span class="marker">## </span>Equipment Summary</span><br /><br />
+                <span class="list-marker">1. </span>Gel-based surface scanner<br /><span class="list-marker">2. </span
+                >Compressed vanilla propulsion unit<br /><span class="list-marker">3. </span>Thermal wobble suppressor
+              </div>
+            </div>
+          </div>
+
+          <div class="themes-shadow">
+            <div class="themes-wrapper">
+              <div class="line-number">
+                1<br />2<br />3<br /><br /><br />4<br />5<br />6<br />7<br />8<br />9<br />10<br />11
+              </div>
+              <div class="themes-content">
+                <span class="themes-h1"><span class="marker"># </span>Marshmallow Engine Protocoll</span><br /><br />
+                Autonomous marshmallow modules are being developed to simulate low-friction mobility in dreamlike
+                terrain. Early prototypes have shown promising bounce efficiency, though flavor stability remains
+                inconsistent.<br /><br />
+                <span class="subtext"
+                  ><span class="marker">-# </span>Initial phase focused on texture-to-thrust correlation in
+                  unpredictable environments.</span
+                ><br /><br />
+                <span class="themes-h2"><span class="marker">## </span>Equipment Summary</span><br /><br />
+                <span class="list-marker">1. </span>Gel-based surface scanner<br /><span class="list-marker">2. </span
+                >Compressed vanilla propulsion unit<br /><span class="list-marker">3. </span>Thermal wobble suppressor
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="custom-themes">
+        <div class="custom-theme-left">
+          <div class="custom-theme-text">
+            <h3>Make it yours</h3>
+            <p>
+              Monapad supports custom themes via CSS, allowing you to use themes created by others or personalize the
+              appearance exactly to your liking.
+            </p>
+          </div>
+          <div class="custom-theme-links">
+            <a href="https://github.com/sheetau/monapad/blob/main/README.md#custom-themes" target="_blank">
+              See available themes
+              <svg width="8" height="13" viewBox="0 0 8 13" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path
+                  d="M1 12L7 6.5L1 1"
+                  stroke="#F7F8F8"
+                  stroke-width="1.5"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+              </svg>
+            </a>
+            <a href="https://github.com/sheetau/monapad/blob/main/CUSTOMTHEME.md" target="_blank">
+              Setup your own
+              <svg width="8" height="13" viewBox="0 0 8 13" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path
+                  d="M1 12L7 6.5L1 1"
+                  stroke="#F7F8F8"
+                  stroke-width="1.5"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+              </svg>
+            </a>
+          </div>
+        </div>
+        <div class="custom-theme-image">
+          <img src="media/ss_ayu.png" alt="ayu theme" />
+        </div>
+      </div>
+    </section>
+
+    <section class="feature-block prefooter">
+      <h2>
+        Write faster. <span class="mobile-br"><br /></span>Read smarter.
+      </h2>
+      <a href="#" class="app-download download-main">Download for Windows</a>
+    </section>
+
+    <footer class="footer">
+      <div class="footer-content">
+        <div class="footer-links">
+          <span>© 2025 Sheeta.</span>
+          <a href="https://github.com/sheetau/monapad/releases" target="_blank">Releases</a>
+          <a href="https://github.com/sheetau/monapad/blob/main/LICENSE" target="_blank">License</a>
+          <a href="https://github.com/sheetau/monapad/blob/main/CODE_OF_CONDUCT.md" target="_blank">Code of Conduct</a>
+          <a href="https://github.com/sheetau/monapad/blob/main/PRIVACY.md" target="_blank">Privacy</a>
+        </div>
+        <div class="footer-icons">
+          <a href="https://github.com/sheetau/monapad" target="_blank" aria-label="GitHub">
+            <svg height="32" width="32" viewBox="0 0 24 24" fill="none">
+              <path
+                d="M12 1C5.923 1 1 5.923 1 12c0 4.867 3.149 8.979 7.521 10.436.55.096.756-.233.756-.522 0-.262-.013-1.128-.013-2.049-2.764.509-3.479-.674-3.699-1.292-.124-.317-.66-1.293-1.127-1.554-.385-.207-.936-.715-.014-.729.866-.014 1.485.797 1.691 1.128.99 1.663 2.571 1.196 3.204.907.096-.715.385-1.196.701-1.471-2.448-.275-5.005-1.224-5.005-5.432 0-1.196.426-2.186 1.128-2.956-.111-.275-.496-1.402.11-2.915 0 0 .921-.288 3.024 1.128a10.193 10.193 0 0 1 2.75-.371c.936 0 1.871.123 2.75.371 2.104-1.43 3.025-1.128 3.025-1.128.605 1.513.221 2.64.111 2.915.701.77 1.127 1.747 1.127 2.956 0 4.222-2.571 5.157-5.019 5.432.399.344.743 1.004.743 2.035 0 1.471-.014 2.654-.014 3.025 0 .289.206.632.756.522C19.851 20.979 23 16.854 23 12c0-6.077-4.922-11-11-11Z"
+                fill="white"
+              />
+            </svg>
+          </a>
+          <a href="https://discord.gg/2dXs5HwXuW" target="_blank" aria-label="Discord">
+            <svg xmlns="http://www.w3.org/2000/svg" width="59" height="44" viewBox="0 0 59 44" fill="none">
+              <path
+                d="M37.1937 0C36.6265 1.0071 36.1172 2.04893 35.6541 3.11392C31.2553 2.45409 26.7754 2.45409 22.365 3.11392C21.9136 2.04893 21.3926 1.0071 20.8254 0C16.6928 0.70613 12.6644 1.94475 8.84436 3.69271C1.27372 14.9098 -0.775214 25.8374 0.243466 36.6146C4.67704 39.8906 9.6431 42.391 14.9333 43.9884C16.1256 42.391 17.179 40.6893 18.0819 38.9182C16.3687 38.2815 14.7133 37.4828 13.1274 36.5567C13.5442 36.2557 13.9493 35.9432 14.3429 35.6422C23.6384 40.0179 34.4039 40.0179 43.711 35.6422C44.1046 35.9663 44.5097 36.2789 44.9264 36.5567C43.3405 37.4943 41.6852 38.2815 39.9604 38.9298C40.8633 40.7009 41.9167 42.4025 43.109 44C48.3992 42.4025 53.3653 39.9137 57.7988 36.6377C59.0027 24.1358 55.7383 13.3007 49.1748 3.70429C45.3663 1.95633 41.3379 0.717706 37.2053 0.0231518L37.1937 0ZM19.3784 29.9816C16.5192 29.9816 14.1461 27.3886 14.1461 24.1821C14.1461 20.9755 16.4266 18.371 19.3669 18.371C22.3071 18.371 24.6455 20.9871 24.5992 24.1821C24.5529 27.377 22.2956 29.9816 19.3784 29.9816ZM38.6639 29.9816C35.7931 29.9816 33.4431 27.3886 33.4431 24.1821C33.4431 20.9755 35.7236 18.371 38.6639 18.371C41.6042 18.371 43.9309 20.9871 43.8846 24.1821C43.8383 27.377 41.581 29.9816 38.6639 29.9816Z"
+                fill="white"
+              />
+            </svg>
+          </a>
+          <a href="https://linktr.ee/sheetau" target="_blank" aria-label="Linktree">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 25" height="20" style="display: block; width: auto">
+              <path
+                d="M13.5108 5.85343L17.5158 1.73642L19.8404 4.11701L15.6393 8.12199H21.5488V11.4268H15.6113L19.8404 15.5345L17.5158 17.8684L11.7744 12.099L6.03299 17.8684L3.70842 15.5438L7.93745 11.4361H2V8.12199H7.90944L3.70842 4.11701L6.03299 1.73642L10.038 5.85343V0H13.5108V5.85343ZM10.038 16.16H13.5108V24.0019H10.038V16.16Z"
+                fill="white"
+              ></path>
+            </svg>
+          </a>
+        </div>
+      </div>
+    </footer>
+
+    <script>
+      // download buttons
+      const downloadButtons = document.querySelectorAll(".app-download");
+
+      // tabs video
+      let userPaused = false;
+      const video = document.getElementById("tabsVideo");
+      const overlay = document.getElementById("videoOverlay");
+      const tabsVideoContainer = document.querySelector(".tabs-video");
+
+      // shortcuts
+      const shortcuts = [
+        "Alt + ArrowUp",
+        "Alt + ArrowDn",
+        "Shift + Alt + ArrowDn",
+        "Shift + Alt + ArrowUp",
+        "Ctrl + Shift + K",
+        "Ctrl + Enter",
+        "Ctrl + Shift + Enter",
+        "Ctrl + ]",
+        "Ctrl + [",
+        "Ctrl + ArrowUp",
+        "Ctrl + ArrowDn",
+        "Alt + PageUp",
+        "Alt + PageDn",
+        "Ctrl + Shift + [",
+        "Ctrl + Shift + ]",
+        "Ctrl + K Ctrl + [",
+        "Ctrl + K Ctrl + ]",
+        "Ctrl + K Ctrl + 0",
+        "Ctrl + K Ctrl + J",
+        "Ctrl + /",
+        "Alt + Z",
+        "Ctrl + F",
+        "Ctrl + H",
+        "Alt + Click",
+        "Ctrl + Alt + ArrowUp",
+        "Ctrl + Alt + ArrowDn",
+        "Ctrl + U",
+        "Shift + Alt + I",
+        "Ctrl + L",
+        "Ctrl + Shift + L",
+        "Ctrl + F2",
+        "Shift + Alt + ArrowRight",
+        "Shift + Alt + ArrowLeft",
+        "Shift + Alt + MouseDrag",
+        "Ctrl + Shift + Alt + ArrowKey",
+        "Ctrl + Shift + Alt + PgUp",
+        "Ctrl + Shift + Alt + PgDn",
+        "Ctrl + G",
+        "Ctrl + Shift + O",
+      ];
+      const shortcutEl = document.getElementById("h2-shortcut");
+
+      // get latest exe file to download
+      async function handleWindowsDownload(e) {
+        e.preventDefault();
+
+        try {
+          const response = await fetch("https://api.github.com/repos/sheetau/monapad/releases/latest");
+          const data = await response.json();
+
+          const asset = data.assets.find((a) => a.name.match(/^Monapad-Setup-.*\.exe$/));
+
+          if (asset) {
+            window.location.href = asset.browser_download_url;
+          } else {
+            alert("Windows installer not found.");
+          }
+        } catch (err) {
+          console.error("Download error:", err);
+          alert("Failed to fetch the latest release information.");
+        }
+      }
+      downloadButtons.forEach((el) => {
+        el.addEventListener("click", handleWindowsDownload);
+      });
+
+      // language
+      // fold for headings
+      document.querySelector("#toggle-h1 .svg").addEventListener("click", () => {
+        document.getElementById("fold-h1").classList.toggle("hidden");
+        document.getElementById("toggle-h1").classList.toggle("closed");
+      });
+
+      // fold for subheading
+      document.querySelector("#toggle-h2 .svg").addEventListener("click", () => {
+        document.getElementById("fold-h2").classList.toggle("hidden");
+        document.getElementById("toggle-h2").classList.toggle("closed");
+      });
+
+      // fold for code block
+      document.querySelector("#toggle-code .svg").addEventListener("click", () => {
+        document.getElementById("fold-code").classList.toggle("hidden");
+        document.getElementById("toggle-code").classList.toggle("closed");
+      });
+
+      // tab switching
+      document.querySelectorAll(".tab").forEach((tab) => {
+        tab.addEventListener("click", () => {
+          const target = tab.dataset.target;
+
+          // すべてのブロックを非表示
+          document.querySelectorAll(".block-content").forEach((c) => c.classList.add("hidden"));
+
+          // すべてのタブから active クラスを削除
+          document.querySelectorAll(".tab").forEach((t) => t.classList.remove("active"));
+
+          // 対象ブロックを表示
+          document.getElementById(`content-${target}`).classList.remove("hidden");
+
+          // 現在のタブに active クラスを付与
+          tab.classList.add("active");
+        });
+      });
+
+      // shortcuts
+      function cycleShortcuts(shortcuts, interval = 2000) {
+        let lastIndex = -1;
+
+        function update() {
+          shortcutEl.classList.remove("visible");
+          setTimeout(() => {
+            let i;
+            do {
+              i = Math.floor(Math.random() * shortcuts.length);
+            } while (i === lastIndex); // 同じものを連続で避ける
+            lastIndex = i;
+
+            shortcutEl.textContent = " " + shortcuts[i];
+            shortcutEl.classList.add("visible");
+          }, 300);
+        }
+
+        update();
+        setInterval(update, interval);
+      }
+      cycleShortcuts(shortcuts, 2000);
+
+      // themes
+      const syncHover = (buttonClass, shadowIndex) => {
+        const button = document.querySelector(`.theme-button.${buttonClass}`);
+        const shadow = document.querySelector(`.themes-shadow:nth-child(${shadowIndex})`);
+
+        if (!button || !shadow) return;
+
+        button.addEventListener("mouseenter", () => shadow.classList.add("hover"));
+        button.addEventListener("mouseleave", () => shadow.classList.remove("hover"));
+        shadow.addEventListener("mouseenter", () => button.classList.add("hover"));
+        shadow.addEventListener("mouseleave", () => button.classList.remove("hover"));
+      };
+      syncHover("onyx", 3);
+      syncHover("dark", 2);
+      syncHover("ash", 1);
+
+      // tabs video button click
+      overlay.addEventListener("click", () => {
+        if (video.paused) {
+          userPaused = false;
+          video.play();
+          overlay.textContent = "Pause";
+        } else {
+          userPaused = true;
+          video.pause();
+          overlay.textContent = "Play";
+        }
+      });
+
+      // play only when video is 100% visible
+      const observer = new IntersectionObserver(
+        (entries) => {
+          entries.forEach((entry) => {
+            const fullyVisible = entry.intersectionRatio === 1;
+
+            if (fullyVisible) {
+              if (!userPaused) {
+                video.play();
+                overlay.textContent = "Pause";
+              }
+            } else {
+              if (!video.paused) {
+                video.pause();
+                overlay.textContent = "Play";
+              }
+            }
+          });
+        },
+        {
+          threshold: Array.from({ length: 101 }, (_, i) => i / 100), // [0, 0.01, ..., 1]
+        }
+      );
+
+      window.addEventListener("load", () => {
+        observer.observe(tabsVideoContainer);
+      });
+    </script>
+  </body>
+</html>
