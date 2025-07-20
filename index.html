@@ -430,7 +430,7 @@
       }
       .right {
         width: 55%;
-        height: 30rem;
+        /* height: 30rem; */
       }
       .right::after {
         content: "";
@@ -447,6 +447,7 @@
         border-radius: var(--border-radius-quaternary);
         background: var(--color-bg-secondary);
         height: 100%;
+        min-height: 30rem;
       }
       .block-header {
         display: flex;
@@ -468,7 +469,7 @@
         flex-direction: row;
       }
       .block-content {
-        padding: 3rem 3rem 3rem 0;
+        padding: 3rem;
         width: 100%;
         font-family: var(--font-monospace);
         font-size: var(--font-size-small);
@@ -476,7 +477,7 @@
         color: var(--color-text-secondary);
       }
       #content-lists {
-        padding: 3rem 3rem 3rem 2rem;
+        padding: 3rem;
       }
       .heading {
         display: flex;
@@ -506,9 +507,6 @@
       }
       .subtext {
         color: #565b66;
-      }
-      #toggle-code {
-        margin-top: 1.5rem;
       }
       #fold-code {
         color: #63829b;
@@ -1203,9 +1201,9 @@
             <div class="block-header">Monapad</div>
 
             <div class="block-content-wrapper">
-              <div class="block-line-number">
+              <!-- <div class="block-line-number">
                 1<br />2<br />3<br />4<br />5<br />6<br />7<br />8<br />9<br />10<br />11<br />12<br />13
-              </div>
+              </div> -->
 
               <div class="block-content" id="content-headings">
                 <div class="heading" id="toggle-h1">
@@ -1259,7 +1257,7 @@
               <div class="block-content hidden" id="content-code">
                 <div class="fold-content">
                   To display inline code or highlight specific text, wrap it with backticks like
-                  <span class="inline-code">`example`</span>.
+                  <span class="inline-code">`example`</span>.<br /><br />
                 </div>
                 <div class="heading" id="toggle-code">
                   <div class="svg">
@@ -1348,13 +1346,13 @@
       <div class="feature-row">
         <h2>Tabs that flow</h2>
         <p>
-          Smooth, responsive tabs — just like Chromium browsers — let you manage tabs effortlessly. Close, rearrange,
-          reopen, pop out, or merge tabs across windows — all in one seamless flow.
+          Smooth, responsive tabs — just like Chromium browsers — let you manage multiple tabs effortlessly. Close,
+          rearrange, reopen, pop out, or merge tabs across windows — all in one seamless flow.
         </p>
       </div>
       <div class="tabs-video">
         <div class="video-wrapper">
-          <video id="tabsVideo" src="media/tabs2.mp4" muted loop playsinline></video>
+          <video id="tabsVideo" src="media/tabs.mp4" muted loop playsinline preload="auto"></video>
         </div>
         <span class="video-overlay" id="videoOverlay">Play</span>
       </div>
