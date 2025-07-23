@@ -593,12 +593,12 @@
       }
 
       .tab:not(.active):hover::before {
-        opacity: 0.5; /* 調整可能 */
+        opacity: 0.5;
       }
 
       .tab > * {
         position: relative;
-        z-index: 1; /* 内容が::beforeの上に表示されるように */
+        z-index: 1;
       }
 
       /* shortcuts */
@@ -1087,9 +1087,9 @@
         #h2-shortcut {
           width: 100%;
           display: inline-block;
-          white-space: nowrap; /* テキストの折り返しを防ぐ */
-          overflow: hidden; /* はみ出しを隠す */
-          text-overflow: ellipsis; /* 省略記号 */
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
         }
         .themes-text,
         .themes-group {
@@ -1112,18 +1112,28 @@
         .footer-content {
           justify-content: center;
           padding: 2rem;
+          gap: 1rem;
+          flex-direction: var(--flex-direction);
+        }
+        .footer-icons {
+          gap: 1rem;
+        }
+        .footer-links {
+          flex-wrap: wrap;
+          gap: 0.5rem 1rem;
+        }
+        footer,
+        footer a {
+          font-size: 0.8rem;
+        }
+        footer a svg {
+          width: 1.25rem;
+          height: 1.25rem;
         }
       }
       @media (max-width: 640px) {
         .mobile-br {
           display: inline;
-        }
-        .footer-content {
-          height: auto;
-          flex-direction: var(--flex-direction);
-        }
-        .footer-links {
-          flex-direction: var(--flex-direction);
         }
       }
     </style>
@@ -1647,17 +1657,9 @@
       document.querySelectorAll(".tab").forEach((tab) => {
         tab.addEventListener("click", () => {
           const target = tab.dataset.target;
-
-          // すべてのブロックを非表示
           document.querySelectorAll(".block-content").forEach((c) => c.classList.add("hidden"));
-
-          // すべてのタブから active クラスを削除
           document.querySelectorAll(".tab").forEach((t) => t.classList.remove("active"));
-
-          // 対象ブロックを表示
           document.getElementById(`content-${target}`).classList.remove("hidden");
-
-          // 現在のタブに active クラスを付与
           tab.classList.add("active");
         });
       });
@@ -1672,7 +1674,7 @@
             let i;
             do {
               i = Math.floor(Math.random() * shortcuts.length);
-            } while (i === lastIndex); // 同じものを連続で避ける
+            } while (i === lastIndex);
             lastIndex = i;
 
             shortcutEl.textContent = " " + shortcuts[i];
