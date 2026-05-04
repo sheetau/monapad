@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
@@ -216,7 +216,9 @@
         overflow: hidden;
         font-weight: 500;
         box-shadow: 0 0 2rem color-mix(in srgb, var(--color-text-primary), transparent 100%);
-        transition: background 0.3s ease, box-shadow 0.3s ease;
+        transition:
+          background 0.3s ease,
+          box-shadow 0.3s ease;
       }
       .download-main:hover {
         background: var(--color-text-secondary);
@@ -365,7 +367,9 @@
         margin: 0 0 0 0.75rem;
         width: 0.4rem;
         opacity: 0.5;
-        transition: opacity 0.2s ease, margin 0.2s ease;
+        transition:
+          opacity 0.2s ease,
+          margin 0.2s ease;
       }
       .feature-block a:hover svg {
         margin: 0 0 0 1rem;
@@ -407,7 +411,8 @@
         content: "";
         position: absolute;
         inset: 0;
-        background: linear-gradient(to right, transparent 25%, var(--color-bg-primary) 100%),
+        background:
+          linear-gradient(to right, transparent 25%, var(--color-bg-primary) 100%),
           linear-gradient(to bottom, transparent 50%, var(--color-bg-primary) 100%);
         pointer-events: none;
       }
@@ -606,7 +611,9 @@
         font-family: var(--font-monospace);
         opacity: 0;
         filter: blur(0.5rem);
-        transition: opacity 0.3s ease, filter 0.3s ease;
+        transition:
+          opacity 0.3s ease,
+          filter 0.3s ease;
         will-change: opacity, filter;
       }
       #h2-shortcut.visible {
@@ -627,7 +634,8 @@
       .command-list-overlay {
         position: absolute;
         inset: 0;
-        background: linear-gradient(to right, transparent 0%, var(--color-bg-primary) 100%),
+        background:
+          linear-gradient(to right, transparent 0%, var(--color-bg-primary) 100%),
           linear-gradient(to bottom, transparent 0%, var(--color-bg-primary) 100%);
         pointer-events: none;
         z-index: 2;
@@ -699,7 +707,8 @@
         content: "";
         position: absolute;
         inset: 0;
-        background: linear-gradient(to right, transparent 60%, var(--color-bg-secondary) 100%),
+        background:
+          linear-gradient(to right, transparent 60%, var(--color-bg-secondary) 100%),
           linear-gradient(to top, transparent 70%, var(--color-bg-secondary) 100%);
         pointer-events: none;
       }
@@ -778,7 +787,9 @@
         color: var(--color-text-tertiary);
         font-size: var(--font-size-p);
         opacity: 0;
-        transition: opacity 0.3s ease, background 0.1s ease;
+        transition:
+          opacity 0.3s ease,
+          background 0.1s ease;
         cursor: pointer;
         line-height: 2rem;
         user-select: none;
@@ -856,14 +867,14 @@
         color: var(--color-text-secondary);
         user-select: none;
         margin-top: -6rem;
-        -webkit-mask-image: linear-gradient(to right, black 50%, transparent 100%),
-          linear-gradient(to top, black 70%, transparent 100%);
+        -webkit-mask-image:
+          linear-gradient(to right, black 50%, transparent 100%), linear-gradient(to top, black 70%, transparent 100%);
         -webkit-mask-composite: destination-in;
         mask-composite: intersect;
         -webkit-mask-repeat: no-repeat;
         mask-repeat: no-repeat;
-        mask-image: linear-gradient(to right, black 50%, transparent 100%),
-          linear-gradient(to top, black 70%, transparent 100%);
+        mask-image:
+          linear-gradient(to right, black 50%, transparent 100%), linear-gradient(to top, black 70%, transparent 100%);
       }
       .themes-shadow {
         width: 42rem;
@@ -972,7 +983,8 @@
         content: "";
         position: absolute;
         inset: 0;
-        background: linear-gradient(to right, transparent 25%, var(--color-bg-secondary) 125%),
+        background:
+          linear-gradient(to right, transparent 25%, var(--color-bg-secondary) 125%),
           linear-gradient(to bottom, transparent 25%, var(--color-bg-secondary) 125%);
         pointer-events: none;
       }
@@ -1737,7 +1749,7 @@
         },
         {
           threshold: Array.from({ length: 101 }, (_, i) => i / 100), // [0, 0.01, ..., 1]
-        }
+        },
       );
 
       window.addEventListener("load", () => {
