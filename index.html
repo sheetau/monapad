@@ -182,6 +182,7 @@
 
       /* hero */
       .hero {
+        position: relative;
         display: flex;
         flex-direction: column;
         align-items: center;
@@ -190,6 +191,23 @@
         max-width: 90%;
         padding-top: 8rem;
         margin: 0 auto;
+      }
+      .hero-particles {
+        position: absolute;
+        top: 0;
+        left: 50%;
+        width: 100vw;
+        height: 100vh;
+        transform: translateX(-50%);
+        pointer-events: none;
+        z-index: 0;
+        opacity: 0.86;
+        -webkit-mask-image: linear-gradient(to bottom, #000 0%, #000 78%, transparent 100%);
+        mask-image: linear-gradient(to bottom, #000 0%, #000 78%, transparent 100%);
+      }
+      .hero > :not(.hero-particles) {
+        position: relative;
+        z-index: 1;
       }
       .hero p {
         margin-top: 1.5rem;
@@ -279,8 +297,12 @@
         display: flex;
         align-items: center;
         justify-content: center;
+        background-color: var(--color-bg-primary);
+        border: 1px solid var(--color-border-translucent);
+        border-radius: var(--border-radius-quaternary);
+        overflow: hidden;
       }
-      .screenshot::before {
+      /* .screenshot::before {
         content: "";
         position: absolute;
         height: 175%;
@@ -295,15 +317,15 @@
           transparent 100%
         );
         pointer-events: none;
-      }
+      } */
 
       .screenshot img {
         width: 100%;
         height: 100%;
         object-fit: cover;
-        box-shadow: 0 0 10px rgba(0, 0, 0, 0.75);
-        border-radius: var(--border-radius-quaternary);
+        /* box-shadow: 0 0 10px rgba(0, 0, 0, 0.75); */
         z-index: 1;
+        mix-blend-mode: screen;
       }
 
       /* feature blocks */
@@ -1163,6 +1185,7 @@
 
     <!-- hero -->
     <section class="hero">
+      <canvas class="hero-particles" aria-hidden="true"></canvas>
       <h1>The text editor<br />that thinks like a code editor</h1>
       <p>
         With the same core editor used in VSCode and its own language designed for text editing,
@@ -1611,6 +1634,273 @@
       ];
       const shortcutEl = document.getElementById("h2-shortcut");
 
+      // hero particles
+      function initHeroParticles() {
+        const canvas = document.querySelector(".hero-particles");
+        const hero = document.querySelector(".hero");
+        const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+        const isCoarsePointer = window.matchMedia("(hover: none), (pointer: coarse)").matches;
+
+        if (!canvas || !hero || prefersReducedMotion.matches) return;
+
+        const ctx = canvas.getContext("2d", { alpha: true });
+        const particles = [];
+        const pointer = {
+          x: window.innerWidth * 0.5,
+          y: 180,
+          targetX: window.innerWidth * 0.5,
+          targetY: 180,
+          lastTargetX: window.innerWidth * 0.5,
+          lastTargetY: 180,
+          wakeX: 0,
+          wakeY: 0,
+          active: isCoarsePointer,
+        };
+        let width = 0;
+        let height = 0;
+        let dpr = 1;
+        let animationFrame = null;
+        let isVisible = true;
+        let isPageVisible = !document.hidden;
+        let resizeTimer = null;
+        let hoverInfluence = isCoarsePointer ? 1 : 0;
+        const gridKeyScale = 4096;
+
+        function seededNoise(x, y) {
+          return (Math.sin(x * 12.9898 + y * 78.233) * 43758.5453) % 1;
+        }
+
+        function buildParticles() {
+          particles.length = 0;
+          const density = width < 720 ? 64 : 54;
+          const cols = Math.ceil(width / density) + 2;
+          const rows = Math.ceil(height / density) + 2;
+
+          for (let y = -1; y < rows; y++) {
+            for (let x = -1; x < cols; x++) {
+              const n = seededNoise(x + 17.3, y + 91.7);
+              const n2 = seededNoise(x + 43.1, y + 11.9);
+              const offsetX = y % 2 === 0 ? 0 : density * 0.5;
+              const baseX = x * density + offsetX + (n - 0.5) * density * 0.26;
+              const baseY = y * density * 0.86 + (n2 - 0.5) * density * 0.22;
+              const edgeFade = Math.max(0, 1 - Math.abs(baseX - width * 0.5) / (width * 0.62));
+              const seed = Math.abs(n);
+
+              particles.push({
+                x: baseX,
+                y: baseY,
+                baseX,
+                baseY,
+                seed,
+                driftX1: seed * 18 + baseY * 0.018,
+                driftX2: baseX * 0.021,
+                driftY1: seed * 21 + baseX * 0.015,
+                driftY2: baseY * 0.024,
+                alpha: 0.08 + edgeFade * 0.17,
+              });
+            }
+          }
+        }
+
+        function resize() {
+          const rect = canvas.getBoundingClientRect();
+          dpr = Math.min(window.devicePixelRatio || 1, 2);
+          width = Math.max(1, Math.floor(rect.width));
+          height = Math.max(1, Math.floor(rect.height));
+          canvas.width = Math.floor(width * dpr);
+          canvas.height = Math.floor(height * dpr);
+          ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+          if (isCoarsePointer) {
+            pointer.x = width * 0.5;
+            pointer.y = height * 0.5;
+            pointer.targetX = pointer.x;
+            pointer.targetY = pointer.y;
+            pointer.lastTargetX = pointer.x;
+            pointer.lastTargetY = pointer.y;
+            pointer.active = true;
+            hoverInfluence = 1;
+          }
+          buildParticles();
+        }
+
+        function scheduleResize() {
+          clearTimeout(resizeTimer);
+          resizeTimer = setTimeout(resize, 120);
+        }
+
+        function setPointer(event) {
+          const rect = canvas.getBoundingClientRect();
+          pointer.targetX = event.clientX - rect.left;
+          pointer.targetY = event.clientY - rect.top;
+          pointer.active =
+            pointer.targetX >= 0 &&
+            pointer.targetX <= rect.width &&
+            pointer.targetY >= 0 &&
+            pointer.targetY <= rect.height;
+        }
+
+        function shouldRender() {
+          return isVisible && isPageVisible;
+        }
+
+        function startAnimation() {
+          if (animationFrame === null && shouldRender()) {
+            animationFrame = requestAnimationFrame(draw);
+          }
+        }
+
+        function stopAnimation() {
+          if (animationFrame !== null) {
+            cancelAnimationFrame(animationFrame);
+            animationFrame = null;
+          }
+        }
+
+        function draw(time = 0) {
+          animationFrame = null;
+          if (!shouldRender()) return;
+
+          const targetDeltaX = pointer.targetX - pointer.lastTargetX;
+          const targetDeltaY = pointer.targetY - pointer.lastTargetY;
+          pointer.lastTargetX = pointer.targetX;
+          pointer.lastTargetY = pointer.targetY;
+          pointer.wakeX = pointer.wakeX * 0.9 + targetDeltaX * 0.2;
+          pointer.wakeY = pointer.wakeY * 0.9 + targetDeltaY * 0.2;
+          const easedTargetX = pointer.targetX + pointer.wakeX * 0.42;
+          const easedTargetY = pointer.targetY + pointer.wakeY * 0.42;
+          pointer.x += (easedTargetX - pointer.x) * 0.01;
+          pointer.y += (easedTargetY - pointer.y) * 0.01;
+          hoverInfluence += ((pointer.active ? 1 : 0) - hoverInfluence) * 0.045;
+
+          ctx.clearRect(0, 0, width, height);
+
+          const minRadius = height * 0.38;
+          const radiusNoise =
+            (0.5 - Math.cos(time * 0.00145) * 0.5) * height * 0.15 +
+            (0.5 - Math.cos(time * 0.00225 + 1.8) * 0.5) * height * 0.06;
+          const radius = minRadius + radiusNoise;
+          const breathProgress = Math.min(1, radiusNoise / Math.max(height * 0.21, 1));
+          const breathDistanceScale = 1 + breathProgress * 0.16;
+          const ringWidth = Math.max(180, height * 0.34);
+          const pulse = Math.sin(time * 0.0024) * 34;
+
+          const repelGrid = new Map();
+          const repelDistance = width < 720 ? 18 : 22;
+          const repelStrength = 0.42;
+
+          for (const p of particles) {
+            const dx = p.baseX - pointer.x;
+            const dy = p.baseY - pointer.y;
+            const distance = Math.hypot(dx, dy);
+            const adjustedDistance = distance * breathDistanceScale;
+            const ringDistance = Math.abs(adjustedDistance - radius - pulse);
+            const ring = Math.max(0, 1 - ringDistance / ringWidth);
+            const core = Math.max(0, 1 - adjustedDistance / (radius * 0.8));
+            const inside = adjustedDistance < radius ? 1 : 0;
+            const driftX =
+              Math.sin(time * 0.00072 + p.driftX1) * 16 + Math.sin(time * 0.00115 + p.driftX2) * 7;
+            const driftY =
+              Math.cos(time * 0.00064 + p.driftY1) * 16 + Math.cos(time * 0.00105 + p.driftY2) * 7;
+            const force = hoverInfluence * (Math.pow(ring, 2.3) * 52 - core * 14);
+            const angle = Math.atan2(dy || 0.001, dx || 0.001);
+            const breathSpread = ring * breathProgress * 18;
+
+            p.x += (p.baseX + driftX + Math.cos(angle) * (force + breathSpread) - p.x) * 0.12;
+            p.y += (p.baseY + driftY + Math.sin(angle) * (force + breathSpread) - p.y) * 0.12;
+
+            const glow = ring * (0.34 + hoverInfluence * 0.44) + core * 0.1 * hoverInfluence;
+            const ringSize = Math.pow(ring, 1.45);
+            const innerProgress = inside ? Math.min(1, adjustedDistance / Math.max(radius, 1)) : 0;
+            const nearRingLift = inside ? Math.pow(innerProgress, 0.72) * 0.58 : 0;
+            const centerFloor = inside * (0.18 + nearRingLift);
+            const visibilitySize = Math.max(ringSize, centerFloor);
+            p.size = (0.3 + p.seed * 0.58 + glow * 1.9 + nearRingLift * 0.58) * visibilitySize;
+            p.alpha = Math.min(0.84, 0.36 + nearRingLift * 0.56 + glow * 0.46);
+            p.distance = adjustedDistance;
+
+            const cellX = Math.floor(p.x / repelDistance);
+            const cellY = Math.floor(p.y / repelDistance);
+            const outerFade =
+              adjustedDistance > radius ? Math.max(0, 1 - (adjustedDistance - radius) / Math.max(ringWidth, 1)) : 1;
+            for (let oy = -1; oy <= 1; oy++) {
+              for (let ox = -1; ox <= 1; ox++) {
+                const neighbors = repelGrid.get(cellX + ox + (cellY + oy) * gridKeyScale);
+                if (!neighbors) continue;
+                for (const other of neighbors) {
+                  const sx = p.x - other.x;
+                  const sy = p.y - other.y;
+                  const spacing = Math.hypot(sx, sy);
+                  if (spacing <= 0.001 || spacing >= repelDistance) continue;
+                  const neighborOuterFade =
+                    other.distance > radius ? Math.max(0, 1 - (other.distance - radius) / Math.max(ringWidth, 1)) : 1;
+                  const localRepelStrength = repelStrength * Math.max(0.18, Math.min(outerFade, neighborOuterFade));
+                  const push = ((repelDistance - spacing) / repelDistance) * localRepelStrength;
+                  const nx = sx / spacing;
+                  const ny = sy / spacing;
+                  p.x += nx * push;
+                  p.y += ny * push;
+                  other.x -= nx * push;
+                  other.y -= ny * push;
+                }
+              }
+            }
+            const key = cellX + cellY * gridKeyScale;
+            if (!repelGrid.has(key)) repelGrid.set(key, []);
+            repelGrid.get(key).push(p);
+          }
+
+          for (const p of particles) {
+            if (p.size < 0.08) continue;
+
+            ctx.beginPath();
+            ctx.fillStyle = `rgba(255, 255, 255, ${p.alpha})`;
+            ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+            ctx.fill();
+          }
+
+          const gradient = ctx.createRadialGradient(pointer.x, pointer.y, 0, pointer.x, pointer.y, radius + ringWidth);
+          gradient.addColorStop(0, "rgba(255, 255, 255, 0.055)");
+          gradient.addColorStop(0.45, "rgba(255, 255, 255, 0.026)");
+          gradient.addColorStop(1, "rgba(10, 10, 10, 0)");
+          ctx.fillStyle = gradient;
+          ctx.fillRect(0, 0, width, height);
+
+          startAnimation();
+        }
+
+        const observer = new IntersectionObserver(
+          ([entry]) => {
+            isVisible = entry.isIntersecting;
+            if (shouldRender()) {
+              startAnimation();
+            } else {
+              stopAnimation();
+            }
+          },
+          { threshold: 0 },
+        );
+
+        resize();
+        observer.observe(hero);
+        window.addEventListener("resize", scheduleResize, { passive: true });
+        document.addEventListener("visibilitychange", () => {
+          isPageVisible = !document.hidden;
+          if (shouldRender()) {
+            startAnimation();
+          } else {
+            stopAnimation();
+          }
+        });
+        if (!isCoarsePointer) {
+          window.addEventListener("mousemove", setPointer, { passive: true });
+        }
+        startAnimation();
+
+        prefersReducedMotion.addEventListener("change", () => {
+          if (prefersReducedMotion.matches && animationFrame) cancelAnimationFrame(animationFrame);
+        });
+      }
+
       // get latest exe file to download
       function trackClickEvent() {
         gtag("event", "download_click", {
@@ -1753,6 +2043,7 @@
       );
 
       window.addEventListener("load", () => {
+        initHeroParticles();
         observer.observe(tabsVideoContainer);
       });
     </script>
