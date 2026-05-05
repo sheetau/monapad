@@ -50,9 +50,9 @@
         --font-size-small: 0.9rem;
 
         --border-radius-primary: 1.7rem;
-        --border-radius-secondary: 1rem;
-        --border-radius-tertiary: 0.7rem;
-        --border-radius-quaternary: 0.5rem;
+        --border-radius-secondary: 1.5rem;
+        --border-radius-tertiary: 1rem;
+        --border-radius-quaternary: 1.125rem;
 
         --color-text-primary: #f7f8f8;
         --color-text-secondary: #d0d6e0;
@@ -1669,24 +1669,16 @@
         let sceneVisibility = 1;
         const gridKeyScale = 4096;
         const repelGrid = new Map();
-        const dotSprite = document.createElement("canvas");
-        const dotSpriteSize = 48;
-        dotSprite.width = dotSpriteSize;
-        dotSprite.height = dotSpriteSize;
-        const dotSpriteCtx = dotSprite.getContext("2d");
-        const dotGradient = dotSpriteCtx.createRadialGradient(
-          dotSpriteSize * 0.5,
-          dotSpriteSize * 0.5,
-          0,
-          dotSpriteSize * 0.5,
-          dotSpriteSize * 0.5,
-          dotSpriteSize * 0.5,
-        );
-        dotGradient.addColorStop(0, "rgba(255, 255, 255, 1)");
-        dotGradient.addColorStop(0.58, "rgba(255, 255, 255, 1)");
-        dotGradient.addColorStop(1, "rgba(255, 255, 255, 0)");
-        dotSpriteCtx.fillStyle = dotGradient;
-        dotSpriteCtx.fillRect(0, 0, dotSpriteSize, dotSpriteSize);
+        const pillSprite = document.createElement("canvas");
+        const pillSpriteWidth = 72;
+        const pillSpriteHeight = 32;
+        pillSprite.width = pillSpriteWidth;
+        pillSprite.height = pillSpriteHeight;
+        const pillSpriteCtx = pillSprite.getContext("2d");
+        pillSpriteCtx.fillStyle = "rgba(255, 255, 255, 1)";
+        pillSpriteCtx.beginPath();
+        pillSpriteCtx.roundRect(10, 8, pillSpriteWidth - 20, pillSpriteHeight - 16, 8);
+        pillSpriteCtx.fill();
 
         function seededNoise(x, y) {
           return (Math.sin(x * 12.9898 + y * 78.233) * 43758.5453) % 1;
@@ -1854,6 +1846,10 @@
               Math.sin(time * 0.00038 + p.baseY * 0.018 + Math.sin(p.baseX * 0.008 + time * 0.00022) * 2.2) * 17;
             const warpY =
               Math.cos(time * 0.00034 + p.baseX * 0.016 + Math.cos(p.baseY * 0.009 + time * 0.0002) * 2.1) * 17;
+            p.warpAngle =
+              Math.sin(time * 0.00034 + p.baseX * 0.006 + p.baseY * 0.004) * 0.3 +
+              Math.cos(time * 0.00029 + p.baseX * 0.003 - p.baseY * 0.006) * 0.24 +
+              Math.sin(time * 0.00021 + p.baseX * 0.014 + p.seed * 4) * 0.12;
             const driftX = warpX + Math.sin(time * 0.00052 + p.driftX1) * 6 + Math.sin(time * 0.0009 + p.driftX2) * 2.5;
             const driftY =
               warpY + Math.cos(time * 0.00048 + p.driftY1) * 6 + Math.cos(time * 0.00082 + p.driftY2) * 2.5;
@@ -1923,9 +1919,15 @@
           for (const p of particles) {
             if (p.size < 0.08) continue;
 
-            const spriteSize = p.size * 2.25;
+            const pillHeight = Math.max(1.35, p.size * 2.7);
+            const pillLength = p.size * 4.5;
+            const baseAngle = Math.atan2(pointer.y - p.baseY, pointer.x - p.baseX);
+            const angle = baseAngle + p.warpAngle;
             ctx.globalAlpha = p.alpha;
-            ctx.drawImage(dotSprite, p.x - spriteSize * 0.5, p.y - spriteSize * 0.5, spriteSize, spriteSize);
+            ctx.translate(p.x, p.y);
+            ctx.rotate(angle);
+            ctx.drawImage(pillSprite, -pillLength * 0.5, -pillHeight * 0.5, pillLength, pillHeight);
+            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
           }
           ctx.globalAlpha = 1;
 
