@@ -1650,6 +1650,8 @@
           y: 180,
           targetX: window.innerWidth * 0.5,
           targetY: 180,
+          clientX: window.innerWidth * 0.5,
+          clientY: 180,
           lastTargetX: window.innerWidth * 0.5,
           lastTargetY: 180,
           wakeX: 0,
@@ -1664,15 +1666,39 @@
         let isPageVisible = !document.hidden;
         let resizeTimer = null;
         let hoverInfluence = isCoarsePointer ? 1 : 0;
+        let sceneVisibility = 1;
         const gridKeyScale = 4096;
+        const repelGrid = new Map();
+        const dotSprite = document.createElement("canvas");
+        const dotSpriteSize = 48;
+        dotSprite.width = dotSpriteSize;
+        dotSprite.height = dotSpriteSize;
+        const dotSpriteCtx = dotSprite.getContext("2d");
+        const dotGradient = dotSpriteCtx.createRadialGradient(
+          dotSpriteSize * 0.5,
+          dotSpriteSize * 0.5,
+          0,
+          dotSpriteSize * 0.5,
+          dotSpriteSize * 0.5,
+          dotSpriteSize * 0.5,
+        );
+        dotGradient.addColorStop(0, "rgba(255, 255, 255, 1)");
+        dotGradient.addColorStop(0.58, "rgba(255, 255, 255, 1)");
+        dotGradient.addColorStop(1, "rgba(255, 255, 255, 0)");
+        dotSpriteCtx.fillStyle = dotGradient;
+        dotSpriteCtx.fillRect(0, 0, dotSpriteSize, dotSpriteSize);
 
         function seededNoise(x, y) {
           return (Math.sin(x * 12.9898 + y * 78.233) * 43758.5453) % 1;
         }
 
+        function smoothstep(t) {
+          return t * t * (3 - 2 * t);
+        }
+
         function buildParticles() {
           particles.length = 0;
-          const density = width < 720 ? 64 : 54;
+          const density = width < 720 ? 62 : 53;
           const cols = Math.ceil(width / density) + 2;
           const rows = Math.ceil(height / density) + 2;
 
@@ -1681,8 +1707,8 @@
               const n = seededNoise(x + 17.3, y + 91.7);
               const n2 = seededNoise(x + 43.1, y + 11.9);
               const offsetX = y % 2 === 0 ? 0 : density * 0.5;
-              const baseX = x * density + offsetX + (n - 0.5) * density * 0.26;
-              const baseY = y * density * 0.86 + (n2 - 0.5) * density * 0.22;
+              const baseX = x * density + offsetX + (n - 0.5) * density * 0.1;
+              const baseY = y * density * 0.86 + (n2 - 0.5) * density * 0.1;
               const edgeFade = Math.max(0, 1 - Math.abs(baseX - width * 0.5) / (width * 0.62));
               const seed = Math.abs(n);
 
@@ -1692,10 +1718,10 @@
                 baseX,
                 baseY,
                 seed,
-                driftX1: seed * 18 + baseY * 0.018,
-                driftX2: baseX * 0.021,
-                driftY1: seed * 21 + baseX * 0.015,
-                driftY2: baseY * 0.024,
+                driftX1: seed * 12 + baseY * 0.012,
+                driftX2: baseX * 0.012,
+                driftY1: seed * 14 + baseX * 0.011,
+                driftY2: baseY * 0.014,
                 alpha: 0.08 + edgeFade * 0.17,
               });
             }
@@ -1704,9 +1730,14 @@
 
         function resize() {
           const rect = canvas.getBoundingClientRect();
-          dpr = Math.min(window.devicePixelRatio || 1, 2);
-          width = Math.max(1, Math.floor(rect.width));
-          height = Math.max(1, Math.floor(rect.height));
+          const nextDpr = Math.min(window.devicePixelRatio || 1, 2);
+          const nextWidth = Math.max(1, Math.floor(rect.width));
+          const nextHeight = Math.max(1, Math.floor(rect.height));
+          if (nextWidth === width && nextHeight === height && nextDpr === dpr) return;
+
+          dpr = nextDpr;
+          width = nextWidth;
+          height = nextHeight;
           canvas.width = Math.floor(width * dpr);
           canvas.height = Math.floor(height * dpr);
           ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -1729,9 +1760,16 @@
         }
 
         function setPointer(event) {
+          pointer.clientX = event.clientX;
+          pointer.clientY = event.clientY;
+          updatePointerFromClient();
+          startAnimation();
+        }
+
+        function updatePointerFromClient() {
           const rect = canvas.getBoundingClientRect();
-          pointer.targetX = event.clientX - rect.left;
-          pointer.targetY = event.clientY - rect.top;
+          pointer.targetX = pointer.clientX - rect.left;
+          pointer.targetY = pointer.clientY - rect.top;
           pointer.active =
             pointer.targetX >= 0 &&
             pointer.targetX <= rect.width &&
@@ -1740,7 +1778,7 @@
         }
 
         function shouldRender() {
-          return isVisible && isPageVisible;
+          return isPageVisible && (isVisible || sceneVisibility > 0.01);
         }
 
         function startAnimation() {
@@ -1768,11 +1806,17 @@
           pointer.wakeY = pointer.wakeY * 0.9 + targetDeltaY * 0.2;
           const easedTargetX = pointer.targetX + pointer.wakeX * 0.42;
           const easedTargetY = pointer.targetY + pointer.wakeY * 0.42;
-          pointer.x += (easedTargetX - pointer.x) * 0.01;
-          pointer.y += (easedTargetY - pointer.y) * 0.01;
+          pointer.x += (easedTargetX - pointer.x) * 0.022;
+          pointer.y += (easedTargetY - pointer.y) * 0.022;
           hoverInfluence += ((pointer.active ? 1 : 0) - hoverInfluence) * 0.045;
+          sceneVisibility += ((isVisible ? 1 : 0) - sceneVisibility) * 0.06;
 
           ctx.clearRect(0, 0, width, height);
+
+          if (sceneVisibility <= 0.01 && !isVisible) {
+            stopAnimation();
+            return;
+          }
 
           const minRadius = height * 0.38;
           const radiusNoise =
@@ -1781,42 +1825,68 @@
           const radius = minRadius + radiusNoise;
           const breathProgress = Math.min(1, radiusNoise / Math.max(height * 0.21, 1));
           const breathDistanceScale = 1 + breathProgress * 0.16;
-          const ringWidth = Math.max(180, height * 0.34);
+          const ringWidth = Math.max(150, height * 0.27);
           const pulse = Math.sin(time * 0.0024) * 34;
 
-          const repelGrid = new Map();
+          repelGrid.clear();
           const repelDistance = width < 720 ? 18 : 22;
-          const repelStrength = 0.42;
+          const repelDistanceSq = repelDistance * repelDistance;
+          const repelStrength = 0.16;
 
           for (const p of particles) {
             const dx = p.baseX - pointer.x;
             const dy = p.baseY - pointer.y;
             const distance = Math.hypot(dx, dy);
             const adjustedDistance = distance * breathDistanceScale;
-            const ringDistance = Math.abs(adjustedDistance - radius - pulse);
+            const angleNoise = Math.atan2(dy || 0.001, dx || 0.001);
+            const contourWarp =
+              Math.sin(angleNoise * 3 + time * 0.0011) * height * 0.035 +
+              Math.sin(angleNoise * 5 - time * 0.00082 + 1.7) * height * 0.022 +
+              Math.sin(angleNoise * 8 + time * 0.00057 + p.seed * 3) * height * 0.012;
+            const localRadius = radius + contourWarp;
+            const ringDistance = Math.abs(adjustedDistance - localRadius - pulse);
             const ring = Math.max(0, 1 - ringDistance / ringWidth);
-            const core = Math.max(0, 1 - adjustedDistance / (radius * 0.8));
-            const inside = adjustedDistance < radius ? 1 : 0;
-            const driftX =
-              Math.sin(time * 0.00072 + p.driftX1) * 16 + Math.sin(time * 0.00115 + p.driftX2) * 7;
+            if (ring > 0.22) p.trailUntil = time + 760;
+            const trailLife = p.trailUntil ? Math.max(0, Math.min(1, (p.trailUntil - time) / 760)) : 0;
+            const core = Math.max(0, 1 - adjustedDistance / (localRadius * 0.8));
+            const inside = adjustedDistance < localRadius ? 1 : 0;
+            const warpX =
+              Math.sin(time * 0.00038 + p.baseY * 0.018 + Math.sin(p.baseX * 0.008 + time * 0.00022) * 2.2) * 17;
+            const warpY =
+              Math.cos(time * 0.00034 + p.baseX * 0.016 + Math.cos(p.baseY * 0.009 + time * 0.0002) * 2.1) * 17;
+            const driftX = warpX + Math.sin(time * 0.00052 + p.driftX1) * 6 + Math.sin(time * 0.0009 + p.driftX2) * 2.5;
             const driftY =
-              Math.cos(time * 0.00064 + p.driftY1) * 16 + Math.cos(time * 0.00105 + p.driftY2) * 7;
-            const force = hoverInfluence * (Math.pow(ring, 2.3) * 52 - core * 14);
-            const angle = Math.atan2(dy || 0.001, dx || 0.001);
+              warpY + Math.cos(time * 0.00048 + p.driftY1) * 6 + Math.cos(time * 0.00082 + p.driftY2) * 2.5;
+            const ringSq = ring * ring;
+            const force = hoverInfluence * (ringSq * Math.sqrt(ring) * 52 - core * 14);
             const breathSpread = ring * breathProgress * 18;
+            const directionScale = distance > 0.001 ? (force + breathSpread) / distance : 0;
 
-            p.x += (p.baseX + driftX + Math.cos(angle) * (force + breathSpread) - p.x) * 0.12;
-            p.y += (p.baseY + driftY + Math.sin(angle) * (force + breathSpread) - p.y) * 0.12;
+            p.x += (p.baseX + driftX + dx * directionScale - p.x) * 0.12;
+            p.y += (p.baseY + driftY + dy * directionScale - p.y) * 0.12;
 
             const glow = ring * (0.34 + hoverInfluence * 0.44) + core * 0.1 * hoverInfluence;
-            const ringSize = Math.pow(ring, 1.45);
-            const innerProgress = inside ? Math.min(1, adjustedDistance / Math.max(radius, 1)) : 0;
-            const nearRingLift = inside ? Math.pow(innerProgress, 0.72) * 0.58 : 0;
+            const ringSize = ring * Math.sqrt(ring);
+            const innerProgress = inside ? Math.min(1, adjustedDistance / Math.max(localRadius, 1)) : 0;
+            const nearRingLift = inside ? Math.sqrt(innerProgress) * 0.58 : 0;
             const centerFloor = inside * (0.18 + nearRingLift);
             const visibilitySize = Math.max(ringSize, centerFloor);
-            p.size = (0.3 + p.seed * 0.58 + glow * 1.9 + nearRingLift * 0.58) * visibilitySize;
-            p.alpha = Math.min(0.84, 0.36 + nearRingLift * 0.56 + glow * 0.46);
+            const sideBandProgress = Math.min(
+              1,
+              Math.max(0, (adjustedDistance - (localRadius - ringWidth * 0.42)) / Math.max(ringWidth * 0.34, 1)),
+            );
+            const outerSideDensity = smoothstep(sideBandProgress);
+            const skipThreshold = 0.42 - outerSideDensity * 0.41;
+            const skipOutsideFade = trailLife <= 0.01 && p.seed < skipThreshold;
+            p.size = (0.3 + p.seed * 0.58 + glow * 1.9 + nearRingLift * 0.58) * visibilitySize * sceneVisibility;
+            p.alpha = Math.min(0.84, 0.36 + nearRingLift * 0.56 + glow * 0.46) * sceneVisibility;
+            if (trailLife > 0 && p.size < 0.7 * sceneVisibility) {
+              p.size = (0.35 + p.seed * 0.35) * trailLife * sceneVisibility;
+              p.alpha = Math.max(p.alpha, trailLife * 0.24 * sceneVisibility);
+            }
             p.distance = adjustedDistance;
+
+            if (p.size < 0.08 || skipOutsideFade) continue;
 
             const cellX = Math.floor(p.x / repelDistance);
             const cellY = Math.floor(p.y / repelDistance);
@@ -1829,8 +1899,9 @@
                 for (const other of neighbors) {
                   const sx = p.x - other.x;
                   const sy = p.y - other.y;
-                  const spacing = Math.hypot(sx, sy);
-                  if (spacing <= 0.001 || spacing >= repelDistance) continue;
+                  const spacingSq = sx * sx + sy * sy;
+                  if (spacingSq <= 0.000001 || spacingSq >= repelDistanceSq) continue;
+                  const spacing = Math.sqrt(spacingSq);
                   const neighborOuterFade =
                     other.distance > radius ? Math.max(0, 1 - (other.distance - radius) / Math.max(ringWidth, 1)) : 1;
                   const localRepelStrength = repelStrength * Math.max(0.18, Math.min(outerFade, neighborOuterFade));
@@ -1852,18 +1923,20 @@
           for (const p of particles) {
             if (p.size < 0.08) continue;
 
-            ctx.beginPath();
-            ctx.fillStyle = `rgba(255, 255, 255, ${p.alpha})`;
-            ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
-            ctx.fill();
+            const spriteSize = p.size * 2.25;
+            ctx.globalAlpha = p.alpha;
+            ctx.drawImage(dotSprite, p.x - spriteSize * 0.5, p.y - spriteSize * 0.5, spriteSize, spriteSize);
           }
+          ctx.globalAlpha = 1;
 
           const gradient = ctx.createRadialGradient(pointer.x, pointer.y, 0, pointer.x, pointer.y, radius + ringWidth);
           gradient.addColorStop(0, "rgba(255, 255, 255, 0.055)");
           gradient.addColorStop(0.45, "rgba(255, 255, 255, 0.026)");
           gradient.addColorStop(1, "rgba(10, 10, 10, 0)");
           ctx.fillStyle = gradient;
+          ctx.globalAlpha = sceneVisibility;
           ctx.fillRect(0, 0, width, height);
+          ctx.globalAlpha = 1;
 
           startAnimation();
         }
