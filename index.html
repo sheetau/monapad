@@ -198,17 +198,90 @@
         top: 0;
         left: 50%;
         width: 100vw;
-        height: 100vh;
+        height: 122vh;
         transform: translateX(-50%);
         pointer-events: none;
         z-index: 0;
         opacity: 0.86;
-        -webkit-mask-image: linear-gradient(to bottom, #000 0%, #000 78%, transparent 100%);
-        mask-image: linear-gradient(to bottom, #000 0%, #000 78%, transparent 100%);
+        transition: opacity 1.6s ease;
+        -webkit-mask-image: linear-gradient(to bottom, #000 0, #000 100vh, transparent 122vh);
+        mask-image: linear-gradient(to bottom, #000 0, #000 100vh, transparent 122vh);
       }
       .hero > :not(.hero-particles) {
         position: relative;
         z-index: 1;
+      }
+      .hero-title {
+        display: inline-block;
+        position: relative;
+        transform: translateY(0);
+        transform-origin: center;
+        transition:
+          font-size 1.8s cubic-bezier(0.22, 1, 0.36, 1),
+          transform 1.8s cubic-bezier(0.22, 1, 0.36, 1);
+        will-change: font-size, transform;
+      }
+      .hero.is-typing .hero-title {
+        font-size: clamp(3rem, 4.5vw, 4.5rem);
+        transform: translateY(calc(50vh - 8rem - 50%));
+      }
+      .hero-title .typed-char {
+        opacity: 0;
+      }
+      .hero-title .typed-caret {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 0.08em;
+        height: 1em;
+        background: #569cd6;
+        opacity: 0;
+        transform: translate3d(var(--caret-x, 0), var(--caret-y, 0), 0);
+        animation: typed-caret-blink 0.65s infinite;
+        pointer-events: none;
+      }
+      .hero-title .typed-caret.is-hidden {
+        display: none;
+        animation: none;
+        opacity: 0;
+      }
+      .hero.is-typing .hero-particles {
+        opacity: 0;
+      }
+      .hero.is-typed .hero-particles {
+        opacity: 0.86;
+      }
+      .hero.is-typing .hero-reveal {
+        opacity: 0;
+        transform: translateY(1.6rem);
+        pointer-events: none;
+      }
+      .hero.is-typed .hero-reveal {
+        opacity: 1;
+        transform: translateY(0);
+        transition:
+          opacity 1.6s ease,
+          transform 1.8s cubic-bezier(0.22, 1, 0.36, 1);
+      }
+      .hero.is-typed p.hero-reveal {
+        transition-delay: 0.04s;
+      }
+      .hero.is-typed .hero-buttons.hero-reveal {
+        transition-delay: 0.14s;
+      }
+      .hero.is-typed .screenshot.hero-reveal {
+        transition-delay: 0.24s;
+      }
+      @keyframes typed-caret-blink {
+        0% {
+          opacity: 0;
+        }
+        10% {
+          opacity: 1;
+        }
+        100% {
+          opacity: 0;
+        }
       }
       .hero p {
         margin-top: 1.5rem;
@@ -827,6 +900,40 @@
         background: #1f1f1f;
       }
 
+      /* qr */
+      .feature-block.qr {
+        display: flex;
+        align-items: center;
+      }
+      .qr {
+        display: flex;
+        flex-direction: var(--flex-direction);
+        align-items: flex-start;
+        margin-bottom: 2rem;
+      }
+      .qr-text {
+        width: 60%;
+      }
+      .qr-text p {
+        max-width: none;
+        width: 83%;
+      }
+      .qr-image {
+        width: 40%;
+        height: auto;
+        border-radius: var(--border-radius-quinary);
+        border: solid 1px var(--color-border-translucent);
+        background: var(--color-bg-secondary);
+        line-height: 0;
+      }
+      .qr-image img {
+        display: block;
+        width: 100%;
+        height: auto;
+        object-fit: contain;
+        mix-blend-mode: screen;
+      }
+
       /* default themes */
       .default-themes {
         display: flex;
@@ -1187,16 +1294,18 @@
     </header>
 
     <!-- hero -->
-    <section class="hero">
+    <section class="hero is-typing">
       <canvas class="hero-particles" aria-hidden="true"></canvas>
-      <h1>The text editor<br />that thinks like a code editor</h1>
-      <p>
+      <h1 class="hero-title" data-typed-title="The text editor<br />that thinks like a code editor">
+        The text editor<br />that thinks like a code editor
+      </h1>
+      <p class="hero-reveal">
         With the same core editor used in VSCode and its own language designed for text editing,
         <span class="desktop-br"><br /></span>Monapad brings code editor-level efficiency and readability to your
         everyday writing.
       </p>
 
-      <div class="hero-buttons">
+      <div class="hero-buttons hero-reveal">
         <a href="#" class="app-download download-main">Download for Windows</a>
         <a href="https://github.com/sheetau/monapad/tree/main" target="_blank" class="hero-link">
           GitHub
@@ -1212,7 +1321,7 @@
         </a>
       </div>
 
-      <div class="screenshot">
+      <div class="screenshot hero-reveal">
         <img src="media/ss_onyx.png" alt="Monapad Screenshot" />
       </div>
     </section>
@@ -1403,6 +1512,20 @@
           <video id="tabsVideo" src="media/tabs.mp4" muted loop playsinline preload="auto"></video>
         </div>
         <span class="video-overlay" id="videoOverlay">Play</span>
+      </div>
+    </section>
+
+    <!-- qr -->
+    <section class="feature-block qr">
+      <div class="qr-text">
+        <h2>Instant sharing via QR</h2>
+        <p>
+          Seamlessly send your notes to mobile devices. Just one click generates a QR code for your local network,
+          letting you move text to other apps instantly without any cloud accounts.
+        </p>
+      </div>
+      <div class="qr-image">
+        <img src="media/qr.png" alt="QR Code Screenshot" />
       </div>
     </section>
 
@@ -1637,6 +1760,97 @@
       ];
       const shortcutEl = document.getElementById("h2-shortcut");
 
+      // hero typed title
+      function initHeroIntro() {
+        const hero = document.querySelector(".hero");
+        const title = document.querySelector(".hero-title");
+        const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+
+        if (!hero || !title) return;
+
+        const revealHero = () => {
+          hero.classList.remove("is-typing");
+          hero.classList.add("is-typed");
+        };
+
+        if (prefersReducedMotion.matches) {
+          revealHero();
+          return;
+        }
+
+        const source = title.dataset.typedTitle || title.innerHTML;
+        const lines = source.split(/<br\s*\/?>/i).map((line) => line.trim());
+        const chars = [];
+        const fragment = document.createDocumentFragment();
+
+        lines.forEach((line, lineIndex) => {
+          if (lineIndex > 0) fragment.appendChild(document.createElement("br"));
+          for (const char of line) {
+            const span = document.createElement("span");
+            span.className = "typed-char";
+            span.textContent = char;
+            fragment.appendChild(span);
+            chars.push(span);
+          }
+        });
+
+        const caret = document.createElement("span");
+        caret.className = "typed-caret";
+        caret.setAttribute("aria-hidden", "true");
+        fragment.appendChild(caret);
+
+        title.textContent = "";
+        title.appendChild(fragment);
+        title.setAttribute("aria-label", lines.join(" "));
+
+        const updateCaret = (target) => {
+          if (!target) return;
+          const titleRect = title.getBoundingClientRect();
+          const targetRect = target.getBoundingClientRect();
+          title.style.setProperty("--caret-x", `${targetRect.right - titleRect.left + 10}px`);
+          title.style.setProperty("--caret-y", `${targetRect.top - titleRect.top}px`);
+        };
+
+        updateCaret(chars[0]);
+        caret.style.opacity = "1";
+
+        let index = 0;
+        const hideCaretOnHiddenBlink = (onHidden) => {
+          const opacity = Number.parseFloat(window.getComputedStyle(caret).opacity);
+          if (opacity <= 0.08) {
+            caret.classList.add("is-hidden");
+            onHidden?.();
+            return;
+          }
+
+          window.requestAnimationFrame(() => hideCaretOnHiddenBlink(onHidden));
+        };
+
+        const typeNextChar = () => {
+          const char = chars[index];
+          if (!char) {
+            hideCaretOnHiddenBlink(revealHero);
+            return;
+          }
+
+          char.style.opacity = "1";
+          updateCaret(char);
+          index += 1;
+
+          const delay = char.textContent === " " ? 24 : 42 + Math.random() * 22;
+          window.setTimeout(typeNextChar, delay);
+        };
+
+        window.setTimeout(typeNextChar, 260);
+        window.addEventListener(
+          "resize",
+          () => {
+            updateCaret(chars[Math.max(0, index - 1)]);
+          },
+          { passive: true },
+        );
+      }
+
       // hero particles
       function initHeroParticles() {
         const canvas = document.querySelector(".hero-particles");
@@ -1648,15 +1862,19 @@
 
         const ctx = canvas.getContext("2d", { alpha: true });
         const particles = [];
+        const getDefaultPointer = () => ({
+          x: width > 0 ? width * 0.5 : window.innerWidth * 0.5,
+          y: height > 0 ? Math.min(window.innerHeight, height) * 0.75 : window.innerHeight * 0.75,
+        });
         const pointer = {
           x: window.innerWidth * 0.5,
-          y: 180,
+          y: window.innerHeight * 0.75,
           targetX: window.innerWidth * 0.5,
-          targetY: 180,
-          clientX: window.innerWidth * 0.5,
-          clientY: 180,
+          targetY: window.innerHeight * 0.75,
+          clientX: null,
+          clientY: null,
           lastTargetX: window.innerWidth * 0.5,
-          lastTargetY: 180,
+          lastTargetY: window.innerHeight * 0.75,
           wakeX: 0,
           wakeY: 0,
           active: isCoarsePointer,
@@ -1756,8 +1974,9 @@
           canvas.height = Math.floor(height * dpr);
           ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
           if (isCoarsePointer) {
-            pointer.x = width * 0.5;
-            pointer.y = height * 0.5;
+            const defaultPointer = getDefaultPointer();
+            pointer.x = defaultPointer.x;
+            pointer.y = defaultPointer.y;
             pointer.targetX = pointer.x;
             pointer.targetY = pointer.y;
             pointer.lastTargetX = pointer.x;
@@ -1766,6 +1985,7 @@
             hoverInfluence = 1;
           }
           buildParticles();
+          if (!isCoarsePointer) updatePointerFromClient();
         }
 
         function scheduleResize() {
@@ -1780,15 +2000,32 @@
           startAnimation();
         }
 
+        function clearPointer() {
+          pointer.clientX = null;
+          pointer.clientY = null;
+          updatePointerFromClient();
+          startAnimation();
+        }
+
         function updatePointerFromClient() {
+          const defaultPointer = getDefaultPointer();
+          if (pointer.clientX === null || pointer.clientY === null) {
+            pointer.targetX = defaultPointer.x;
+            pointer.targetY = defaultPointer.y;
+            pointer.active = false;
+            return;
+          }
+
           const rect = canvas.getBoundingClientRect();
-          pointer.targetX = pointer.clientX - rect.left;
-          pointer.targetY = pointer.clientY - rect.top;
+          const nextX = pointer.clientX - rect.left;
+          const nextY = pointer.clientY - rect.top;
           pointer.active =
-            pointer.targetX >= 0 &&
-            pointer.targetX <= rect.width &&
-            pointer.targetY >= 0 &&
-            pointer.targetY <= rect.height;
+            nextX >= 0 &&
+            nextX <= rect.width &&
+            nextY >= 0 &&
+            nextY <= rect.height;
+          pointer.targetX = pointer.active ? nextX : defaultPointer.x;
+          pointer.targetY = pointer.active ? nextY : defaultPointer.y;
         }
 
         function shouldRender() {
@@ -1812,6 +2049,7 @@
           animationFrame = null;
           if (!shouldRender()) return;
 
+          if (!isCoarsePointer) updatePointerFromClient();
           const targetDeltaX = pointer.targetX - pointer.lastTargetX;
           const targetDeltaY = pointer.targetY - pointer.lastTargetY;
           pointer.lastTargetX = pointer.targetX;
@@ -1995,6 +2233,8 @@
         });
         if (!isCoarsePointer) {
           window.addEventListener("mousemove", setPointer, { passive: true });
+          window.addEventListener("mouseleave", clearPointer, { passive: true });
+          window.addEventListener("blur", clearPointer, { passive: true });
         }
         startAnimation();
 
@@ -2143,6 +2383,8 @@
           threshold: Array.from({ length: 101 }, (_, i) => i / 100), // [0, 0.01, ..., 1]
         },
       );
+
+      initHeroIntro();
 
       window.addEventListener("load", () => {
         initHeroParticles();
