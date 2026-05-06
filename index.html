@@ -1669,6 +1669,25 @@
         let sceneVisibility = 1;
         const gridKeyScale = 4096;
         const repelGrid = new Map();
+        const usePillParticles = false;
+        const dotSprite = document.createElement("canvas");
+        const dotSpriteSize = 48;
+        dotSprite.width = dotSpriteSize;
+        dotSprite.height = dotSpriteSize;
+        const dotSpriteCtx = dotSprite.getContext("2d");
+        const dotGradient = dotSpriteCtx.createRadialGradient(
+          dotSpriteSize * 0.5,
+          dotSpriteSize * 0.5,
+          0,
+          dotSpriteSize * 0.5,
+          dotSpriteSize * 0.5,
+          dotSpriteSize * 0.5,
+        );
+        dotGradient.addColorStop(0, "rgba(255, 255, 255, 1)");
+        dotGradient.addColorStop(0.58, "rgba(255, 255, 255, 1)");
+        dotGradient.addColorStop(1, "rgba(255, 255, 255, 0)");
+        dotSpriteCtx.fillStyle = dotGradient;
+        dotSpriteCtx.fillRect(0, 0, dotSpriteSize, dotSpriteSize);
         const pillSprite = document.createElement("canvas");
         const pillSpriteWidth = 72;
         const pillSpriteHeight = 32;
@@ -1919,15 +1938,20 @@
           for (const p of particles) {
             if (p.size < 0.08) continue;
 
-            const pillHeight = Math.max(1.35, p.size * 2.7);
-            const pillLength = p.size * 4.5;
-            const baseAngle = Math.atan2(pointer.y - p.baseY, pointer.x - p.baseX);
-            const angle = baseAngle + p.warpAngle;
             ctx.globalAlpha = p.alpha;
-            ctx.translate(p.x, p.y);
-            ctx.rotate(angle);
-            ctx.drawImage(pillSprite, -pillLength * 0.5, -pillHeight * 0.5, pillLength, pillHeight);
-            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+            if (usePillParticles) {
+              const pillHeight = Math.max(1.35, p.size * 2.7);
+              const pillLength = p.size * 4.5;
+              const baseAngle = Math.atan2(pointer.y - p.baseY, pointer.x - p.baseX);
+              const angle = baseAngle + p.warpAngle;
+              ctx.translate(p.x, p.y);
+              ctx.rotate(angle);
+              ctx.drawImage(pillSprite, -pillLength * 0.5, -pillHeight * 0.5, pillLength, pillHeight);
+              ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+            } else {
+              const spriteSize = p.size * 2.25;
+              ctx.drawImage(dotSprite, p.x - spriteSize * 0.5, p.y - spriteSize * 0.5, spriteSize, spriteSize);
+            }
           }
           ctx.globalAlpha = 1;
 
