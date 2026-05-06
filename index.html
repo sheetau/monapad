@@ -218,7 +218,7 @@
       .hero-buttons {
         margin: 3.5rem 0 4rem;
         display: flex;
-        gap: 1rem;
+        gap: 0.75rem;
       }
       .download-main {
         position: relative;
@@ -273,12 +273,14 @@
         }
       }
       .hero-link {
-        background: transparent;
+        background: color-mix(in srgb, var(--color-text-tertiary), transparent 90%);
+        backdrop-filter: blur(0.3rem);
         color: var(--color-text-primary);
         display: flex;
         align-items: center;
         justify-content: center;
         height: 3rem;
+        border: solid 1px var(--color-border-translucent);
         border-radius: var(--border-radius-secondary);
         padding: 0 1.2rem;
         transition: background 0.3s ease;
