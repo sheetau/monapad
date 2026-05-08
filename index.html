@@ -523,6 +523,7 @@
         object-position: top left;
         transform: skewX(15deg);
         border-radius: var(--border-radius-tertiary);
+        border: 1px solid var(--color-border-translucent);
       }
 
       .language-container {
@@ -901,15 +902,12 @@
       }
 
       /* qr */
-      .feature-block.qr {
-        display: flex;
-        align-items: center;
-      }
       .qr {
         display: flex;
         flex-direction: var(--flex-direction);
         align-items: flex-start;
         margin-bottom: 2rem;
+        align-items: center;
       }
       .qr-text {
         width: 60%;
@@ -917,6 +915,29 @@
       .qr-text p {
         max-width: none;
         width: 83%;
+      }
+      .qr-button-image {
+        width: 83%;
+        border-radius: 0 0 0 var(--border-radius-quinary);
+        border-bottom: solid 1px var(--color-border-translucent);
+        border-left: solid 1px var(--color-border-translucent);
+        background: var(--color-bg-secondary);
+        overflow: hidden;
+        -webkit-mask-image:
+          linear-gradient(to right, black 50%, transparent 100%), linear-gradient(to top, black 10%, transparent 100%);
+        -webkit-mask-composite: destination-in;
+        mask-composite: intersect;
+        -webkit-mask-repeat: no-repeat;
+        mask-repeat: no-repeat;
+        mask-image:
+          linear-gradient(to right, black 30%, transparent 80%), linear-gradient(to top, black 10%, transparent 100%);
+      }
+      .qr-button-image img {
+        width: 100%;
+        height: auto;
+        display: block;
+        object-fit: contain;
+        mix-blend-mode: screen;
       }
       .qr-image {
         width: 40%;
@@ -1131,8 +1152,8 @@
       /* prefooter */
       .prefooter {
         display: flex;
-        justify-content: space-between;
-        flex-direction: var(--flex-direction);
+        flex-direction: column;
+        gap: 3.5rem;
         align-items: center;
         width: var(--page-max-width);
         max-width: 90%;
@@ -1236,8 +1257,14 @@
           text-overflow: ellipsis;
         }
         .themes-text,
-        .themes-group {
+        .themes-group,
+        .qr-text,
+        .qr-image,
+        .qr-button-image {
           width: 100%;
+        }
+        .qr-image {
+          margin-top: 2rem;
         }
         .themes-group {
           margin-top: -1rem;
@@ -1248,8 +1275,7 @@
           margin-top: 0;
         }
         .prefooter h2 {
-          margin-bottom: 2rem;
-          width: 90%;
+          width: 95%;
           text-align: center;
           white-space: pre-line;
         }
@@ -1300,9 +1326,8 @@
         The text editor<br />that thinks like a code editor
       </h1>
       <p class="hero-reveal">
-        With the same core editor used in VSCode and its own language designed for text editing,
-        <span class="desktop-br"><br /></span>Monapad brings code editor-level efficiency and readability to your
-        everyday writing.
+        Built on the same editor that powers VSCode, with a syntax language purpose-built for writing.
+        <span class="desktop-br"><br /></span>Monapad brings code-level precision to everyday text.
       </p>
 
       <div class="hero-buttons hero-reveal">
@@ -1330,9 +1355,8 @@
     <section class="feature-block language">
       <h2>Language<br />designed for text</h2>
       <p>
-        Lightweight syntax highlighting makes your writing easier to scan and structure. Combined with heading-level
-        folding, it helps you manage long documents effortlessly. All of this is powered by a built-in language designed
-        specifically for text editing.
+        Lightweight syntax highlighting keeps your writing structured and easy to scan. Pair it with heading-level
+        folding to navigate long documents with ease. It all runs on a built-in language purpose-built for text.
       </p>
 
       <div class="language-screenshot-wrapper">
@@ -1503,8 +1527,8 @@
       <div class="feature-row">
         <h2>Tabs that flow</h2>
         <p>
-          Smooth, responsive tabs — just like Chromium browsers — let you manage multiple tabs effortlessly. Close,
-          rearrange, reopen, pop out, or merge tabs across windows — all in one seamless flow.
+          Smooth, responsive tabs modeled after Chromium browsers. Close, rearrange, reopen, pop out, or merge tabs
+          across windows. Managing multiple documents has never felt this natural.
         </p>
       </div>
       <div class="tabs-video">
@@ -1518,11 +1542,16 @@
     <!-- qr -->
     <section class="feature-block qr">
       <div class="qr-text">
-        <h2>Instant sharing via QR</h2>
+        <h2>
+          Instant sharing <span class="mobile-br"><br /></span>via QR
+        </h2>
         <p>
-          Seamlessly send your notes to mobile devices. Just one click generates a QR code for your local network,
-          letting you move text to other apps instantly without any cloud accounts.
+          One click generates a QR code over your local network. Scan it to move your text to any app on your phone. No
+          cloud account required.
         </p>
+        <div class="qr-button-image">
+          <img src="media/qr_button.png" alt="QR Code Button" />
+        </div>
       </div>
       <div class="qr-image">
         <img src="media/qr.png" alt="QR Code Screenshot" />
@@ -1535,8 +1564,8 @@
         <div class="themes-text">
           <h2>Focus in the dark</h2>
           <p>
-            Like a code editor, Monapad focuses on clarity and long-session comfort. It comes with three dark themes by
-            default, offering a focused and distraction-free writing experience.
+            Designed for clarity and long-session comfort. Three dark themes ship by default, so you can find your focus
+            and stay there.
           </p>
           <div class="theme-buttons">
             <div class="theme-button ash">
@@ -1560,17 +1589,16 @@
                 1<br />2<br />3<br /><br /><br />4<br />5<br />6<br />7<br />8<br />9<br />10<br />11
               </div>
               <div class="themes-content">
-                <span class="themes-h1"><span class="marker"># </span>Marshmallow Engine Protocoll</span><br /><br />
-                Autonomous marshmallow modules are being developed to simulate low-friction mobility in dreamlike
-                terrain. Early prototypes have shown promising bounce efficiency, though flavor stability remains
-                inconsistent.<br /><br />
+                <span class="themes-h1"><span class="marker"># </span>Evening Notes</span><br /><br />
+                <span class="themes-h2"><span class="marker">## </span>Desk Routine</span><br /><br />
+                The room grows quieter after midnight, especially once the rain starts against the window and the sound
+                of traffic fades into the background. Revisiting old notes at this hour often reveals details that felt
+                insignificant during the day but suddenly seem worth preserving.<br /><br />
+                <span class="list-marker">1. </span>Finish the draft.<br /><span class="list-marker">2. </span>Organize
+                scattered notes.<br /><span class="list-marker">3. </span>Back up everything before sleep.<br /><br />
                 <span class="subtext"
-                  ><span class="marker">-# </span>Initial phase focused on texture-to-thrust correlation in
-                  unpredictable environments.</span
-                ><br /><br />
-                <span class="themes-h2"><span class="marker">## </span>Equipment Summary</span><br /><br />
-                <span class="list-marker">1. </span>Gel-based surface scanner<br /><span class="list-marker">2. </span
-                >Compressed vanilla propulsion unit<br /><span class="list-marker">3. </span>Thermal wobble suppressor
+                  ><span class="marker">-# </span>Reminder: unfinished thoughts are easier to lose than files.</span
+                >
               </div>
             </div>
           </div>
@@ -1581,17 +1609,16 @@
                 1<br />2<br />3<br /><br /><br />4<br />5<br />6<br />7<br />8<br />9<br />10<br />11
               </div>
               <div class="themes-content">
-                <span class="themes-h1"><span class="marker"># </span>Marshmallow Engine Protocoll</span><br /><br />
-                Autonomous marshmallow modules are being developed to simulate low-friction mobility in dreamlike
-                terrain. Early prototypes have shown promising bounce efficiency, though flavor stability remains
-                inconsistent.<br /><br />
+                <span class="themes-h1"><span class="marker"># </span>Evening Notes</span><br /><br />
+                <span class="themes-h2"><span class="marker">## </span>Desk Routine</span><br /><br />
+                The room grows quieter after midnight, especially once the rain starts against the window and the sound
+                of traffic fades into the background. Revisiting old notes at this hour often reveals details that felt
+                insignificant during the day but suddenly seem worth preserving.<br /><br />
+                <span class="list-marker">1. </span>Finish the draft.<br /><span class="list-marker">2. </span>Organize
+                scattered notes.<br /><span class="list-marker">3. </span>Back up everything before sleep.<br /><br />
                 <span class="subtext"
-                  ><span class="marker">-# </span>Initial phase focused on texture-to-thrust correlation in
-                  unpredictable environments.</span
-                ><br /><br />
-                <span class="themes-h2"><span class="marker">## </span>Equipment Summary</span><br /><br />
-                <span class="list-marker">1. </span>Gel-based surface scanner<br /><span class="list-marker">2. </span
-                >Compressed vanilla propulsion unit<br /><span class="list-marker">3. </span>Thermal wobble suppressor
+                  ><span class="marker">-# </span>Reminder: unfinished thoughts are easier to lose than files.</span
+                >
               </div>
             </div>
           </div>
@@ -1602,17 +1629,16 @@
                 1<br />2<br />3<br /><br /><br />4<br />5<br />6<br />7<br />8<br />9<br />10<br />11
               </div>
               <div class="themes-content">
-                <span class="themes-h1"><span class="marker"># </span>Marshmallow Engine Protocoll</span><br /><br />
-                Autonomous marshmallow modules are being developed to simulate low-friction mobility in dreamlike
-                terrain. Early prototypes have shown promising bounce efficiency, though flavor stability remains
-                inconsistent.<br /><br />
+                <span class="themes-h1"><span class="marker"># </span>Evening Notes</span><br /><br />
+                <span class="themes-h2"><span class="marker">## </span>Desk Routine</span><br /><br />
+                The room grows quieter after midnight, especially once the rain starts against the window and the sound
+                of traffic fades into the background. Revisiting old notes at this hour often reveals details that felt
+                insignificant during the day but suddenly seem worth preserving.<br /><br />
+                <span class="list-marker">1. </span>Finish the draft.<br /><span class="list-marker">2. </span>Organize
+                scattered notes.<br /><span class="list-marker">3. </span>Back up everything before sleep.<br /><br />
                 <span class="subtext"
-                  ><span class="marker">-# </span>Initial phase focused on texture-to-thrust correlation in
-                  unpredictable environments.</span
-                ><br /><br />
-                <span class="themes-h2"><span class="marker">## </span>Equipment Summary</span><br /><br />
-                <span class="list-marker">1. </span>Gel-based surface scanner<br /><span class="list-marker">2. </span
-                >Compressed vanilla propulsion unit<br /><span class="list-marker">3. </span>Thermal wobble suppressor
+                  ><span class="marker">-# </span>Reminder: unfinished thoughts are easier to lose than files.</span
+                >
               </div>
             </div>
           </div>
@@ -1663,7 +1689,7 @@
 
     <section class="feature-block prefooter">
       <h2>
-        Write faster. <span class="mobile-br"><br /></span>Read smarter.
+        Write with intention. <span class="mobile-br"><br /></span>Read with clarity.
       </h2>
       <a href="#" class="app-download download-main">Download for Windows</a>
     </section>
@@ -2019,11 +2045,7 @@
           const rect = canvas.getBoundingClientRect();
           const nextX = pointer.clientX - rect.left;
           const nextY = pointer.clientY - rect.top;
-          pointer.active =
-            nextX >= 0 &&
-            nextX <= rect.width &&
-            nextY >= 0 &&
-            nextY <= rect.height;
+          pointer.active = nextX >= 0 && nextX <= rect.width && nextY >= 0 && nextY <= rect.height;
           pointer.targetX = pointer.active ? nextX : defaultPointer.x;
           pointer.targetY = pointer.active ? nextY : defaultPointer.y;
         }
