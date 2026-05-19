@@ -3,7 +3,18 @@
   <head>
     <meta charset="UTF-8" />
     <title>Monapad</title>
+    <script>
+      (() => {
+        const theme = localStorage.getItem("theme");
+        if (theme && !["dark", "onyx", "ash"].includes(theme)) {
+          document.documentElement.classList.add("booting-custom-theme");
+        }
+      })();
+    </script>
     <style>
+      html.booting-custom-theme body {
+        visibility: hidden;
+      }
       /* Figtree: UI en-US font */
       /* (Yu Gothic UI: UI ja-JP font) */
       @font-face {

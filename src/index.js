@@ -162,6 +162,7 @@ let zoomLevel = 1;
 let currentTab = { content: "", selection: null, fontSize: persistentFontSize };
 let tabData = [];
 let recentlyClosedFiles = [];
+const DEFAULT_THEME_NAMES = ["dark", "onyx", "ash"];
 let currentTheme = localStorage.getItem("theme") || "dark";
 let currentFilePath = `${i18next.t("file.untitled")}.txt`;
 const defaultSettings = {
@@ -1072,7 +1073,7 @@ monaco.languages.registerFoldingRangeProvider("monapad", {
 
 // apply colors to monaco editor
 function createCustomTheme() {
-  const isDefaultTheme = ["dark", "onyx", "ash"].includes(currentTheme);
+  const isDefaultTheme = isDefaultThemeName(currentTheme);
 
   // vscode css vars
   const colors = Object.create(null);
@@ -1769,6 +1770,10 @@ function getCurrentEditorText() {
 
 function normalizeTextForModelComparison(text) {
   return (typeof text === "string" ? text : "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+}
+
+function isDefaultThemeName(theme) {
+  return DEFAULT_THEME_NAMES.includes(theme);
 }
 
 function isNoteContentSaved(tab, content = null) {
@@ -3584,8 +3589,8 @@ themeMenu.addEventListener("mouseleave", () => {
   }, 100);
 });
 
-async function applyCustomThemeCSS(themeName) {
-  const themes = await window.electronAPI.getCustomThemes();
+async function applyCustomThemeCSS(themeName, knownThemes = null) {
+  const themes = knownThemes || (await window.electronAPI.getCustomThemes());
   const filePath = themes[themeName];
 
   if (currentWatchedCssFile && currentWatchedCssFile !== filePath) {
@@ -3619,24 +3624,26 @@ async function applyCustomThemeCSS(themeName) {
 }
 
 async function applyTheme(theme) {
-  const themes = await window.electronAPI.getCustomThemes();
   const root = document.documentElement;
+  const isDefaultTheme = isDefaultThemeName(theme);
+  const themes = isDefaultTheme ? null : await window.electronAPI.getCustomThemes();
 
   // set to dark if custom theme file doesn't exist
-  if (!["dark", "onyx", "ash"].includes(theme) && !themes[theme]) {
+  if (!isDefaultTheme && !themes[theme]) {
     theme = "dark";
     currentTheme = "dark";
     localStorage.setItem("theme", theme);
   }
 
   // override with custom theme if selected
-  if (!["dark", "onyx", "ash"].includes(theme)) {
+  if (!isDefaultThemeName(theme)) {
     // Set default fallback colors (dark) for custom themes. hence !important is required in css.
     root.style.setProperty("--color1", "#121214");
     root.style.setProperty("--color2", "#1a1a1e");
     root.style.setProperty("--color3", "#242429");
-    const success = await applyCustomThemeCSS(theme);
+    const success = await applyCustomThemeCSS(theme, themes);
     if (!success) {
+      root.classList.remove("booting-custom-theme");
       return;
     }
   } else {
@@ -3663,6 +3670,7 @@ async function applyTheme(theme) {
 
   monaco.editor.defineTheme("custom-theme", createCustomTheme());
   monaco.editor.setTheme("custom-theme");
+  root.classList.remove("booting-custom-theme");
 }
 
 // theme button click & update button checkmark
