@@ -45,7 +45,10 @@ const globalSearchRefreshButton = document.getElementById("global-search-refresh
 const globalSearchClearButton = document.getElementById("global-search-clear");
 const globalSearchCollapseButton = document.getElementById("global-search-collapse");
 const notesList = document.getElementById("notes-list");
+const notesBadgeToggleButton = document.getElementById("notes-badge-toggle");
+const notesBadgeFilterBar = document.getElementById("notes-badge-filter-bar");
 const noteContextMenu = document.getElementById("note-context-menu");
+const noteBadgeMenu = document.getElementById("note-badge-menu");
 const customContextMenu = document.getElementById("custom-context-menu");
 const tabContextMenu = document.getElementById("tab-context-menu");
 const excludedIds = ["changeTheme", "openRecent"]; // buttons that dont close menu on click
@@ -219,6 +222,17 @@ let dragCounter = 0;
 let rightClickedTab = null;
 let rightClickedNoteId = null;
 let notesIndexCache = [];
+const NOTE_BADGE_STORAGE_KEY = "monapadNoteBadgesVisible";
+const NOTE_BADGE_FILTER_STORAGE_KEY = "monapadNoteBadgeFilter";
+const NOTE_BADGE_EDGES = [
+  { key: "top", bit: 1 },
+  { key: "right", bit: 2 },
+  { key: "bottom", bit: 4 },
+  { key: "left", bit: 8 },
+];
+const NOTE_BADGE_ALL_FILTER = "all";
+let areNoteBadgesVisible = localStorage.getItem(NOTE_BADGE_STORAGE_KEY) !== "false";
+let noteBadgeFilter = localStorage.getItem(NOTE_BADGE_FILTER_STORAGE_KEY) || NOTE_BADGE_ALL_FILTER;
 const GLOBAL_SEARCH_DEBOUNCE_MS = 120;
 const GLOBAL_SEARCH_MAX_MATCHES = 10000;
 const GLOBAL_SEARCH_WORD_SEPARATORS = "`~!@#$%^&*()-=+[{]}\\|;:'\",.<>/?";
@@ -486,6 +500,7 @@ window.electronAPI.onLoadTabData(async (receivedTabData) => {
     newTabData.noteTitle = payload.noteTitle || payload.name;
     newTabData.noteCreatedAt = payload.noteCreatedAt;
     newTabData.noteUpdatedAt = payload.noteUpdatedAt;
+    newTabData.noteBadgeMask = normalizeNoteBadgeMask(payload.noteBadgeMask);
     newTabData.noteDirty = false;
     newTabData.draftId = null;
     newTabData.path = null;
@@ -494,6 +509,7 @@ window.electronAPI.onLoadTabData(async (receivedTabData) => {
     newTabData.element.classList.add("note");
     newTabData.element.querySelector(".close")?.classList.remove("show-unsaved");
     updateNoteTabTitle(newTabData, payload.content);
+    updateTabNoteBadge(newTabData);
   }
 
   // restore save state
@@ -651,6 +667,8 @@ function updateMenuLabels() {
     notesListRefreshButton.setAttribute("aria-label", refreshLabel);
     notesListRefreshButton.title = refreshLabel;
   }
+  updateNoteBadgeToggleButton();
+  updateNoteBadgeContextMenuLabels();
   if (sidePanelClose) sidePanelClose.setAttribute("aria-label", i18next.t("sidePanel.closePanel"));
   document.querySelector('#note-context-menu button[data-action="copyText"]').textContent =
     i18next.t("sidePanel.copyText");
@@ -733,6 +751,25 @@ function updateSettingsTooltips() {
   removeTitle("#settingsCustomTheme");
   setTitle("#openThemeFolder", i18next.t("settings.openThemeFolder"));
   removeTitle("#settingsLanguage");
+}
+
+function updateNoteBadgeContextMenuLabels() {
+  const badgeButtonLabel = noteContextMenu?.querySelector('button[data-action="badge"] .label');
+  if (badgeButtonLabel) badgeButtonLabel.textContent = i18next.t("sidePanel.noteMark");
+  NOTE_BADGE_EDGES.forEach((edge) => {
+    const label = noteBadgeMenu?.querySelector(`button[data-edge="${edge.key}"] .label`);
+    if (label) label.textContent = i18next.t(`sidePanel.noteMark${edge.key[0].toUpperCase()}${edge.key.slice(1)}`);
+  });
+}
+
+function updateNoteBadgeToggleButton() {
+  if (notesBadgeFilterBar) notesBadgeFilterBar.setAttribute("aria-label", i18next.t("sidePanel.noteMark"));
+  if (!notesBadgeToggleButton) return;
+  const label = i18next.t(areNoteBadgesVisible ? "sidePanel.hideNoteMarks" : "sidePanel.showNoteMarks");
+  notesBadgeToggleButton.setAttribute("aria-label", label);
+  notesBadgeToggleButton.title = label;
+  notesBadgeToggleButton.classList.toggle("active", areNoteBadgesVisible);
+  document.body.classList.toggle("note-badges-visible", areNoteBadgesVisible);
 }
 
 function updateMainMenuState() {
@@ -1776,6 +1813,39 @@ function isDefaultThemeName(theme) {
   return DEFAULT_THEME_NAMES.includes(theme);
 }
 
+function normalizeNoteBadgeMask(mask) {
+  const value = Number(mask);
+  return Number.isInteger(value) ? value & 15 : 0;
+}
+
+function getNoteBadgeClass(mask) {
+  const value = normalizeNoteBadgeMask(mask);
+  return [
+    value & 1 ? "has-top" : "",
+    value & 2 ? "has-right" : "",
+    value & 4 ? "has-bottom" : "",
+    value & 8 ? "has-left" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
+
+function createNoteBadgeElement(mask, className = "") {
+  const badge = document.createElement("span");
+  badge.className = ["note-badge", getNoteBadgeClass(mask), className].filter(Boolean).join(" ");
+  badge.dataset.badgeMask = String(normalizeNoteBadgeMask(mask));
+  for (const edge of NOTE_BADGE_EDGES) {
+    const edgeEl = document.createElement("span");
+    edgeEl.className = `note-badge-edge ${edge.key}`;
+    badge.appendChild(edgeEl);
+  }
+  return badge;
+}
+
+function getCurrentNoteCreationBadgeMask() {
+  return noteBadgeFilter === NOTE_BADGE_ALL_FILTER ? 0 : normalizeNoteBadgeMask(noteBadgeFilter);
+}
+
 function isNoteContentSaved(tab, content = null) {
   if (!tab?.isNote) return false;
   const nextContent = content ?? tab.model?.getValue?.() ?? tab.content ?? "";
@@ -1852,6 +1922,29 @@ function updateNoteTabTitle(tab, content = null) {
     nameSpan.textContent = title;
     nameSpan.title = title;
   }
+}
+
+function updateNoteBadgeElement(badge, mask) {
+  if (!badge) return;
+  const className = [
+    "note-badge",
+    getNoteBadgeClass(mask),
+    badge.classList.contains("tab-note-badge") ? "tab-note-badge" : "",
+    badge.classList.contains("note-list-badge") ? "note-list-badge" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+  badge.className = className;
+  badge.dataset.badgeMask = String(normalizeNoteBadgeMask(mask));
+}
+
+function updateTabNoteBadge(tab) {
+  if (!tab?.element) return;
+  updateNoteBadgeElement(tab.element.querySelector(".tab-note-badge"), tab.noteBadgeMask);
+}
+
+function isTabModelDisposed(tab) {
+  return Boolean(tab?.model?.isDisposed?.());
 }
 
 function markPendingSelfSave(tab, content) {
@@ -1978,6 +2071,7 @@ async function writeNoteTab(tab, content = null, force = false) {
       const result = await window.electronAPI.createNote({
         content: nextContent,
         title: tab.noteTitle || getNoteTitleFromContent(nextContent),
+        badgeMask: tab.noteBadgeMask,
       });
       if (!result?.success) return false;
 
@@ -2017,12 +2111,14 @@ async function writeNoteTab(tab, content = null, force = false) {
       noteId: tab.noteId,
       title: tab.noteTitle,
       content: nextContent,
+      badgeMask: tab.noteBadgeMask,
     });
     if (!result?.success) return false;
 
     tab.notePath = result.path || tab.notePath;
     tab.noteUpdatedAt = result.meta?.updatedAt || Date.now();
     tab.noteCreatedAt = result.meta?.createdAt || tab.noteCreatedAt;
+    tab.noteBadgeMask = normalizeNoteBadgeMask(result.meta?.badgeMask ?? tab.noteBadgeMask);
     tab.originalContent = nextContent;
     tab.content = nextContent;
     tab.isFileSaved = true;
@@ -2116,6 +2212,7 @@ function applyNoteDataToTab(tab, note, content, options = {}) {
   tab.noteTitle = title;
   tab.noteCreatedAt = note.meta?.createdAt || Date.now();
   tab.noteUpdatedAt = note.meta?.updatedAt || Date.now();
+  tab.noteBadgeMask = normalizeNoteBadgeMask(note.meta?.badgeMask);
   tab.noteDirty = false;
   tab.draftId = null;
   tab.path = null;
@@ -2132,6 +2229,7 @@ function applyNoteDataToTab(tab, note, content, options = {}) {
   tab.element.querySelector(".close")?.classList.remove("show-unsaved");
   reloadButton(tab, null, "remove");
   updateNoteTabTitle(tab, content);
+  updateTabNoteBadge(tab);
 }
 
 function applyPendingNoteDataToTab(tab, content = "", options = {}) {
@@ -2142,6 +2240,7 @@ function applyPendingNoteDataToTab(tab, content = "", options = {}) {
   tab.noteTitle = title;
   tab.noteCreatedAt = null;
   tab.noteUpdatedAt = null;
+  tab.noteBadgeMask = normalizeNoteBadgeMask(options.badgeMask);
   tab.noteDirty = Boolean(String(content || "").trim());
   if (!tab.draftId) tab.draftId = createAutosaveId();
   tab.path = null;
@@ -2158,6 +2257,7 @@ function applyPendingNoteDataToTab(tab, content = "", options = {}) {
   tab.element.querySelector(".close")?.classList.remove("show-unsaved");
   reloadButton(tab, null, "remove");
   updateNoteTabTitle(tab, content);
+  updateTabNoteBadge(tab);
 }
 
 function clearAutosaveTimer(tab) {
@@ -2173,7 +2273,7 @@ function clearAutosaveTimer(tab) {
 }
 
 function shouldAutosaveTab(tab, content = null) {
-  if (!tab || tab._autosaveDisabled) return false;
+  if (!tab || tab._autosaveDisabled || isTabModelDisposed(tab)) return false;
   const nextContent = content ?? tab.model?.getValue() ?? tab.content ?? "";
   if (tab.isNote) {
     if (!nextContent.trim()) return false;
@@ -2185,7 +2285,10 @@ function shouldAutosaveTab(tab, content = null) {
 }
 
 async function writeTabAutosave(tab, content = null) {
-  if (!tab) return;
+  if (!tab || isTabModelDisposed(tab)) {
+    clearAutosaveTimer(tab);
+    return;
+  }
   const nextContent = content ?? tab.model?.getValue() ?? tab.content ?? "";
   if (!shouldAutosaveTab(tab, nextContent)) return;
 
@@ -2223,7 +2326,10 @@ async function writeTabAutosave(tab, content = null) {
 }
 
 function scheduleTabAutosave(tab, content = null) {
-  if (!tab) return;
+  if (!tab || isTabModelDisposed(tab)) {
+    clearAutosaveTimer(tab);
+    return;
+  }
   const key = getTabAutosaveKey(tab);
   if (!key) return;
   const existingTimer = autosaveTimers.get(key);
@@ -2260,6 +2366,7 @@ function scheduleTabAutosave(tab, content = null) {
 
 function scheduleAllUnsavedTabAutosaves() {
   for (const tab of tabData) {
+    if (isTabModelDisposed(tab)) continue;
     scheduleTabAutosave(tab, tab.model?.getValue() ?? tab.content ?? "");
   }
   savePinnedTabsState();
@@ -3401,6 +3508,20 @@ notesAddButton?.addEventListener("click", async () => {
 notesListRefreshButton?.addEventListener("click", async () => {
   await refreshNotesListNow();
 });
+notesBadgeToggleButton?.addEventListener("click", () => {
+  areNoteBadgesVisible = !areNoteBadgesVisible;
+  localStorage.setItem(NOTE_BADGE_STORAGE_KEY, String(areNoteBadgesVisible));
+  updateNoteBadgeToggleButton();
+});
+notesBadgeFilterBar?.addEventListener(
+  "wheel",
+  (e) => {
+    if (!notesBadgeFilterBar || Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
+    notesBadgeFilterBar.scrollLeft += e.deltaY;
+    e.preventDefault();
+  },
+  { passive: false },
+);
 
 // menu button
 menuButton.onclick = toggleMainMenuFromButton;
@@ -3445,8 +3566,9 @@ document.addEventListener("mousedown", (e) => {
   if (!customContextMenu.contains(e.target)) {
     customContextMenu.style.display = "none";
   }
-  if (noteContextMenu && !noteContextMenu.contains(e.target)) {
+  if (noteContextMenu && !noteContextMenu.contains(e.target) && !noteBadgeMenu?.contains(e.target)) {
     noteContextMenu.style.display = "none";
+    if (noteBadgeMenu) noteBadgeMenu.style.display = "none";
     rightClickedNoteId = null;
   }
   if (!tabContextMenu.contains(e.target)) {
@@ -3473,8 +3595,9 @@ document.addEventListener("click", (e) => {
     tabContextMenu.style.display = "none";
     rightClickedTab = null;
   }
-  if (noteContextMenu?.contains(e.target) && button) {
+  if (noteContextMenu?.contains(e.target) && button && button.dataset.action !== "badge") {
     noteContextMenu.style.display = "none";
+    if (noteBadgeMenu) noteBadgeMenu.style.display = "none";
     rightClickedNoteId = null;
   }
 
@@ -4841,9 +4964,10 @@ function createTab(name, content = "", path = null, insertIndex = null, options 
   nameSpan.className = "name";
   nameSpan.textContent = name;
   nameSpan.title = name;
+  const noteBadge = createNoteBadgeElement(0, "tab-note-badge");
   const nameWrap = document.createElement("div");
   nameWrap.className = "name-wrap";
-  nameWrap.appendChild(nameSpan);
+  nameWrap.append(noteBadge, nameSpan);
 
   const close = document.createElement("span");
   close.className = "close";
@@ -4889,6 +5013,7 @@ function createTab(name, content = "", path = null, insertIndex = null, options 
     _lastExternalHasBom: Boolean(options.hasBom),
     _lastExternalIsUtf8Valid: options.isUtf8Valid !== false,
     draftId: path ? null : createAutosaveId(),
+    noteBadgeMask: 0,
   };
 
   if (targetInsertIndex !== null && targetInsertIndex >= 0 && targetInsertIndex < tabData.length) {
@@ -4991,9 +5116,10 @@ function createDefaultEmptyTab(options = {}) {
 async function createNoteTab(content = "", insertIndex = null, existingNote = null, options = {}) {
   const title = existingNote?.meta?.title || getNoteTitleFromContent(content);
   let note = existingNote;
+  const badgeMask = normalizeNoteBadgeMask(existingNote?.meta?.badgeMask ?? options.badgeMask);
 
   if (!note && content.trim()) {
-    note = await window.electronAPI.createNote({ content, title });
+    note = await window.electronAPI.createNote({ content, title, badgeMask });
     if (!note?.success) {
       console.error("Failed to create note:", note?.error);
       return null;
@@ -5009,7 +5135,7 @@ async function createNoteTab(content = "", insertIndex = null, existingNote = nu
     if (note) {
       applyNoteDataToTab(reusableTab, note, noteContent, options);
     } else {
-      applyPendingNoteDataToTab(reusableTab, noteContent, options);
+      applyPendingNoteDataToTab(reusableTab, noteContent, { ...options, badgeMask });
     }
     if (reusableTab === currentTab) {
       currentFilePath = `Note: ${reusableTab.name}`;
@@ -5020,7 +5146,7 @@ async function createNoteTab(content = "", insertIndex = null, existingNote = nu
   }
 
   if (!note) {
-    const data = createPendingNoteTab(noteContent, insertIndex, options);
+    const data = createPendingNoteTab(noteContent, insertIndex, { ...options, badgeMask });
     renderNotesList();
     return data;
   }
@@ -5032,7 +5158,7 @@ async function createNoteTab(content = "", insertIndex = null, existingNote = nu
 }
 
 async function createNewNote() {
-  const data = await createNoteTab("", null, null, { preview: false });
+  const data = await createNoteTab("", null, null, { preview: false, badgeMask: getCurrentNoteCreationBadgeMask() });
   if (data) {
     switchTab(data);
     if (data.noteId) updateRecentNote(data.noteId);
@@ -5962,8 +6088,10 @@ function reloadButton(tab, filePath, mode) {
       applyFileContentToEditor(tab, content, fileInfo);
     });
 
+    const badgeEl = tab.element.querySelector(".tab-note-badge");
     const nameEl = tab.element.querySelector(".name");
-    if (nameEl?.parentElement) nameEl.parentElement.insertBefore(button, nameEl);
+    const referenceEl = badgeEl || nameEl;
+    if (referenceEl?.parentElement) referenceEl.parentElement.insertBefore(button, referenceEl);
     if (tab === currentTab) updateStatusBar();
   }
 }
@@ -6212,17 +6340,84 @@ async function openNoteById(noteId, options = {}) {
   }
 }
 
+function getVisibleNotesForPanel(notes) {
+  if (noteBadgeFilter === NOTE_BADGE_ALL_FILTER) return notes;
+  const targetMask = normalizeNoteBadgeMask(noteBadgeFilter);
+  return notes.filter((note) => normalizeNoteBadgeMask(note.badgeMask) === targetMask);
+}
+
+function getNoteBadgeFilterMasks(notes) {
+  const masks = [...new Set(notes.map((note) => normalizeNoteBadgeMask(note.badgeMask)))];
+  return masks.sort((a, b) => {
+    const countDiff = countNoteBadgeEdges(b) - countNoteBadgeEdges(a);
+    if (countDiff) return countDiff;
+    return a - b;
+  });
+}
+
+function countNoteBadgeEdges(mask) {
+  let value = normalizeNoteBadgeMask(mask);
+  let count = 0;
+  while (value) {
+    count += value & 1;
+    value >>= 1;
+  }
+  return count;
+}
+
+function renderNoteBadgeFilterBar() {
+  if (!notesBadgeFilterBar) return;
+  notesBadgeFilterBar.innerHTML = "";
+  const availableMasks = getNoteBadgeFilterMasks(notesIndexCache);
+  const entries = [
+    { value: NOTE_BADGE_ALL_FILTER, all: true, title: i18next.t("sidePanel.noteMarkAll") },
+    ...availableMasks
+      .filter((mask) => mask !== 0)
+      .map((mask) => ({ value: mask, title: i18next.t("sidePanel.noteMarkFilter", { mask }) })),
+    ...(availableMasks.includes(0) ? [{ value: 0, title: i18next.t("sidePanel.noteMarkNone") }] : []),
+  ];
+
+  for (const entry of entries) {
+    const button = document.createElement("button");
+    button.className = "note-badge-filter-button";
+    button.type = "button";
+    button.dataset.badgeFilter = String(entry.value);
+    button.title = entry.title;
+    button.setAttribute("aria-label", entry.title);
+    button.classList.toggle("is-active", String(noteBadgeFilter) === String(entry.value));
+    const badge = entry.all ? createNoteBadgeElement(15) : createNoteBadgeElement(entry.value);
+    if (entry.all) badge.classList.add("is-all");
+    button.appendChild(badge);
+    button.addEventListener("click", async () => {
+      noteBadgeFilter = entry.value;
+      localStorage.setItem(NOTE_BADGE_FILTER_STORAGE_KEY, String(noteBadgeFilter));
+      await renderNotesList();
+    });
+    notesBadgeFilterBar.appendChild(button);
+  }
+}
+
 async function renderNotesList({ scheduleSearch = true } = {}) {
   if (!notesList) return;
   const notes = await window.electronAPI.listNotes();
   notesIndexCache = sortNotesForPanel(Array.isArray(notes) ? notes : []);
+  if (noteBadgeFilter !== NOTE_BADGE_ALL_FILTER) {
+    const hasFilter = notesIndexCache.some(
+      (note) => normalizeNoteBadgeMask(note.badgeMask) === normalizeNoteBadgeMask(noteBadgeFilter),
+    );
+    if (!hasFilter) noteBadgeFilter = NOTE_BADGE_ALL_FILTER;
+  }
+  renderNoteBadgeFilterBar();
   notesList.innerHTML = "";
 
-  for (const note of notesIndexCache) {
+  for (const note of getVisibleNotesForPanel(notesIndexCache)) {
     if (!note?.id) continue;
     const item = document.createElement("div");
     item.className = `note-list-item${note.pinned ? " pinned" : ""}`;
     item.dataset.noteId = note.id;
+    item.dataset.badgeMask = String(normalizeNoteBadgeMask(note.badgeMask));
+
+    const badge = createNoteBadgeElement(note.badgeMask, "note-list-badge");
 
     const title = document.createElement("span");
     title.className = "note-list-title";
@@ -6242,7 +6437,7 @@ async function renderNotesList({ scheduleSearch = true } = {}) {
       await populateRecentMenu();
     });
 
-    item.append(title, pinButton);
+    item.append(badge, title, pinButton);
     item.addEventListener("click", async () => {
       if (suppressNoteClick) return;
       await openNoteById(note.id, { preview: true });
@@ -6439,7 +6634,71 @@ function showNoteContextMenu(e, noteId) {
   noteContextMenu.style.top = `${top}px`;
   noteContextMenu.style.visibility = "visible";
   noteContextMenu.style.display = "block";
+  hideNoteBadgeMenu();
+  updateNoteBadgeMenuState();
 }
+
+function hideNoteBadgeMenu() {
+  if (noteBadgeMenu) noteBadgeMenu.style.display = "none";
+}
+
+function showNoteBadgeMenu() {
+  if (!noteBadgeMenu || !noteContextMenu || !rightClickedNoteId) return;
+  const button = noteContextMenu.querySelector('button[data-action="badge"]');
+  if (!button) return;
+  updateNoteBadgeMenuState();
+  noteBadgeMenu.style.display = "block";
+  noteBadgeMenu.style.visibility = "hidden";
+  const buttonRect = button.getBoundingClientRect();
+  const menuWidth = noteBadgeMenu.offsetWidth;
+  const menuHeight = noteBadgeMenu.offsetHeight;
+  let left = buttonRect.right;
+  let top = buttonRect.top - 5;
+  if (left + menuWidth > window.innerWidth) left = Math.max(0, buttonRect.left - menuWidth + 1);
+  if (top + menuHeight > window.innerHeight) top = Math.max(0, window.innerHeight - menuHeight);
+  noteBadgeMenu.style.left = `${left}px`;
+  noteBadgeMenu.style.top = `${top}px`;
+  noteBadgeMenu.style.visibility = "visible";
+}
+
+function getNoteMetaById(noteId) {
+  return notesIndexCache.find((note) => note.id === noteId) || null;
+}
+
+function updateNoteBadgeMenuState() {
+  if (!noteBadgeMenu || !rightClickedNoteId) return;
+  const mask = normalizeNoteBadgeMask(getNoteMetaById(rightClickedNoteId)?.badgeMask);
+  NOTE_BADGE_EDGES.forEach((edge) => {
+    const check = noteBadgeMenu.querySelector(`button[data-edge="${edge.key}"] .checkmark`);
+    if (check) check.style.display = mask & edge.bit ? "inline-flex" : "none";
+  });
+}
+
+noteContextMenu?.querySelector('button[data-action="badge"]')?.addEventListener("mouseenter", showNoteBadgeMenu);
+noteContextMenu?.querySelector('button[data-action="badge"]')?.addEventListener("mouseleave", () => {
+  setTimeout(() => {
+    if (
+      !noteContextMenu?.querySelector('button[data-action="badge"]')?.matches(":hover") &&
+      !noteBadgeMenu?.matches(":hover")
+    ) {
+      hideNoteBadgeMenu();
+    }
+  }, 100);
+});
+noteContextMenu?.querySelectorAll('button:not([data-action="badge"])').forEach((button) => {
+  button.addEventListener("mouseenter", hideNoteBadgeMenu);
+});
+noteBadgeMenu?.addEventListener("mouseenter", showNoteBadgeMenu);
+noteContextMenu?.addEventListener("mouseleave", () => {
+  setTimeout(() => {
+    if (!noteContextMenu.matches(":hover") && !noteBadgeMenu?.matches(":hover")) hideNoteBadgeMenu();
+  }, 100);
+});
+noteBadgeMenu?.addEventListener("mouseleave", () => {
+  setTimeout(() => {
+    if (!noteContextMenu?.matches(":hover") && !noteBadgeMenu.matches(":hover")) hideNoteBadgeMenu();
+  }, 100);
+});
 
 async function getLiveNoteContent(noteId) {
   const openTab = tabData.find((tab) => tab.isNote && tab.noteId === noteId);
@@ -7599,6 +7858,7 @@ async function getOpenTabPayload(tab) {
     noteTitle: tab.noteTitle,
     noteCreatedAt: tab.noteCreatedAt,
     noteUpdatedAt: tab.noteUpdatedAt,
+    noteBadgeMask: tab.noteBadgeMask,
     isFileSaved: tab.isFileSaved,
     originalContent: tab.originalContent,
     fontSize: tab.fontSize,
@@ -7768,6 +8028,7 @@ async function getNoteTabPayload(noteId) {
       noteTitle: truncateNoteTitle(openTab.noteTitle || openTab.name),
       noteCreatedAt: openTab.noteCreatedAt,
       noteUpdatedAt: openTab.noteUpdatedAt,
+      noteBadgeMask: openTab.noteBadgeMask,
       isFileSaved: true,
       originalContent: content,
       fontSize: openTab.fontSize,
@@ -7790,6 +8051,7 @@ async function getNoteTabPayload(noteId) {
     noteTitle: title,
     noteCreatedAt: note.meta?.createdAt,
     noteUpdatedAt: note.meta?.updatedAt,
+    noteBadgeMask: normalizeNoteBadgeMask(note.meta?.badgeMask),
     isFileSaved: true,
     originalContent: note.content || "",
     fontSize: persistentFontSize,
@@ -7800,7 +8062,11 @@ async function getNoteTabPayload(noteId) {
 }
 
 async function createNoteTabFromPayload(payload, insertIndex = null, placement = null) {
-  if (!payload?.noteId) return createNoteTab(payload?.content || "", insertIndex, null, { preview: false });
+  if (!payload?.noteId)
+    return createNoteTab(payload?.content || "", insertIndex, null, {
+      preview: false,
+      badgeMask: payload?.noteBadgeMask,
+    });
   const existingTab = tabData.find((tab) => tab.isNote && tab.noteId === payload.noteId);
   const pinnedCount = getPinnedTabCount();
   const adjustedPlacement =
@@ -7825,6 +8091,7 @@ async function createNoteTabFromPayload(payload, insertIndex = null, placement =
       title: truncateNoteTitle(payload.noteTitle || payload.name),
       createdAt: payload.noteCreatedAt,
       updatedAt: payload.noteUpdatedAt,
+      badgeMask: payload.noteBadgeMask,
     },
   };
   const tab = await createNoteTab(payload.content || "", adjustedInsertIndex, note);
@@ -7944,6 +8211,7 @@ function startSidePanelNoteDragFromItem(item, e, options = {}) {
     payloadPromise: getNoteTabPayload(item.dataset.noteId),
     externalStarted: false,
     transferringToTabDrag: false,
+    sortLocked: noteBadgeFilter !== NOTE_BADGE_ALL_FILTER,
   };
   if (options.forceDragging) {
     noteDragState.dragging = true;
@@ -8107,7 +8375,7 @@ function resumeSidePanelNoteDrag(e) {
   state.transferringToTabDrag = false;
   state.dragging = true;
   applyNoteListDragItemStyle(state.item);
-  state.dragIndex = moveNoteListItemToCursor(state.item, e.clientY);
+  if (!state.sortLocked) state.dragIndex = moveNoteListItemToCursor(state.item, e.clientY);
   positionNoteListItemAtCursor(state, e.clientY);
 }
 
@@ -8356,6 +8624,7 @@ window.addEventListener("mousemove", (e) => {
 
   noteDragState.currentY = e.clientY - noteDragState.startY;
   item.style.transform = `translateY(${noteDragState.currentY}px)`;
+  if (noteDragState.sortLocked) return;
 
   const items = [...notesList.querySelectorAll(".note-list-item")];
   const currentRect = item.getBoundingClientRect();
@@ -8430,7 +8699,7 @@ window.addEventListener("mouseup", async (e) => {
   const orderedIds = [...notesList.querySelectorAll(".note-list-item")]
     .map((node) => node.dataset.noteId)
     .filter(Boolean);
-  await window.electronAPI.reorderNotes({ orderedIds });
+  if (noteBadgeFilter === NOTE_BADGE_ALL_FILTER) await window.electronAPI.reorderNotes({ orderedIds });
   await renderNotesList();
   await populateRecentMenu();
 });
@@ -8979,6 +9248,10 @@ tabContextMenu.addEventListener("click", async (e) => {
 noteContextMenu?.addEventListener("click", async (e) => {
   const action = e.target.closest("button")?.dataset.action;
   if (!action || !rightClickedNoteId) return;
+  if (action === "badge") {
+    showNoteBadgeMenu();
+    return;
+  }
 
   const noteId = rightClickedNoteId;
   noteContextMenu.style.display = "none";
@@ -9020,6 +9293,35 @@ noteContextMenu?.addEventListener("click", async (e) => {
   }
 });
 
+noteBadgeMenu?.addEventListener("click", async (e) => {
+  const button = e.target.closest("button[data-edge]");
+  if (!button || !rightClickedNoteId) return;
+  e.stopPropagation();
+  const edge = NOTE_BADGE_EDGES.find((item) => item.key === button.dataset.edge);
+  if (!edge) return;
+  const noteId = rightClickedNoteId;
+  const currentMask = normalizeNoteBadgeMask(getNoteMetaById(noteId)?.badgeMask);
+  const nextMask = currentMask ^ edge.bit;
+  const result = await window.electronAPI.updateNoteMeta({ noteId, badgeMask: nextMask });
+  if (!result?.success) return;
+  const cached = getNoteMetaById(noteId);
+  if (cached) cached.badgeMask = nextMask;
+  const openTab = getOpenNoteTabById(noteId);
+  if (openTab) {
+    openTab.noteBadgeMask = nextMask;
+    updateTabNoteBadge(openTab);
+    savePinnedTabsState();
+  }
+  updateNoteBadgeMenuState();
+  await renderNotesList();
+  if (noteBadgeFilter !== NOTE_BADGE_ALL_FILTER && normalizeNoteBadgeMask(noteBadgeFilter) !== nextMask) {
+    noteContextMenu.style.display = "none";
+    noteBadgeMenu.style.display = "none";
+    rightClickedNoteId = null;
+  }
+  await populateRecentMenu();
+});
+
 // editor context menu display & position handler
 editor.addEventListener("contextmenu", (e) => {
   e.preventDefault();
@@ -9027,6 +9329,7 @@ editor.addEventListener("contextmenu", (e) => {
   tabContextMenu.style.display = "none";
   rightClickedTab = null;
   noteContextMenu.style.display = "none";
+  if (noteBadgeMenu) noteBadgeMenu.style.display = "none";
   rightClickedNoteId = null;
 
   customContextMenu.style.display = "block";
@@ -9227,7 +9530,13 @@ function closeContextMenus({ focus = true } = {}) {
 
   if (isElementOpen(noteContextMenu)) {
     noteContextMenu.style.display = "none";
+    if (noteBadgeMenu) noteBadgeMenu.style.display = "none";
     rightClickedNoteId = null;
+    closed = true;
+  }
+
+  if (isElementOpen(noteBadgeMenu)) {
+    noteBadgeMenu.style.display = "none";
     closed = true;
   }
 

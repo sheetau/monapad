@@ -934,6 +934,11 @@ function getNoteTitleFromContent(content) {
   return truncateNoteTitle(firstTextLine || "New Note");
 }
 
+function normalizeNoteBadgeMask(mask) {
+  const value = Number(mask);
+  return Number.isInteger(value) ? value & 15 : 0;
+}
+
 async function upsertNoteIndexEntry(noteId, content, extra = {}) {
   const notesDir = await ensureNotesDir();
   const index = await readNotesIndex();
@@ -954,6 +959,7 @@ async function upsertNoteIndexEntry(noteId, content, extra = {}) {
     pinned: existing?.pinned || false,
     order: Number.isFinite(existing?.order) ? existing.order : extra.insertAtTop ? minUnpinnedOrder - 1 : maxOrder + 1,
     contentBytes,
+    badgeMask: normalizeNoteBadgeMask(extra.badgeMask ?? existing?.badgeMask),
   };
 
   if (existing) {
@@ -974,7 +980,11 @@ ipcMain.handle("notes:create", async (event, payload = {}) => {
     const content = typeof payload.content === "string" ? payload.content : "";
     const notePath = path.join(notesDir, `${noteId}.txt`);
     await fs.promises.writeFile(notePath, content, "utf8");
-    const meta = await upsertNoteIndexEntry(noteId, content, { title: payload.title, insertAtTop: true });
+    const meta = await upsertNoteIndexEntry(noteId, content, {
+      title: payload.title,
+      insertAtTop: true,
+      badgeMask: payload.badgeMask,
+    });
     return { success: true, id: noteId, path: notePath, meta };
   } catch (error) {
     return { success: false, error: error.message };
@@ -988,7 +998,7 @@ ipcMain.handle("notes:write", async (event, payload = {}) => {
     const content = typeof payload.content === "string" ? payload.content : "";
     const notePath = path.join(notesDir, `${payload.noteId}.txt`);
     await fs.promises.writeFile(notePath, content, "utf8");
-    const meta = await upsertNoteIndexEntry(payload.noteId, content, { title: payload.title });
+    const meta = await upsertNoteIndexEntry(payload.noteId, content, { title: payload.title, badgeMask: payload.badgeMask });
     return { success: true, id: payload.noteId, path: notePath, meta };
   } catch (error) {
     return { success: false, error: error.message };
@@ -1061,7 +1071,13 @@ ipcMain.handle("notes:duplicate", async (event, noteId) => {
     const newId = crypto.randomUUID();
     const newPath = path.join(notesDir, `${newId}.txt`);
     await fs.promises.writeFile(newPath, content, "utf8");
-    const meta = await upsertNoteIndexEntry(newId, content, { title: getNoteTitleFromContent(content), insertAtTop: true });
+    const index = await readNotesIndex();
+    const source = index.notes.find((note) => note.id === noteId);
+    const meta = await upsertNoteIndexEntry(newId, content, {
+      title: getNoteTitleFromContent(content),
+      insertAtTop: true,
+      badgeMask: source?.badgeMask,
+    });
     return { success: true, id: newId, path: newPath, meta };
   } catch (error) {
     return { success: false, error: error.message };
@@ -1079,6 +1095,9 @@ ipcMain.handle("notes:update-meta", async (event, payload = {}) => {
       if (payload.pinned) {
         note.order = Math.min(-1, ...index.notes.filter((item) => item.pinned && item.id !== note.id).map((item) => item.order || 0)) - 1;
       }
+    }
+    if (Object.prototype.hasOwnProperty.call(payload, "badgeMask")) {
+      note.badgeMask = normalizeNoteBadgeMask(payload.badgeMask);
     }
     normalizeNotesOrder(index.notes);
     await writeNotesIndex(index);
@@ -1141,6 +1160,7 @@ ipcMain.handle("notes:refresh-index", async () => {
         pinned: Boolean(existing?.pinned),
         order: Number.isFinite(existing?.order) ? existing.order : Number.MAX_SAFE_INTEGER,
         contentBytes: Buffer.byteLength(content, "utf8"),
+        badgeMask: normalizeNoteBadgeMask(existing?.badgeMask),
       });
     } catch {
       // Missing or unreadable notes are dropped from the refreshed index.

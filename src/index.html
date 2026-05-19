@@ -297,7 +297,8 @@
       #theme-menu button,
       #custom-context-menu button,
       #tab-context-menu button,
-      #note-context-menu button {
+      #note-context-menu button,
+      #note-badge-menu button {
         width: 100%;
         height: 26px;
         font-size: 13px;
@@ -425,6 +426,7 @@
       #custom-context-menu,
       #tab-context-menu,
       #note-context-menu,
+      #note-badge-menu,
       #theme-menu,
       #recent-menu,
       #file-saved,
@@ -451,14 +453,14 @@
       }
       #theme-menu {
         position: absolute;
-        left: 255px;
+        left: 254px;
         margin-left: 5px;
         background: var(--color2);
         display: none;
         z-index: 9998;
         width: fit-content;
         min-width: 120px;
-        max-width: min(300px, calc(100vw - 255px));
+        max-width: min(300px, calc(100vw - 254px));
         padding: 5px 0;
         border: solid 1px var(--color3);
         border-radius: 5px;
@@ -528,7 +530,7 @@
 
       #recent-menu {
         position: absolute;
-        left: 255px;
+        left: 254px;
         margin-left: 5px;
         background: var(--color2);
         display: none;
@@ -536,7 +538,7 @@
         padding: 5px 0;
         border: solid 1px var(--color3);
         border-radius: 5px;
-        max-width: calc(100vw - 255px - 5px);
+        max-width: calc(100vw - 254px - 5px);
         min-width: 120px;
         user-select: none;
         box-sizing: border-box;
@@ -843,6 +845,14 @@
         white-space: nowrap;
         text-decoration: none;
       }
+      .tab-note-badge {
+        flex: 0 0 auto;
+        margin-right: 8px;
+      }
+      .tab:not(.note) .tab-note-badge,
+      body:not(.note-badges-visible) .tab-note-badge {
+        display: none;
+      }
       .tab.has-reload-button .name {
         margin-left: -5px;
       }
@@ -861,7 +871,8 @@
       .tab.active .name.warn {
         opacity: 1;
       }
-      .tab.note .name {
+      .tab.note .name,
+      .tab.note:not(.active) .note-badge {
         color: var(--highlight);
         opacity: 0.5;
       }
@@ -869,7 +880,8 @@
         font-style: italic;
       }
       .tab.note:hover .name,
-      .tab.note.active .name {
+      .tab.note.active .name,
+      .tab.note:hover .note-badge {
         opacity: 1;
       }
       /* reload button */
@@ -1475,7 +1487,8 @@
       }
       #custom-context-menu.menu,
       #tab-context-menu.menu,
-      #note-context-menu.menu {
+      #note-context-menu.menu,
+      #note-badge-menu.menu {
         overflow-y: auto;
         max-height: calc(100vh - 12.5px - 35px);
         position: absolute;
@@ -1488,16 +1501,20 @@
         flex-direction: column;
         width: 220px;
         user-select: none;
+        box-sizing: border-box;
       }
       #tab-context-menu.menu {
         width: 240px;
       }
-      #note-context-menu.menu {
+      #note-context-menu.menu,
+      #note-badge-menu.menu {
         width: fit-content;
+        min-width: 130px;
       }
       #custom-context-menu button,
       #tab-context-menu button,
-      #note-context-menu button {
+      #note-context-menu button,
+      #note-badge-menu button {
         display: flex;
         flex: 0 0 26px;
         position: relative;
@@ -1515,8 +1532,18 @@
       }
       #custom-context-menu button:hover,
       #tab-context-menu button:hover,
-      #note-context-menu button:hover {
+      #note-context-menu button:hover,
+      #note-badge-menu button:hover {
         background: var(--color3);
+      }
+      #note-context-menu button[data-action="badge"],
+      #note-badge-menu button {
+        justify-content: space-between;
+        align-items: center;
+      }
+      #note-context-menu button[data-action="badge"] .codicon {
+        flex: 0 0 auto;
+        margin-left: 10px;
       }
       #note-context-menu button[data-action="delete"] {
         color: var(--warn);
@@ -1878,9 +1905,128 @@
         background: var(--color3);
         color: var(--editorText);
       }
+      .side-panel-action.active {
+        color: var(--editorText);
+      }
       .side-panel-action:disabled {
         opacity: 0.45;
         cursor: default;
+      }
+      #notes-badge-filter-bar {
+        display: none;
+        flex: 0 0 auto;
+        gap: 5px;
+        height: 22px;
+        margin: 5px 0 10px 0;
+        padding: 0 20px 0 16px;
+        box-sizing: border-box;
+        overflow-x: auto;
+        overflow-y: hidden;
+        scrollbar-width: none;
+        -webkit-mask-image: linear-gradient(
+          to right,
+          transparent 20px,
+          black calc(20px + 18%),
+          black calc(100% - 18% - 20px),
+          transparent calc(100% - 20px)
+        );
+        mask-image: linear-gradient(
+          to right,
+          transparent 10px,
+          black calc(5px + 5%),
+          black calc(100% - 18% - 10px),
+          transparent calc(100% - 10px)
+        );
+      }
+      #notes-badge-filter-bar button:last-child {
+        margin-right: 20px;
+      }
+      #notes-badge-filter-bar::-webkit-scrollbar {
+        display: none;
+      }
+      body.note-badges-visible #notes-badge-filter-bar {
+        display: flex;
+      }
+      body.global-search-active #notes-badge-filter-bar {
+        display: none;
+      }
+      .note-badge-filter-button {
+        flex: 0 0 22px;
+        width: 22px;
+        height: 22px;
+        border: none;
+        border-radius: 5px;
+        padding: 0;
+        background: transparent;
+        color: var(--editorText);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+      }
+      .note-badge-filter-button:hover,
+      .note-badge-filter-button.is-active {
+        background: var(--color3);
+      }
+      .note-badge {
+        position: relative;
+        width: 12px;
+        height: 12px;
+        box-sizing: border-box;
+        background: color-mix(in srgb, var(--grayOut) 30%, transparent);
+        border: 2px solid transparent;
+        border-radius: 4px;
+        display: inline-block;
+        overflow: hidden;
+      }
+      .note-badge.is-all .note-badge-edge {
+        height: 100%;
+        width: 100%;
+      }
+      .note-badge-edge {
+        position: absolute;
+        display: none;
+        background: var(--editorText);
+        pointer-events: none;
+      }
+      .tab .note-badge-edge {
+        background: var(--highlight);
+      }
+      .note-badge-filter-button:not(:hover):not(.is-active):not(.note-badge.is-all) .note-badge {
+        background: color-mix(in srgb, var(--grayOut) 15%, transparent);
+      }
+      .note-badge-filter-button:not(:hover):not(.is-active) .note-badge-edge {
+        background: var(--grayOut);
+      }
+      .note-badge.has-top .note-badge-edge.top,
+      .note-badge.has-right .note-badge-edge.right,
+      .note-badge.has-bottom .note-badge-edge.bottom,
+      .note-badge.has-left .note-badge-edge.left {
+        display: block;
+      }
+      .note-badge-edge.top {
+        left: 0;
+        top: 0;
+        width: 100%;
+        height: 2px;
+      }
+      .note-badge-edge.right {
+        right: 0;
+        top: 0;
+        width: 2px;
+        height: 100%;
+      }
+      .note-badge-edge.bottom {
+        left: 0;
+        bottom: 0;
+        width: 100%;
+        height: 2px;
+      }
+      .note-badge-edge.left {
+        left: 0;
+        top: 0;
+        width: 2px;
+        height: 100%;
       }
       #notes-list {
         flex: 1 1 auto;
@@ -2172,6 +2318,13 @@
         white-space: nowrap;
         -webkit-mask-image: linear-gradient(to right, black 82%, transparent 100%);
         mask-image: linear-gradient(to right, black 82%, transparent 100%);
+      }
+      .note-list-badge {
+        flex: 0 0 auto;
+        margin-right: 10px;
+      }
+      body:not(.note-badges-visible) .note-list-badge {
+        display: none;
       }
       .note-pin-button {
         flex: 0 0 24px;
@@ -2808,7 +2961,16 @@
               aria-label="Refresh"
             ></button>
           </li>
+          <li>
+            <button
+              class="side-panel-action codicon codicon-filter"
+              id="notes-badge-toggle"
+              type="button"
+              aria-label="Show Note Marks"
+            ></button>
+          </li>
         </ul>
+        <div id="notes-badge-filter-bar" aria-label="Note Mark Filter"></div>
         <div id="notes-list" class="scrollable"></div>
         <div id="global-search-results">
           <div id="global-search-results-list" class="scrollable"></div>
@@ -2817,12 +2979,31 @@
 
       <!-- note context menu -->
       <div id="note-context-menu" class="menu scrollable">
+        <button data-action="badge">
+          <span class="label">Mark</span>
+          <span class="codicon codicon-chevron-right"></span>
+        </button>
+        <div class="hr"></div>
         <button data-action="copyText">Copy Text</button>
         <button data-action="duplicate">Duplicate</button>
         <button data-action="convertToUntitled">Convert to Untitled</button>
         <button data-action="convertToFile">Convert to File</button>
         <div class="hr"></div>
         <button data-action="delete">Delete</button>
+      </div>
+      <div id="note-badge-menu" class="menu">
+        <button data-edge="top">
+          <span class="label">Top Edge</span><span class="checkmark codicon codicon-check"></span>
+        </button>
+        <button data-edge="right">
+          <span class="label">Right Edge</span><span class="checkmark codicon codicon-check"></span>
+        </button>
+        <button data-edge="bottom">
+          <span class="label">Bottom Edge</span><span class="checkmark codicon codicon-check"></span>
+        </button>
+        <button data-edge="left">
+          <span class="label">Left Edge</span><span class="checkmark codicon codicon-check"></span>
+        </button>
       </div>
 
       <!-- editor -->
