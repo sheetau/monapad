@@ -1,6 +1,7 @@
 import * as monaco from "monaco-editor";
 import { StandaloneServices } from "monaco-editor/esm/vs/editor/standalone/browser/standaloneServices.js";
 import { INotificationService } from "monaco-editor/esm/vs/platform/notification/common/notification.js";
+import { IQuickInputService } from "monaco-editor/esm/vs/platform/quickinput/common/quickInput.js";
 import "monaco-editor/esm/vs/base/browser/ui/codicons/codicon/codicon.css";
 import { CustomSelect } from "./custom-select.js";
 import i18next from "i18next";
@@ -48,7 +49,6 @@ const notesList = document.getElementById("notes-list");
 const notesBadgeToggleButton = document.getElementById("notes-badge-toggle");
 const notesBadgeFilterBar = document.getElementById("notes-badge-filter-bar");
 const noteContextMenu = document.getElementById("note-context-menu");
-const noteBadgeMenu = document.getElementById("note-badge-menu");
 const customContextMenu = document.getElementById("custom-context-menu");
 const tabContextMenu = document.getElementById("tab-context-menu");
 const excludedIds = ["changeTheme", "openRecent"]; // buttons that dont close menu on click
@@ -593,6 +593,7 @@ function updateMenuLabels() {
   document.querySelector("#triggerReplaceBtn .label").textContent = i18next.t("menu.replace");
   document.querySelector("#triggerGoToLineBtn .label").textContent = i18next.t("menu.goToLine");
   document.querySelector("#triggerGoToSymbolBtn .label").textContent = i18next.t("menu.goToSymbol");
+  document.querySelector("#triggerQuickOpenBtn .label").textContent = i18next.t("menu.quickOpen");
   document.querySelector("#triggerShowCommandsBtn .label").textContent = i18next.t("menu.showCommands");
   // document.getElementById("print-button").textContent = i18next.t("menu.print");
   document.querySelector("#changeTheme .btn-text").textContent = i18next.t("menu.theme");
@@ -754,11 +755,15 @@ function updateSettingsTooltips() {
 }
 
 function updateNoteBadgeContextMenuLabels() {
-  const badgeButtonLabel = noteContextMenu?.querySelector('button[data-action="badge"] .label');
+  ensureNoteBadgeContextButtons();
+  const badgeButtonLabel = noteContextMenu?.querySelector(".note-context-badge-row .label");
   if (badgeButtonLabel) badgeButtonLabel.textContent = i18next.t("sidePanel.noteMark");
   NOTE_BADGE_EDGES.forEach((edge) => {
-    const label = noteBadgeMenu?.querySelector(`button[data-edge="${edge.key}"] .label`);
-    if (label) label.textContent = i18next.t(`sidePanel.noteMark${edge.key[0].toUpperCase()}${edge.key.slice(1)}`);
+    const button = noteContextMenu?.querySelector(`.note-badge-edge-button[data-edge="${edge.key}"]`);
+    if (!button) return;
+    const label = i18next.t(`sidePanel.noteMark${edge.key[0].toUpperCase()}${edge.key.slice(1)}`);
+    button.title = label;
+    button.setAttribute("aria-label", label);
   });
 }
 
@@ -1840,6 +1845,22 @@ function createNoteBadgeElement(mask, className = "") {
     badge.appendChild(edgeEl);
   }
   return badge;
+}
+
+function ensureNoteBadgeContextButtons() {
+  const container = noteContextMenu?.querySelector(".note-context-badge-buttons");
+  if (!container || container.dataset.initialized === "true") return;
+  const fragment = document.createDocumentFragment();
+  for (const edge of NOTE_BADGE_EDGES) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "note-badge-edge-button";
+    button.dataset.edge = edge.key;
+    button.appendChild(createNoteBadgeElement(edge.bit, "note-context-badge"));
+    fragment.appendChild(button);
+  }
+  container.appendChild(fragment);
+  container.dataset.initialized = "true";
 }
 
 function getCurrentNoteCreationBadgeMask() {
@@ -3327,12 +3348,175 @@ window.triggerGoToSymbol = function () {
 };
 document.getElementById("triggerGoToSymbolBtn").addEventListener("click", triggerGoToSymbol);
 
+// call Quick Open from menu
+window.triggerQuickOpen = function () {
+  openQuickOpenPicker();
+};
+document.getElementById("triggerQuickOpenBtn").addEventListener("click", triggerQuickOpen);
+
 // call Command Palette from menu
 window.triggerShowCommands = function () {
   monacoEditor?.focus();
   monacoEditor.trigger("keyboard", "editor.action.quickCommand", {});
 };
 document.getElementById("triggerShowCommandsBtn").addEventListener("click", triggerShowCommands);
+
+monacoEditor.addAction({
+  id: "monapad.quickOpen",
+  label: i18next.t("menu.quickOpen"),
+  alias: "Quick Open",
+  keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyP],
+  run: () => {
+    triggerQuickOpen();
+  },
+});
+
+monacoEditor.addAction({
+  id: "monapad.showCommands",
+  label: i18next.t("menu.showCommands"),
+  alias: "Command List",
+  keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyP],
+  run: () => {
+    triggerShowCommands();
+  },
+});
+
+let activeQuickOpenPicker = null;
+
+function getPathBasename(filePath) {
+  return (
+    String(filePath || "")
+      .split(/[/\\]/)
+      .pop() || String(filePath || "")
+  );
+}
+
+function getQuickOpenNoteTitle(note) {
+  return truncateNoteTitle(note?.title || getDefaultNoteTitle());
+}
+
+function createQuickOpenFileItem(filePath, sourceRank) {
+  const label = getPathBasename(filePath);
+  return {
+    label: `$(file) ${label}`,
+    description: filePath,
+    tooltip: filePath,
+    ariaLabel: `${label} ${filePath}`,
+    kind: "file",
+    path: filePath,
+    sourceRank,
+  };
+}
+
+function createQuickOpenNoteItem(note, sourceRank) {
+  const title = getQuickOpenNoteTitle(note);
+  return {
+    label: `$(notebook) ${title}`,
+    description: i18next.t("menu.notes"),
+    tooltip: title,
+    ariaLabel: `${title} ${i18next.t("menu.notes")}`,
+    iconClasses: ["monapad-quick-open-note"],
+    kind: "note",
+    noteId: note.id,
+    sourceRank,
+  };
+}
+
+async function getQuickOpenItems() {
+  const recent = getRecentHistoryEntries();
+  const notes = sortNotesForPanel(await window.electronAPI.listNotes());
+  notesIndexCache = notes;
+  const notesById = new Map(notes.filter((note) => note?.id).map((note) => [note.id, note]));
+  const items = [];
+  const seenFiles = new Set();
+  const seenNotes = new Set();
+
+  const pushFile = (filePath, sourceRank) => {
+    if (!filePath || seenFiles.has(filePath)) return;
+    seenFiles.add(filePath);
+    items.push(createQuickOpenFileItem(filePath, sourceRank));
+  };
+  const pushNote = (note, sourceRank) => {
+    if (!note?.id || seenNotes.has(note.id)) return;
+    seenNotes.add(note.id);
+    items.push(createQuickOpenNoteItem(note, sourceRank));
+  };
+
+  for (const entry of recent) {
+    if (entry.type === "note") {
+      pushNote(notesById.get(entry.noteId), 0);
+    } else if (entry.type === "file" && entry.path) {
+      let exists = entry.exists !== false;
+      if (exists) {
+        try {
+          exists = await window.electronAPI.fileExists(entry.path);
+        } catch {
+          exists = false;
+        }
+      }
+      if (exists) pushFile(entry.path, 0);
+    }
+  }
+
+  tabData.forEach((tab) => {
+    if (tab?.path) {
+      pushFile(tab.path, 1);
+    } else if (tab?.isNote && tab.noteId) {
+      pushNote(notesById.get(tab.noteId) || { id: tab.noteId, title: tab.name }, 1);
+    }
+  });
+
+  notes.forEach((note) => pushNote(note, 2));
+  return items;
+}
+
+async function openQuickOpenPicker() {
+  monacoEditor?.focus();
+  activeQuickOpenPicker?.hide();
+
+  const quickInputService = StandaloneServices.get(IQuickInputService);
+  const picker = quickInputService?.createQuickPick?.({ useSeparators: false });
+  if (!picker) {
+    StandaloneServices.get(IQuickInputService)?.quickAccess?.show("");
+    return;
+  }
+
+  activeQuickOpenPicker = picker;
+  picker.placeholder = i18next.t("menu.quickOpenPlaceholder");
+  picker.matchOnDescription = true;
+  picker.sortByLabel = true;
+  picker.busy = true;
+  picker.show();
+
+  picker.onDidHide(() => {
+    if (activeQuickOpenPicker === picker) activeQuickOpenPicker = null;
+    picker.dispose();
+  });
+
+  picker.onDidAccept(async () => {
+    const item = picker.selectedItems?.[0] || picker.activeItems?.[0];
+    if (!item || item.pickable === false) return;
+    picker.hide();
+    if (item.kind === "note") {
+      await openNoteById(item.noteId, { preview: false });
+    } else if (item.kind === "file") {
+      await loadFileByPath(item.path);
+    }
+  });
+
+  const items = await getQuickOpenItems();
+  if (activeQuickOpenPicker !== picker) return;
+  picker.busy = false;
+  picker.items = items.length
+    ? items
+    : [
+        {
+          label: i18next.t("menu.quickOpenNoResults"),
+          pickable: false,
+        },
+      ];
+  picker.activeItems = items.length ? [items[0]] : [];
+}
 
 // initial tab create
 createDefaultEmptyTab({ switchTo: false });
@@ -3566,9 +3750,8 @@ document.addEventListener("mousedown", (e) => {
   if (!customContextMenu.contains(e.target)) {
     customContextMenu.style.display = "none";
   }
-  if (noteContextMenu && !noteContextMenu.contains(e.target) && !noteBadgeMenu?.contains(e.target)) {
+  if (noteContextMenu && !noteContextMenu.contains(e.target)) {
     noteContextMenu.style.display = "none";
-    if (noteBadgeMenu) noteBadgeMenu.style.display = "none";
     rightClickedNoteId = null;
   }
   if (!tabContextMenu.contains(e.target)) {
@@ -3595,9 +3778,8 @@ document.addEventListener("click", (e) => {
     tabContextMenu.style.display = "none";
     rightClickedTab = null;
   }
-  if (noteContextMenu?.contains(e.target) && button && button.dataset.action !== "badge") {
+  if (noteContextMenu?.contains(e.target) && button && !button.dataset.edge) {
     noteContextMenu.style.display = "none";
-    if (noteBadgeMenu) noteBadgeMenu.style.display = "none";
     rightClickedNoteId = null;
   }
 
@@ -4055,7 +4237,7 @@ async function createDeviceShareLink() {
       width: 220,
       color: {
         dark: getCSSVar("--editorText") || "#ffffff",
-        light: getCSSVar("--color1") || "#000000",
+        light: getCSSVar("--color2") || "#000000",
       },
     });
     setDeviceShareLinkContentVisible(true);
@@ -4093,7 +4275,7 @@ async function createDeviceShareLink() {
     width: 220,
     color: {
       dark: getCSSVar("--editorText") || "#ffffff",
-      light: getCSSVar("--color1") || "#000000",
+      light: getCSSVar("--color2") || "#000000",
     },
   });
   setDeviceShareLinkContentVisible(true);
@@ -6634,71 +6816,22 @@ function showNoteContextMenu(e, noteId) {
   noteContextMenu.style.top = `${top}px`;
   noteContextMenu.style.visibility = "visible";
   noteContextMenu.style.display = "block";
-  hideNoteBadgeMenu();
-  updateNoteBadgeMenuState();
-}
-
-function hideNoteBadgeMenu() {
-  if (noteBadgeMenu) noteBadgeMenu.style.display = "none";
-}
-
-function showNoteBadgeMenu() {
-  if (!noteBadgeMenu || !noteContextMenu || !rightClickedNoteId) return;
-  const button = noteContextMenu.querySelector('button[data-action="badge"]');
-  if (!button) return;
-  updateNoteBadgeMenuState();
-  noteBadgeMenu.style.display = "block";
-  noteBadgeMenu.style.visibility = "hidden";
-  const buttonRect = button.getBoundingClientRect();
-  const menuWidth = noteBadgeMenu.offsetWidth;
-  const menuHeight = noteBadgeMenu.offsetHeight;
-  let left = buttonRect.right;
-  let top = buttonRect.top - 5;
-  if (left + menuWidth > window.innerWidth) left = Math.max(0, buttonRect.left - menuWidth + 1);
-  if (top + menuHeight > window.innerHeight) top = Math.max(0, window.innerHeight - menuHeight);
-  noteBadgeMenu.style.left = `${left}px`;
-  noteBadgeMenu.style.top = `${top}px`;
-  noteBadgeMenu.style.visibility = "visible";
+  updateNoteBadgeContextButtonsState();
 }
 
 function getNoteMetaById(noteId) {
   return notesIndexCache.find((note) => note.id === noteId) || null;
 }
 
-function updateNoteBadgeMenuState() {
-  if (!noteBadgeMenu || !rightClickedNoteId) return;
+function updateNoteBadgeContextButtonsState() {
+  if (!noteContextMenu || !rightClickedNoteId) return;
+  ensureNoteBadgeContextButtons();
   const mask = normalizeNoteBadgeMask(getNoteMetaById(rightClickedNoteId)?.badgeMask);
   NOTE_BADGE_EDGES.forEach((edge) => {
-    const check = noteBadgeMenu.querySelector(`button[data-edge="${edge.key}"] .checkmark`);
-    if (check) check.style.display = mask & edge.bit ? "inline-flex" : "none";
+    const button = noteContextMenu.querySelector(`.note-badge-edge-button[data-edge="${edge.key}"]`);
+    button?.classList.toggle("is-active", Boolean(mask & edge.bit));
   });
 }
-
-noteContextMenu?.querySelector('button[data-action="badge"]')?.addEventListener("mouseenter", showNoteBadgeMenu);
-noteContextMenu?.querySelector('button[data-action="badge"]')?.addEventListener("mouseleave", () => {
-  setTimeout(() => {
-    if (
-      !noteContextMenu?.querySelector('button[data-action="badge"]')?.matches(":hover") &&
-      !noteBadgeMenu?.matches(":hover")
-    ) {
-      hideNoteBadgeMenu();
-    }
-  }, 100);
-});
-noteContextMenu?.querySelectorAll('button:not([data-action="badge"])').forEach((button) => {
-  button.addEventListener("mouseenter", hideNoteBadgeMenu);
-});
-noteBadgeMenu?.addEventListener("mouseenter", showNoteBadgeMenu);
-noteContextMenu?.addEventListener("mouseleave", () => {
-  setTimeout(() => {
-    if (!noteContextMenu.matches(":hover") && !noteBadgeMenu?.matches(":hover")) hideNoteBadgeMenu();
-  }, 100);
-});
-noteBadgeMenu?.addEventListener("mouseleave", () => {
-  setTimeout(() => {
-    if (!noteContextMenu?.matches(":hover") && !noteBadgeMenu.matches(":hover")) hideNoteBadgeMenu();
-  }, 100);
-});
 
 async function getLiveNoteContent(noteId) {
   const openTab = tabData.find((tab) => tab.isNote && tab.noteId === noteId);
@@ -9246,13 +9379,15 @@ tabContextMenu.addEventListener("click", async (e) => {
 });
 
 noteContextMenu?.addEventListener("click", async (e) => {
-  const action = e.target.closest("button")?.dataset.action;
-  if (!action || !rightClickedNoteId) return;
-  if (action === "badge") {
-    showNoteBadgeMenu();
+  const edgeButton = e.target.closest("button[data-edge]");
+  if (edgeButton) {
+    e.stopPropagation();
+    await toggleNoteBadgeEdge(edgeButton.dataset.edge);
     return;
   }
 
+  const action = e.target.closest("button")?.dataset.action;
+  if (!action || !rightClickedNoteId) return;
   const noteId = rightClickedNoteId;
   noteContextMenu.style.display = "none";
   rightClickedNoteId = null;
@@ -9293,11 +9428,9 @@ noteContextMenu?.addEventListener("click", async (e) => {
   }
 });
 
-noteBadgeMenu?.addEventListener("click", async (e) => {
-  const button = e.target.closest("button[data-edge]");
-  if (!button || !rightClickedNoteId) return;
-  e.stopPropagation();
-  const edge = NOTE_BADGE_EDGES.find((item) => item.key === button.dataset.edge);
+async function toggleNoteBadgeEdge(edgeKey) {
+  if (!rightClickedNoteId) return;
+  const edge = NOTE_BADGE_EDGES.find((item) => item.key === edgeKey);
   if (!edge) return;
   const noteId = rightClickedNoteId;
   const currentMask = normalizeNoteBadgeMask(getNoteMetaById(noteId)?.badgeMask);
@@ -9312,15 +9445,14 @@ noteBadgeMenu?.addEventListener("click", async (e) => {
     updateTabNoteBadge(openTab);
     savePinnedTabsState();
   }
-  updateNoteBadgeMenuState();
+  updateNoteBadgeContextButtonsState();
   await renderNotesList();
   if (noteBadgeFilter !== NOTE_BADGE_ALL_FILTER && normalizeNoteBadgeMask(noteBadgeFilter) !== nextMask) {
     noteContextMenu.style.display = "none";
-    noteBadgeMenu.style.display = "none";
     rightClickedNoteId = null;
   }
   await populateRecentMenu();
-});
+}
 
 // editor context menu display & position handler
 editor.addEventListener("contextmenu", (e) => {
@@ -9329,7 +9461,6 @@ editor.addEventListener("contextmenu", (e) => {
   tabContextMenu.style.display = "none";
   rightClickedTab = null;
   noteContextMenu.style.display = "none";
-  if (noteBadgeMenu) noteBadgeMenu.style.display = "none";
   rightClickedNoteId = null;
 
   customContextMenu.style.display = "block";
@@ -9530,13 +9661,7 @@ function closeContextMenus({ focus = true } = {}) {
 
   if (isElementOpen(noteContextMenu)) {
     noteContextMenu.style.display = "none";
-    if (noteBadgeMenu) noteBadgeMenu.style.display = "none";
     rightClickedNoteId = null;
-    closed = true;
-  }
-
-  if (isElementOpen(noteBadgeMenu)) {
-    noteBadgeMenu.style.display = "none";
     closed = true;
   }
 

@@ -264,6 +264,12 @@
       .monaco-action-bar.quick-input-inline-action-bar {
         display: none !important;
       }
+      .quick-input-list .monapad-quick-open-note .codicon {
+        color: color-mix(in srgb, var(--highlight) 50%, transparent) !important;
+      }
+      .quick-input-list .monaco-list-row.focused .monapad-quick-open-note .codicon {
+        color: var(--highlight) !important;
+      }
       .monaco-editor .margin-view-overlays .codicon-folding-manual-collapsed,
       .monaco-editor .margin-view-overlays .codicon-folding-manual-expanded,
       .monaco-editor .margin-view-overlays .codicon-folding-expanded,
@@ -280,6 +286,7 @@
       }
       /* tooltip arrow */
       .workbench-hover-pointer {
+        display: none !important;
         margin-bottom: -33px !important;
         transform: translateX(calc(var(--editor-line-number-offset) + var(--editor-side-panel-offset))) !important;
       }
@@ -297,8 +304,7 @@
       #theme-menu button,
       #custom-context-menu button,
       #tab-context-menu button,
-      #note-context-menu button,
-      #note-badge-menu button {
+      #note-context-menu button {
         width: 100%;
         height: 26px;
         font-size: 13px;
@@ -426,7 +432,6 @@
       #custom-context-menu,
       #tab-context-menu,
       #note-context-menu,
-      #note-badge-menu,
       #theme-menu,
       #recent-menu,
       #file-saved,
@@ -850,7 +855,8 @@
         margin-right: 8px;
       }
       .tab:not(.note) .tab-note-badge,
-      body:not(.note-badges-visible) .tab-note-badge {
+      body:not(.note-badges-visible) .tab-note-badge,
+      .tab.note .tab-note-badge[data-badge-mask="0"] {
         display: none;
       }
       .tab.has-reload-button .name {
@@ -1245,7 +1251,7 @@
       #autosave-restore {
         color: var(--editorText);
         padding: 20px;
-        background: var(--color1);
+        background: var(--color2);
         text-align: center;
         min-width: min(100vw, 250px);
         max-width: 400px;
@@ -1329,7 +1335,7 @@
         display: none;
         flex-direction: column;
         padding: 20px;
-        background: var(--color1);
+        background: var(--color2);
         max-width: min(calc(100vw - 100px), 360px);
         max-height: calc(100vh - 100px);
         border: solid 1px var(--color3);
@@ -1382,7 +1388,7 @@
         max-width: min(calc(100vw - 100px), 360px);
         max-height: calc(100vh - 100px);
         padding: 18px;
-        background: var(--color1);
+        background: var(--color2);
         color: var(--editorText);
         border: solid 1px var(--color3);
         border-radius: 5px;
@@ -1459,8 +1465,8 @@
         min-width: 0;
         height: 32px;
         padding: 0 8px;
-        border: solid 1px var(--color3);
-        background: var(--color2);
+        border: none;
+        background: var(--color1);
         color: var(--editorText);
         font: inherit;
         box-sizing: border-box;
@@ -1487,8 +1493,7 @@
       }
       #custom-context-menu.menu,
       #tab-context-menu.menu,
-      #note-context-menu.menu,
-      #note-badge-menu.menu {
+      #note-context-menu.menu {
         overflow-y: auto;
         max-height: calc(100vh - 12.5px - 35px);
         position: absolute;
@@ -1506,15 +1511,13 @@
       #tab-context-menu.menu {
         width: 240px;
       }
-      #note-context-menu.menu,
-      #note-badge-menu.menu {
+      #note-context-menu.menu {
         width: fit-content;
         min-width: 130px;
       }
       #custom-context-menu button,
       #tab-context-menu button,
-      #note-context-menu button,
-      #note-badge-menu button {
+      #note-context-menu button {
         display: flex;
         flex: 0 0 26px;
         position: relative;
@@ -1532,18 +1535,46 @@
       }
       #custom-context-menu button:hover,
       #tab-context-menu button:hover,
-      #note-context-menu button:hover,
-      #note-badge-menu button:hover {
+      #note-context-menu button:hover {
         background: var(--color3);
       }
-      #note-context-menu button[data-action="badge"],
-      #note-badge-menu button {
+      .note-context-badge-row {
+        display: flex;
+        align-items: center;
         justify-content: space-between;
+        gap: 12px;
+        min-width: 158px;
+        height: 28px;
+        padding: 0 10px;
+        box-sizing: border-box;
+        color: var(--editorText);
+        font-size: 13px;
+        line-height: 28px;
+      }
+      .note-context-badge-row .label {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .note-context-badge-buttons {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        flex: 0 0 auto;
+      }
+      #note-context-menu button.note-badge-edge-button {
+        width: 22px;
+        height: 22px;
+        flex: 0 0 22px;
+        padding: 0;
+        border-radius: 4px;
+        justify-content: center;
         align-items: center;
       }
-      #note-context-menu button[data-action="badge"] .codicon {
-        flex: 0 0 auto;
-        margin-left: 10px;
+      #note-context-menu button.note-badge-edge-button:hover,
+      #note-context-menu button.note-badge-edge-button.is-active {
+        background: var(--color3);
       }
       #note-context-menu button[data-action="delete"] {
         color: var(--warn);
@@ -1918,7 +1949,7 @@
         gap: 5px;
         height: 22px;
         margin: 5px 0 10px 0;
-        padding: 0 20px 0 16px;
+        padding: 0 20px 0 15px;
         box-sizing: border-box;
         overflow-x: auto;
         overflow-y: hidden;
@@ -1968,6 +1999,10 @@
       .note-badge-filter-button.is-active {
         background: var(--color3);
       }
+      .note-badge-filter-button.is-active .note-badge-edge,
+      .note-badge-edge-button.is-active .note-badge-edge {
+        background: var(--highlight);
+      }
       .note-badge {
         position: relative;
         width: 12px;
@@ -1992,10 +2027,12 @@
       .tab .note-badge-edge {
         background: var(--highlight);
       }
-      .note-badge-filter-button:not(:hover):not(.is-active):not(.note-badge.is-all) .note-badge {
+      .note-badge-filter-button:not(:hover):not(.is-active):not(.note-badge.is-all) .note-badge,
+      .note-badge-edge-button:not(:hover):not(.is-active) .note-badge {
         background: color-mix(in srgb, var(--grayOut) 15%, transparent);
       }
-      .note-badge-filter-button:not(:hover):not(.is-active) .note-badge-edge {
+      .note-badge-filter-button:not(:hover):not(.is-active) .note-badge-edge,
+      .note-badge-edge-button:not(:hover):not(.is-active) .note-badge-edge {
         background: var(--grayOut);
       }
       .note-badge.has-top .note-badge-edge.top,
@@ -2799,9 +2836,13 @@
           <span class="label">Go to Heading</span>
           <span class="shortcut">Ctrl + Shift + O</span>
         </button>
+        <button id="triggerQuickOpenBtn">
+          <span class="label">Quick Open</span>
+          <span class="shortcut">Ctrl + P</span>
+        </button>
         <button id="triggerShowCommandsBtn">
           <span class="label">Command List</span>
-          <span class="shortcut">F1</span>
+          <span class="shortcut">Ctrl + Shift + P</span>
         </button>
         <div class="hr"></div>
         <!-- <button id="print-button">Print</button> -->
@@ -2979,10 +3020,10 @@
 
       <!-- note context menu -->
       <div id="note-context-menu" class="menu scrollable">
-        <button data-action="badge">
+        <div class="note-context-badge-row">
           <span class="label">Mark</span>
-          <span class="codicon codicon-chevron-right"></span>
-        </button>
+          <div class="note-context-badge-buttons"></div>
+        </div>
         <div class="hr"></div>
         <button data-action="copyText">Copy Text</button>
         <button data-action="duplicate">Duplicate</button>
@@ -2990,20 +3031,6 @@
         <button data-action="convertToFile">Convert to File</button>
         <div class="hr"></div>
         <button data-action="delete">Delete</button>
-      </div>
-      <div id="note-badge-menu" class="menu">
-        <button data-edge="top">
-          <span class="label">Top Edge</span><span class="checkmark codicon codicon-check"></span>
-        </button>
-        <button data-edge="right">
-          <span class="label">Right Edge</span><span class="checkmark codicon codicon-check"></span>
-        </button>
-        <button data-edge="bottom">
-          <span class="label">Bottom Edge</span><span class="checkmark codicon codicon-check"></span>
-        </button>
-        <button data-edge="left">
-          <span class="label">Left Edge</span><span class="checkmark codicon codicon-check"></span>
-        </button>
       </div>
 
       <!-- editor -->
