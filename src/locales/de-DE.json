@@ -15,7 +15,15 @@
     "invalidEncodingTooltip": "Diese Datei ist kein gültiges UTF-8. Beim Öffnen wurden möglicherweise einige Zeichen ersetzt.\nBeim Speichern wird die Datei als UTF-8 geschrieben.",
     "chordFirst": "({{first}}) wurde gedrückt. Warte auf die zweite Taste der Tastenkombination...",
     "chordNext": "({{keys}}) wurde gedrückt. Warte auf die nächste Taste der Tastenkombination...",
-    "chordMissing": "Die Tastenkombination ({{keys}}) ist kein Befehl."
+    "chordMissing": "Die Tastenkombination ({{keys}}) ist kein Befehl.",
+    "saved": "Gespeichert",
+    "modified": "Geändert",
+    "saving": "Speichern",
+    "backupSaved": "Backup ist aktuell",
+    "backupPending": "Backup ausstehend",
+    "backupMissing": "Backup ist nicht aktuell",
+    "externalModified": "Nicht aktuell",
+    "fileNotFound": "Datei nicht gefunden"
   },
   "menu": {
     "new": "Neu",
@@ -47,6 +55,7 @@
     "fileAlreadyOpened": "Datei ist bereits offen!",
     "fileUpdated": "Datei neu geladen",
     "fileModified": "Datei wurde extern geändert!",
+    "fileNotFound": "Datei nicht gefunden",
     "autosaveRestored": "Ungespeicherte Änderungen wiederhergestellt",
     "ReloadButtonTooltip": "Datei neu laden"
   },

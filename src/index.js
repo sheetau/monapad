@@ -85,7 +85,12 @@ function clampNumber(value, min, max) {
 
 // status bar
 const statusLeft = document.getElementById("status-left");
+const statusPathEl = statusLeft?.querySelector(".status-path");
+const statusMessageEl = statusLeft?.querySelector(".status-message");
+const statusExternalWarningEl = statusLeft?.querySelector(".status-external-warning");
 const chordStatusEl = document.getElementById("chord-status");
+const saveStatusEl = document.getElementById("save-status");
+const backupStatusEl = document.getElementById("backup-status");
 const lineColEl = document.getElementById("line-col");
 const zoomLevelEl = document.getElementById("zoom-level");
 const lineEndingEl = document.getElementById("line-ending");
@@ -189,6 +194,9 @@ const AUTOSAVE_MAX_ITEM_BYTES = 5 * 1024 * 1024;
 const DEVICE_SHARE_DIRECT_URL_MAX_BYTES = 1500;
 const autosaveTimers = new Map();
 let isRestoringAutosaveDrafts = false;
+let transientStatusMessageId = null;
+let transientStatusMessageTimer = null;
+let saveStatusFadeTimer = null;
 
 // tabs hover state, width handling
 let tabAreaHovered = false;
@@ -674,6 +682,7 @@ function updateMenuLabels() {
   document.getElementById("customThemeDescription").innerHTML = i18next.t("settings.customThemeDescription");
   document.querySelector(".font .reset").title = i18next.t("settings.resetTooltip");
   document.querySelector("#settingsLayout .reset").title = i18next.t("settings.resetTooltip");
+  updateSettingsTooltips();
   updateNewTabShortcutLabels();
 
   // modal
@@ -693,6 +702,36 @@ function updateMenuLabels() {
   document.getElementById("website").textContent = i18next.t("modal.website");
   document.getElementById("creator").textContent = i18next.t("modal.creator");
   document.getElementById("disclaimer-title").textContent = i18next.t("modal.disclaimer");
+}
+
+function setTitle(selector, title) {
+  const el = document.querySelector(selector);
+  if (el) el.title = title || "";
+}
+
+function removeTitle(selector) {
+  const el = document.querySelector(selector);
+  if (el) el.removeAttribute("title");
+}
+
+function updateSettingsTooltips() {
+  removeTitle("#settingsLayout .h1");
+  setTitle("#default-new-tab-note", i18next.t("settings.defaultNewTabNote"));
+  setTitle("#line-highlight", i18next.t("settings.highlightLine"));
+  setTitle("#line-num", i18next.t("settings.lineNumbers"));
+  setTitle("#toggleFolding", i18next.t("settings.folding"));
+  setTitle("#minimap", i18next.t("settings.displayMinimap"));
+  setTitle("#toggleSyntaxHighlight", i18next.t("settings.syntaxHighlight"));
+  setTitle("#toggleStatusBar", i18next.t("settings.statusBar"));
+  setTitle("#toggleKuromoji", i18next.t("settings.kuromoji"));
+  setTitle("#settings-menu .tabSize", i18next.t("settings.tabSize"));
+  removeTitle("#settings-menu .font .h1");
+  setTitle(".font-select-row .custom-select__trigger", selectedFontFamily);
+  setTitle(".font-select-row .custom-select__input", selectedFontFamily);
+  setTitle("#settings-menu .size", i18next.t("settings.size"));
+  removeTitle("#settingsCustomTheme");
+  setTitle("#openThemeFolder", i18next.t("settings.openThemeFolder"));
+  removeTitle("#settingsLanguage");
 }
 
 function updateMainMenuState() {
@@ -1732,6 +1771,12 @@ function normalizeTextForModelComparison(text) {
   return (typeof text === "string" ? text : "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
 }
 
+function isNoteContentSaved(tab, content = null) {
+  if (!tab?.isNote) return false;
+  const nextContent = content ?? tab.model?.getValue?.() ?? tab.content ?? "";
+  return normalizeTextForModelComparison(nextContent) === normalizeTextForModelComparison(tab.originalContent);
+}
+
 function createAutosaveId() {
   const id = window.crypto?.randomUUID
     ? window.crypto.randomUUID()
@@ -1959,7 +2004,7 @@ async function writeNoteTab(tab, content = null, force = false) {
     }
   }
 
-  if (!force && !tab.noteDirty && nextContent === tab.originalContent) return true;
+  if (!force && !tab.noteDirty && isNoteContentSaved(tab, nextContent)) return true;
 
   updateNoteTabTitle(tab, nextContent);
   try {
@@ -2127,7 +2172,7 @@ function shouldAutosaveTab(tab, content = null) {
   const nextContent = content ?? tab.model?.getValue() ?? tab.content ?? "";
   if (tab.isNote) {
     if (!nextContent.trim()) return false;
-    return !tab.noteId || tab.noteDirty || nextContent !== tab.originalContent;
+    return !tab.noteId || !isNoteContentSaved(tab, nextContent);
   }
   if (!nextContent.trim()) return false;
   if (!hasUnsavedChanges(tab, nextContent)) return false;
@@ -2162,8 +2207,13 @@ async function writeTabAutosave(tab, content = null) {
         content: nextContent,
       });
     }
+    tab._autosaveStatus = "saved";
+    tab._autosaveBackedUpContent = nextContent;
   } catch (error) {
+    tab._autosaveStatus = "error";
     console.warn("Failed to write autosave:", error);
+  } finally {
+    if (tab === currentTab) updateStatusBar();
   }
 }
 
@@ -2175,10 +2225,13 @@ function scheduleTabAutosave(tab, content = null) {
 
   if (!shouldAutosaveTab(tab, content)) {
     clearAutosaveTimer(tab);
+    if (tab === currentTab) updateStatusBar();
     return;
   }
 
   if (existingTimer?.debounceId) clearTimeout(existingTimer.debounceId);
+  tab._autosaveStatus = "pending";
+  if (tab === currentTab) updateStatusBar();
 
   const debounceId = setTimeout(async () => {
     const timer = autosaveTimers.get(key);
@@ -2210,6 +2263,9 @@ function scheduleAllUnsavedTabAutosaves() {
 async function deleteTabAutosave(tab) {
   if (!tab) return;
   clearAutosaveTimer(tab);
+  tab._autosaveStatus = "none";
+  tab._autosaveBackedUpContent = null;
+  if (tab === currentTab) updateStatusBar();
   if (tab.isNote) return;
 
   try {
@@ -2603,6 +2659,10 @@ function updateDeviceShareButtonState() {
   deviceShareBtn.disabled = !hasMeaningfulText;
 }
 
+function updateCurrentTabStatusBar() {
+  if (currentTab) updateStatusBar();
+}
+
 // detect change in editor
 monacoEditor.onDidChangeModelContent(() => {
   const active = currentTab;
@@ -2718,7 +2778,9 @@ function scrollToBottomOfSettingsMenu() {
 // scroll to selected item on top of menu list
 function scrollToSelectedOption(selectInstance) {
   const container = selectInstance.containerOuter.element;
-  container.querySelectorAll(".custom-select__item.is-highlighted").forEach((el) => el.classList.remove("is-highlighted"));
+  container
+    .querySelectorAll(".custom-select__item.is-highlighted")
+    .forEach((el) => el.classList.remove("is-highlighted"));
 
   const selectedOption = container.querySelector(".custom-select__item.is-selected");
   if (selectedOption) {
@@ -2882,6 +2944,7 @@ fontFamilySelect.addEventListener("change", () => {
   selectedFontFamily = fontDropdown.getValue(true);
   localStorage.setItem("selectedFontFamily", selectedFontFamily);
   console.log(selectedFontFamily);
+  updateSettingsTooltips();
   applyFontToMonaco();
 });
 
@@ -2941,6 +3004,7 @@ document.querySelector("#settings-menu .font .reset").addEventListener("click", 
   selectedFontFamily = "Iosevka";
   localStorage.setItem("selectedFontFamily", selectedFontFamily);
   fontDropdown.setChoiceByValue(selectedFontFamily);
+  updateSettingsTooltips();
   applyFontToMonaco();
 });
 
@@ -4099,12 +4163,25 @@ function updateStatusBar() {
   if (currentTab?.isNote) {
     const updated = formatNoteUpdatedAt(currentTab.noteUpdatedAt);
     const noteStatus = updated ? `${updated} • Note: ${currentTab.name}` : `Note: ${currentTab.name}`;
-    statusLeft.textContent = noteStatus;
-    statusLeft.title = currentTab.name;
+    if (statusPathEl) statusPathEl.textContent = noteStatus;
+    if (statusPathEl) statusPathEl.title = currentTab.name;
   } else {
-    statusLeft.textContent = currentFilePath;
-    statusLeft.title = currentFilePath;
+    if (statusPathEl) statusPathEl.textContent = currentFilePath;
+    if (statusPathEl) statusPathEl.title = currentFilePath;
   }
+  statusLeft.title = "";
+  const hasFileNotFound = Boolean(currentTab?.path && currentTab?.isWarned);
+  const hasExternalModified = Boolean(currentTab?.path && currentTab?.element?.classList.contains("has-reload-button"));
+  const hasExternalWarning = hasFileNotFound || hasExternalModified;
+  if (statusExternalWarningEl) {
+    statusExternalWarningEl.textContent = i18next.t(
+      hasFileNotFound ? "statusBar.fileNotFound" : "statusBar.externalModified",
+    );
+    statusExternalWarningEl.title = i18next.t(hasFileNotFound ? "message.fileNotFound" : "message.fileModified");
+  }
+  statusLeft?.classList.toggle("has-external-warning", hasExternalWarning);
+  updateSaveStatus();
+  updateBackupStatus();
   lineColEl.textContent = `${i18next.t("statusBar.line")} ${position.lineNumber}, ${i18next.t("statusBar.col")} ${
     position.column
   }${selectionText}`;
@@ -4117,6 +4194,87 @@ function updateStatusBar() {
     : currentTab?.hasUtf8Bom
       ? i18next.t("statusBar.bomEncodingTooltip")
       : i18next.t("statusBar.encodingTooltip");
+}
+
+function getTabContent(tab) {
+  return tab?.model?.getValue?.() ?? tab?.content ?? "";
+}
+
+function getTabSaveStatus(tab = currentTab) {
+  if (!tab) return "";
+  const content = getTabContent(tab);
+  if (tab.isNote) {
+    if (!tab.noteId && !content.trim()) return "newNote";
+    if (!tab.noteId && content.trim()) return "saving";
+    return tab.noteDirty && !isNoteContentSaved(tab, content) ? "saving" : "saved";
+  }
+  if (!tab.path && !content.trim()) return "untitled";
+  return tab.isFileSaved && !tab.isWarned ? "saved" : "modified";
+}
+
+function updateSaveStatus() {
+  if (!saveStatusEl) return;
+  const status = getTabSaveStatus();
+  if (status === "untitled" || status === "newNote") {
+    if (saveStatusFadeTimer) {
+      clearTimeout(saveStatusFadeTimer);
+      saveStatusFadeTimer = null;
+    }
+    saveStatusEl.classList.remove("is-fading");
+    saveStatusEl.style.display = "none";
+    saveStatusEl.innerHTML = "";
+    saveStatusEl.dataset.status = status;
+    delete saveStatusEl.dataset.statusHtml;
+    return;
+  }
+
+  saveStatusEl.style.display = "inline-flex";
+  const icon =
+    status === "saved"
+      ? '<span class="codicon codicon-check" aria-hidden="true"></span>'
+      : status === "saving"
+        ? '<span class="codicon codicon-sync" aria-hidden="true"></span>'
+        : "";
+  const html = `<span>${i18next.t(`statusBar.${status || "saved"}`)}</span>${icon}`;
+  if (saveStatusEl.dataset.statusHtml === html) return;
+
+  const apply = () => {
+    saveStatusEl.innerHTML = html;
+    saveStatusEl.dataset.statusHtml = html;
+    saveStatusEl.classList.remove("is-fading");
+  };
+
+  if (!saveStatusEl.dataset.statusHtml) {
+    apply();
+    return;
+  }
+
+  saveStatusEl.classList.add("is-fading");
+  if (saveStatusFadeTimer) clearTimeout(saveStatusFadeTimer);
+  saveStatusFadeTimer = setTimeout(apply, 180);
+}
+
+function updateBackupStatus() {
+  if (!backupStatusEl) return;
+  const tab = currentTab;
+  if (!tab || tab.isNote) {
+    backupStatusEl.style.display = "none";
+    backupStatusEl.innerHTML = "";
+    return;
+  }
+
+  backupStatusEl.style.display = "inline-flex";
+  const content = getTabContent(tab);
+  let state = tab._autosaveStatus || "none";
+  if (!tab.path && !content.trim()) state = "missing";
+  else if (tab._autosaveStatus === "saved" && tab._autosaveBackedUpContent === content) state = "saved";
+  else if (autosaveTimers.has(getTabAutosaveKey(tab))) state = "pending";
+  else if (state !== "error") state = "missing";
+
+  const stateIcon = state === "saved" ? "check" : state === "pending" ? "sync" : "close";
+  const titleKey = state === "saved" ? "backupSaved" : state === "pending" ? "backupPending" : "backupMissing";
+  backupStatusEl.innerHTML = `<span class="codicon codicon-database"></span><span class="codicon codicon-${stateIcon}"></span>`;
+  backupStatusEl.title = i18next.t(`statusBar.${titleKey}`);
 }
 
 // drag & drop indicator when dragging tab to another window
@@ -5770,6 +5928,7 @@ function reloadButton(tab, filePath, mode) {
   if (mode === "remove") {
     if (existing) existing.remove();
     tab.element.classList.remove("has-reload-button");
+    if (tab === currentTab) updateStatusBar();
     return;
   }
 
@@ -5797,6 +5956,7 @@ function reloadButton(tab, filePath, mode) {
 
     const nameEl = tab.element.querySelector(".name");
     if (nameEl?.parentElement) nameEl.parentElement.insertBefore(button, nameEl);
+    if (tab === currentTab) updateStatusBar();
   }
 }
 
@@ -6414,7 +6574,8 @@ function hasGlobalSearchResults() {
 function updateGlobalSearchActionState() {
   updateGlobalSearchLabels();
   if (globalSearchRefreshButton) globalSearchRefreshButton.disabled = !isGlobalSearchActive();
-  if (globalSearchClearButton) globalSearchClearButton.disabled = !isGlobalSearchActive() && !globalSearchState.totalMatches;
+  if (globalSearchClearButton)
+    globalSearchClearButton.disabled = !isGlobalSearchActive() && !globalSearchState.totalMatches;
   if (globalSearchCollapseButton) {
     globalSearchCollapseButton.disabled = !hasGlobalSearchResults();
     globalSearchCollapseButton.classList.toggle("codicon-collapse-all", !globalSearchState.allCollapsed);
@@ -6542,7 +6703,7 @@ async function refreshNotesListNow() {
     if (!tab?.isNote) return false;
     const content = tab.model?.getValue() ?? tab.content ?? "";
     if (!tab.noteId) return Boolean(content.trim());
-    return tab.noteDirty || content !== tab.originalContent;
+    return !isNoteContentSaved(tab, content);
   });
   for (const tab of dirtyNoteTabs) {
     await writeNoteTab(tab, tab.model?.getValue() ?? tab.content ?? "", true);
@@ -6677,8 +6838,7 @@ function createGlobalSearchPreview(model, match) {
   const beforeFull = startLine.slice(0, range.startColumn - 1);
   const inside = model.getValueInRange(range);
   const after = endLine.slice(range.endColumn - 1);
-  const fullLine =
-    range.startLineNumber === range.endLineNumber ? startLine : `${beforeFull}${inside}${after}`;
+  const fullLine = range.startLineNumber === range.endLineNumber ? startLine : `${beforeFull}${inside}${after}`;
   return {
     fullBefore: normalizeSearchPreviewText(beforeFull).slice(-GLOBAL_SEARCH_PREVIEW_MAX),
     inside: escapeSearchPreview(inside || match.matches?.[0] || "", GLOBAL_SEARCH_PREVIEW_MAX),
@@ -6810,7 +6970,9 @@ function updateGlobalSearchPreviewElements() {
     globalSearchVisiblePreviewRows.forEach((row) => updateGlobalSearchPreviewElement(row));
     return;
   }
-  globalSearchResultsList.querySelectorAll(".global-search-match").forEach((row) => updateGlobalSearchPreviewElement(row));
+  globalSearchResultsList
+    .querySelectorAll(".global-search-match")
+    .forEach((row) => updateGlobalSearchPreviewElement(row));
 }
 
 function scheduleGlobalSearchPreviewUpdate() {
@@ -6857,7 +7019,8 @@ function processGlobalSearchIdlePreviewRows(deadline) {
 
     const row = globalSearchIdlePreviewRows.values().next().value;
     globalSearchIdlePreviewRows.delete(row);
-    if (!row?.isConnected || row.classList.contains("preview-ready") || isGlobalSearchRowInCollapsedGroup(row)) continue;
+    if (!row?.isConnected || row.classList.contains("preview-ready") || isGlobalSearchRowInCollapsedGroup(row))
+      continue;
     updateGlobalSearchPreviewElement(row);
     processed++;
   }
@@ -7358,9 +7521,15 @@ function dismissGlobalSearchMatch(matchId) {
     result.matches = result.matches.filter((match) => match.id !== matchId);
   }
   globalSearchState.results = globalSearchState.results.filter((result) => result.matches.length);
-  globalSearchState.totalMatches = globalSearchState.results.reduce((total, result) => total + result.matches.length, 0);
+  globalSearchState.totalMatches = globalSearchState.results.reduce(
+    (total, result) => total + result.matches.length,
+    0,
+  );
   globalSearchState.totalItems = globalSearchState.results.length;
-  globalSearchResultsSignature = getGlobalSearchResultsSignature(globalSearchState.results, globalSearchState.totalMatches);
+  globalSearchResultsSignature = getGlobalSearchResultsSignature(
+    globalSearchState.results,
+    globalSearchState.totalMatches,
+  );
   renderGlobalSearchResults();
 }
 
@@ -7371,7 +7540,10 @@ function dismissGlobalSearchFile(targetId) {
   globalSearchState.results = globalSearchState.results.filter((item) => item.targetId !== targetId);
   globalSearchState.totalMatches = globalSearchState.results.reduce((total, item) => total + item.matches.length, 0);
   globalSearchState.totalItems = globalSearchState.results.length;
-  globalSearchResultsSignature = getGlobalSearchResultsSignature(globalSearchState.results, globalSearchState.totalMatches);
+  globalSearchResultsSignature = getGlobalSearchResultsSignature(
+    globalSearchState.results,
+    globalSearchState.totalMatches,
+  );
   renderGlobalSearchResults();
 }
 
@@ -8135,7 +8307,8 @@ window.addEventListener("mousemove", (e) => {
   if (globalSearchDragState) {
     if (!globalSearchDragState.dragging) {
       const moved =
-        Math.abs(e.clientX - globalSearchDragState.startX) >= 5 || Math.abs(e.clientY - globalSearchDragState.startY) >= 5;
+        Math.abs(e.clientX - globalSearchDragState.startX) >= 5 ||
+        Math.abs(e.clientY - globalSearchDragState.startY) >= 5;
       if (!moved) return;
       globalSearchDragState.dragging = true;
       applyGlobalSearchMatchDragRowStyle(globalSearchDragState.row);
@@ -8401,6 +8574,8 @@ async function saveAsFile() {
     clearAutosaveTimer(active);
     if (previousDraftId) await window.electronAPI.deleteAutosaveDraft(previousDraftId);
     await window.electronAPI.discardFileAutosaveBackup(filePath);
+    active._autosaveStatus = "none";
+    active._autosaveBackedUpContent = null;
 
     currentFilePath = filePath;
     updateStatusBar();
@@ -8455,6 +8630,8 @@ async function saveFile() {
     updateExternalFileSnapshot(active, content, fileInfo);
     clearAutosaveTimer(active);
     await window.electronAPI.discardFileAutosaveBackup(active.path);
+    active._autosaveStatus = "none";
+    active._autosaveBackedUpContent = null;
 
     const activeSaveClose = active.element.querySelector(".close");
     if (activeSaveClose) activeSaveClose.classList.remove("show-unsaved");
@@ -8483,7 +8660,7 @@ function syncTabSaveState(tab, content = null) {
   if (tab.isNote) {
     const nextContent = content ?? tab?.content ?? tab?.model?.getValue() ?? "";
     tab.isFileSaved = true;
-    tab.noteDirty = nextContent !== tab.originalContent;
+    tab.noteDirty = !isNoteContentSaved(tab, nextContent);
     updateNoteTabTitle(tab, nextContent);
     const close = tab.element?.querySelector(".close");
     if (close) close.classList.remove("show-unsaved");
@@ -8512,7 +8689,60 @@ const messageQueue = [];
 let isShowingMessage = false;
 let isWindowFocused = true; // default is focused
 
+function isStatusBarVisible() {
+  return Boolean(settings.statusBarVisible);
+}
+
+function showTransientStatusMessage(id) {
+  if (!statusLeft || !statusMessageEl) return false;
+  if (transientStatusMessageId === id) return true;
+  transientStatusMessageId = id;
+  statusMessageEl.textContent = i18next.t(
+    id === "autosave-restored"
+      ? "message.autosaveRestored"
+      : id === "file-updated"
+        ? "message.fileUpdated"
+        : "message.saved",
+  );
+  statusLeft.classList.add("show-message");
+  if (transientStatusMessageTimer) clearTimeout(transientStatusMessageTimer);
+  transientStatusMessageTimer = setTimeout(() => {
+    transientStatusMessageId = null;
+    transientStatusMessageTimer = null;
+    statusLeft.classList.remove("show-message");
+  }, 1800);
+  return true;
+}
+
+function shakeTabTitle(tab = currentTab) {
+  const nameEl = tab?.element?.querySelector(".name");
+  if (!nameEl) return;
+  nameEl.classList.remove("shake");
+  void nameEl.offsetWidth;
+  nameEl.classList.add("shake");
+  nameEl.addEventListener("animationend", () => nameEl.classList.remove("shake"), { once: true });
+}
+
 function showMessage(id) {
+  if (id === "file-opened") {
+    shakeTabTitle(currentTab);
+    return;
+  }
+  if (isStatusBarVisible()) {
+    if (id === "file-saved") {
+      updateStatusBar();
+      return;
+    }
+    if (id === "autosave-restored" || id === "file-updated") {
+      showTransientStatusMessage(id);
+      return;
+    }
+    if (id === "file-modified") {
+      updateStatusBar();
+      return;
+    }
+  }
+
   const currentShowing = document.querySelector(".show");
   if (messageQueue.includes(id) || (currentShowing && currentShowing.id === id)) {
     return;

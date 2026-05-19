@@ -15,7 +15,15 @@
     "invalidEncodingTooltip": "This file is not valid UTF-8, so some characters may have been replaced while opening.\nSaving will write the file as UTF-8.",
     "chordFirst": "({{first}}) was pressed. Waiting for second key of chord...",
     "chordNext": "({{keys}}) was pressed. Waiting for next key of chord...",
-    "chordMissing": "The key combination ({{keys}}) is not a command."
+    "chordMissing": "The key combination ({{keys}}) is not a command.",
+    "saved": "Saved",
+    "modified": "Modified",
+    "saving": "Saving",
+    "backupSaved": "Backup is up to date",
+    "backupPending": "Backup pending",
+    "backupMissing": "Backup is not up to date",
+    "externalModified": "Not Up to Date",
+    "fileNotFound": "File Not Found"
   },
   "menu": {
     "new": "New",
@@ -47,6 +55,7 @@
     "fileAlreadyOpened": "File already opened!",
     "fileUpdated": "File reloaded",
     "fileModified": "File modified externally!",
+    "fileNotFound": "File not found",
     "autosaveRestored": "Unsaved changes restored",
     "ReloadButtonTooltip": "Reload File"
   },

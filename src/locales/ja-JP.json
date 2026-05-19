@@ -15,7 +15,15 @@
     "invalidEncodingTooltip": "このファイルは有効なUTF-8ではないため、読み込み時に一部の文字が置き換えられている可能性があります。\n保存するとUTF-8として書き込まれます。",
     "chordFirst": "({{first}}) が押されました。次のキー入力を待機しています...",
     "chordNext": "({{keys}}) が押されました。次のキー入力を待機しています...",
-    "chordMissing": "キーの組み合わせ ({{keys}}) はコマンドではありません。"
+    "chordMissing": "キーの組み合わせ ({{keys}}) はコマンドではありません。",
+    "saved": "保存済み",
+    "modified": "未保存",
+    "saving": "保存中",
+    "backupSaved": "バックアップは最新です",
+    "backupPending": "バックアップ待機中",
+    "backupMissing": "バックアップは最新ではありません",
+    "externalModified": "外部変更あり",
+    "fileNotFound": "ファイルなし"
   },
   "menu": {
     "new": "新規作成",
@@ -47,6 +55,7 @@
     "fileAlreadyOpened": "ファイルは既に開いています！",
     "fileUpdated": "ファイルを再読み込みしました",
     "fileModified": "ファイルが外部で変更されました！",
+    "fileNotFound": "ファイルが見つかりません",
     "autosaveRestored": "保存されていない変更を復元しました",
     "ReloadButtonTooltip": "ファイルを再読み込み"
   },

@@ -15,7 +15,15 @@
     "invalidEncodingTooltip": "此文件不是有效的 UTF-8，打开时部分字符可能已被替换。\n保存后文件将以 UTF-8 写入。",
     "chordFirst": "已按下 ({{first}})。正在等待快捷键组合的第二个键...",
     "chordNext": "已按下 ({{keys}})。正在等待快捷键组合的下一个键...",
-    "chordMissing": "按键组合 ({{keys}}) 不是命令。"
+    "chordMissing": "按键组合 ({{keys}}) 不是命令。",
+    "saved": "已保存",
+    "modified": "已修改",
+    "saving": "保存中",
+    "backupSaved": "备份已是最新",
+    "backupPending": "备份等待中",
+    "backupMissing": "备份不是最新",
+    "externalModified": "不是最新",
+    "fileNotFound": "文件未找到"
   },
   "menu": {
     "new": "新建",
@@ -47,6 +55,7 @@
     "fileAlreadyOpened": "文件已打开！",
     "fileUpdated": "文件已重载",
     "fileModified": "文件已被外部程序修改！",
+    "fileNotFound": "文件未找到",
     "autosaveRestored": "已恢复未保存的更改",
     "ReloadButtonTooltip": "重新加载文件"
   },

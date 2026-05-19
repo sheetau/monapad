@@ -1037,6 +1037,49 @@
         white-space: nowrap;
         text-overflow: ellipsis;
         margin-top: -1px;
+        display: flex;
+        align-items: center;
+        position: relative;
+      }
+      #status-left .status-external-warning {
+        color: var(--warn);
+        margin-right: 8px;
+        flex-shrink: 0;
+      }
+      #status-left .status-path,
+      #status-left .status-message {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        transition:
+          opacity 180ms ease,
+          visibility 180ms ease;
+      }
+      #status-left .status-path {
+        flex: 1;
+        min-width: 0;
+      }
+      #status-left.show-message .status-path,
+      #status-left.show-message .status-external-warning {
+        opacity: 0;
+        visibility: hidden;
+      }
+      #status-left .status-message {
+        position: absolute;
+        left: 0;
+        max-width: 100%;
+        opacity: 0;
+        visibility: hidden;
+      }
+      #status-left.show-message .status-message {
+        opacity: 1;
+        visibility: visible;
+      }
+      #status-left:not(.has-external-warning) .status-external-warning {
+        opacity: 0;
+        visibility: hidden;
+        width: 0;
+        margin-right: 0;
       }
       #status-right {
         line-height: 25px;
@@ -1044,9 +1087,34 @@
         flex-shrink: 0;
         margin-top: -1px;
       }
-      #status-right span {
+      #status-right span:not(#save-status):not(.codicon) {
         margin-left: 20px;
         white-space: nowrap;
+      }
+      #save-status,
+      #backup-status {
+        display: inline-flex;
+        align-items: center;
+        gap: 3px;
+      }
+      #save-status {
+        transition: opacity 180ms ease;
+      }
+      #save-status.is-fading {
+        opacity: 0;
+      }
+      #save-status .codicon {
+        font-size: 13px;
+        line-height: 1;
+        margin-left: 0;
+      }
+      #backup-status {
+        min-width: 34px;
+      }
+      #backup-status .codicon {
+        font-size: 13px;
+        line-height: 1;
+        margin-left: 0;
       }
       #encoding.warn {
         color: var(--warn);
@@ -1056,6 +1124,30 @@
         overflow: hidden;
         color: var(--grayOut);
         text-overflow: ellipsis;
+      }
+      #chord-status:empty {
+        display: none;
+      }
+      @keyframes horizontal-shaking {
+        0% {
+          transform: translateX(0);
+        }
+        25% {
+          transform: translateX(2px);
+        }
+        50% {
+          transform: translateX(-2px);
+        }
+        75% {
+          transform: translateX(2px);
+        }
+        100% {
+          transform: translateX(0);
+        }
+      }
+      .tab .name.shake {
+        display: inline-block;
+        animation: horizontal-shaking 140ms ease-in-out 2;
       }
       #zoom-level {
         width: 30px;
@@ -2168,6 +2260,13 @@
         line-height: 28px;
         padding: 0 20px;
       }
+      #settings-menu button:not(.custom-select__arrow):not(.custom-select__trigger) span:not([class]) {
+        display: inline-block;
+        max-width: calc(100% - 22px);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
       #settings-menu button:not(.custom-select button):hover {
         background: var(--color3);
       }
@@ -2742,10 +2841,16 @@
               <path d="M5 12l14 0" />
             </svg>
           </button>
-          <div id="status-left"></div>
+          <div id="status-left">
+            <span class="status-external-warning"></span>
+            <span class="status-path"></span>
+            <span class="status-message"></span>
+          </div>
         </div>
         <div id="status-right">
           <span id="chord-status"></span>
+          <span id="save-status"></span>
+          <span id="backup-status"></span>
           <span id="line-col"></span>
           <span id="zoom-level"></span>
           <span id="line-ending"></span>
