@@ -1,7 +1,6 @@
 # Internationalization and Localization Guidelines
 
 To maintain translation consistency, please reuse existing phrases found in **Win32 Notepad.exe**, **VS Code**, or **Notepad++** as much as possible.
-**Note:** The Monaco Editor UI language itself cannot be changed from English.
 
 Start by using the [English JSON file](https://github.com/sheetau/monapad/tree/main/locales/en-US.json) as a reference. Then, create a new JSON file named according to the appropriate language code (e.g., `zh-CH.json` or `fr-FR.json`), and place it in the [`locales`](https://github.com/sheetau/monapad/tree/main/locales) folder.
 

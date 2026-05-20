@@ -52,9 +52,14 @@ The name "Monapad" combines Monaco (the editor engine) and Notepad, reflecting i
 - Ctrl+Click to open link.
 - Ctrl+/ to toggle subtext on current line.
 - Ctrl+Sfhit+Num(1-3) to toggle heading 1-3 on current line.
+- Ctrl+F/H to find & replace.
+- Ctrl+Shift+F to open global search view.
 - Ctrl+G to go to a specific line.
 - Ctrl+Shift+O to go to a specific heading.
-- F1 to open command list.
+- Ctrl+P to go to a specific file.
+- Ctrl+Shift+P or F1 to open command list.
+- Ctrl+B to open Side Panel.
+- Ctrl+, to open settings.
 - F11 to toggle full screen.
 
 For more editor shortcuts, check the command list or refer to the sections **Basic editing**, **Search and replace**, and **Multi-cursor and selection** in [this link](https://code.visualstudio.com/shortcuts/keyboard-shortcuts-windows.pdf).
@@ -88,7 +93,7 @@ Feel free to review the source code since it is 100% open sourced.
 
 ## Contributing:
 
-- [Submit your custome themes](https://github.com/sheetau/monapad/blob/main/CUSTOMTHEME.md)
+- [Submit your custom themes](https://github.com/sheetau/monapad/blob/main/CUSTOMTHEME.md)
 - [Internationalization and localization](https://github.com/sheetau/monapad/blob/main/LANGUAGE.md)
 - Report bugs or submit feature requests [here](https://github.com/sheetau/monapad/issues).
 - If you like my work, please consider:
