@@ -45,6 +45,7 @@
     "settings": "Settings",
     "notes": "Notes",
     "sidePanel": "Side Panel",
+    "sidePanelDragHint": "Drag right to show the side panel",
     "theme": "Themes",
     "about": "About",
     "onyx": "Onyx",

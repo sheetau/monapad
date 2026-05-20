@@ -45,6 +45,7 @@
     "settings": "設定",
     "notes": "ノート",
     "sidePanel": "サイドパネル",
+    "sidePanelDragHint": "右ドラッグでサイドパネルを表示",
     "theme": "テーマ",
     "about": "バージョン情報",
     "onyx": "オニキス",

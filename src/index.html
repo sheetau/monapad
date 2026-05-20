@@ -15,6 +15,7 @@
       html.booting-custom-theme body {
         visibility: hidden;
       }
+
       /* Figtree: UI en-US font */
       /* (Yu Gothic UI: UI ja-JP font) */
       @font-face {
@@ -223,6 +224,7 @@
         box-shadow: inset 0 0 0 1px var(--grayOut);
       } */
 
+      /* monaco editor and base elements */
       /* monaco editor style */
       /* markdown bracket highlighting color */
       .monaco-editor .bracket-highlighting-0,
@@ -326,6 +328,8 @@
         flex-direction: column;
         height: 100vh;
       }
+
+      /* toolbar */
       #toolbar {
         display: flex;
         position: fixed;
@@ -383,6 +387,8 @@
       #menu-button:hover svg line {
         stroke: var(--highlight) !important;
       }
+
+      /* main menu */
       #menu {
         position: fixed;
         top: calc(40px + var(--window-top-safe-area));
@@ -456,6 +462,8 @@
       .scrollable::-webkit-scrollbar-corner {
         display: none;
       }
+
+      /* theme menu */
       #theme-menu {
         position: absolute;
         left: 254px;
@@ -473,7 +481,6 @@
         box-sizing: border-box;
         overflow-y: auto;
       }
-
       #theme-menu button {
         position: relative;
         background: none;
@@ -486,28 +493,23 @@
         justify-content: space-between;
         align-items: center;
       }
-
       #theme-menu button[data-theme="custom-theme"] span:not(.checkmark) {
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
       }
-
       #theme-menu button:hover {
         background: var(--color3);
       }
-
       .checkmark {
         display: none;
         opacity: 1;
       }
-
       #theme-menu button .checkmark {
         display: inline-flex;
         opacity: 0;
         margin-left: 20px;
       }
-
       #theme-menu button.active .checkmark {
         opacity: 1;
       }
@@ -533,6 +535,7 @@
         transform: translate(-50%, -50%);
       }
 
+      /* recent menu */
       #recent-menu {
         position: absolute;
         left: 254px;
@@ -593,6 +596,8 @@
         justify-content: space-between;
         border: none;
       }
+
+      /* tabs */
       #tabs-container {
         height: 100%;
         display: flex;
@@ -994,6 +999,7 @@
         color: #fff;
       }
 
+      /* editor */
       button:focus,
       .tab:focus,
       #editor:focus {
@@ -1010,6 +1016,8 @@
         border-top: 1px solid var(--color3);
         transition: margin-left 180ms ease;
       }
+
+      /* status bar */
       #status-bar {
         height: var(--status-bar-height);
         background: var(--color2);
@@ -1184,6 +1192,7 @@
         text-align: right;
       }
 
+      /* messages and modals */
       .message {
         position: fixed;
         left: 50%;
@@ -1492,6 +1501,8 @@
         color: var(--highlight);
         word-break: break-word;
       }
+
+      /* context menus */
       #custom-context-menu.menu,
       #tab-context-menu.menu,
       #note-context-menu.menu {
@@ -1593,23 +1604,7 @@
         display: inline-block;
       }
 
-      #settings-menu {
-        position: absolute;
-        background: var(--color2);
-        z-index: 9996;
-        width: 260px;
-        top: calc(var(--window-top-safe-area) + var(--toolbar-height));
-        right: 0px;
-        user-select: none;
-        padding: 10px 0 115px 0;
-        box-sizing: border-box;
-        display: none;
-        overflow-y: auto;
-        border-top: 1px solid var(--color3);
-        border-left: 1px solid var(--color3);
-        overflow-anchor: none;
-        scroll-behavior: auto !important;
-      }
+      /* side panel */
       #side-panel {
         position: fixed;
         display: flex;
@@ -1751,6 +1746,8 @@
         overflow: hidden;
         white-space: pre-wrap;
         overflow-wrap: anywhere;
+        width: 100%;
+        padding-right: 70px;
       }
       #global-search::placeholder {
         color: var(--grayOut);
@@ -1764,10 +1761,6 @@
         position: relative;
         display: flex;
         align-items: flex-start;
-      }
-      #global-search {
-        width: 100%;
-        padding-right: 70px;
       }
       #global-search-placeholder {
         position: absolute;
@@ -1815,6 +1808,8 @@
         cursor: pointer;
         box-sizing: border-box;
       }
+
+      /* codicon icons */
       .codicon[class*="codicon-"] {
         font-size: 16px;
         line-height: 1;
@@ -1882,6 +1877,8 @@
         background: color-mix(in srgb, var(--highlight) 25%, transparent);
         border: 1px solid var(--highlight);
       }
+
+      /* global search */
       #global-search-section {
         width: 100%;
         min-width: 0;
@@ -1951,6 +1948,8 @@
         opacity: 0.45;
         cursor: default;
       }
+
+      /* note badges */
       #notes-badge-filter-bar {
         display: none;
         flex: 0 0 auto;
@@ -2325,6 +2324,8 @@
       #global-search.invalid {
         outline: 1px solid var(--vscode-inputValidation-errorBorder, var(--warn));
       }
+
+      /* notes list */
       .note-list-item {
         position: relative;
         display: flex;
@@ -2427,6 +2428,25 @@
       #side-panel-menu-button:hover svg line {
         stroke: var(--highlight) !important;
       }
+
+      /* settings menu */
+      #settings-menu {
+        position: absolute;
+        background: var(--color2);
+        z-index: 9996;
+        width: 260px;
+        top: calc(var(--window-top-safe-area) + var(--toolbar-height));
+        right: 0px;
+        user-select: none;
+        padding: 10px 0 115px 0;
+        box-sizing: border-box;
+        display: none;
+        overflow-y: auto;
+        border-top: 1px solid var(--color3);
+        border-left: 1px solid var(--color3);
+        overflow-anchor: none;
+        scroll-behavior: auto !important;
+      }
       #settings-menu h1 {
         display: flex;
         justify-content: space-between;
@@ -2494,12 +2514,10 @@
       #settings-menu .row:has(.custom-select) {
         padding: 0 17px 0 15px;
       }
-
       #settings-menu .label {
         color: var(--editorText);
         user-select: none;
       }
-
       #settings-menu .control {
         display: flex;
         align-items: center;
@@ -2728,7 +2746,7 @@
     <div id="container">
       <div id="toolbar">
         <!-- top left menu -->
-        <button id="menu-button" aria-label="Menu">
+        <button id="menu-button" aria-label="Menu" title="Drag right to show the side panel">
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 15.16 7.2" width="16" height="8">
             <line
               x1="0.64"

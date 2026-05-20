@@ -45,6 +45,7 @@
     "settings": "设置",
     "notes": "笔记",
     "sidePanel": "侧边面板",
+    "sidePanelDragHint": "向右拖动以显示侧边面板",
     "theme": "主题",
     "about": "关于",
     "onyx": "玛瑙黑",

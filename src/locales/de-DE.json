@@ -45,6 +45,7 @@
     "settings": "Einstellungen",
     "notes": "Notizen",
     "sidePanel": "Seitenpanel",
+    "sidePanelDragHint": "Nach rechts ziehen, um das Seitenpanel anzuzeigen",
     "theme": "Designs",
     "about": "Über",
     "onyx": "Onyx",

@@ -223,4 +223,5 @@ export function updateStaticUiText({
   setElementText(refs.autosaveRestoreMessage, t("autosave.restoreMessage"));
   setElementText(refs.autosaveRestoreYes, t("autosave.restore"));
   setElementText(refs.autosaveRestoreNo, t("autosave.discard"));
+  setTitle("#menu-button", t("menu.sidePanelDragHint"));
 }
