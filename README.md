@@ -22,7 +22,10 @@ With the same core editor used in VSCode and its own language designed for text 
   - Lines starting with `> ` are shown in _italic_.
   - Text wrapped in single backticks `` `text` `` is highlighted inline.
   - Lines wrapped in triple backticks ``` is lightly highlighted as a code block.
-- Supports [Custome CSS and Themes](https://github.com/sheetau/monapad/blob/main/CUSTOMTHEME.md)
+- A high-functional side panel that can be opened by dragging the menu button to the right.
+- App-native Notes that stay entirely inside Monapad.
+- Powerful global search across all open tabs and notes.
+- Supports [Custome CSS and Themes](https://github.com/sheetau/monapad/blob/main/CONTRIBUTING.md#how-to-setup-custom-theme)
 - Syntax highlighting for Markdown.
 - Share the current note to another device with a temporary local QR/link.
   - The text is served only from your computer on the local network, and only for a short time using an in-memory temporary page.
@@ -79,7 +82,7 @@ Download [latest version](https://github.com/sheetau/monapad/releases/latest) of
 
 To use custom themes, download CSS file from the above list or from [official repository](https://github.com/sheetau/monapad/tree/main/customthemes) and place it to themes folder that can be opened from the settings in the app.
 
-Click [here](https://github.com/sheetau/monapad/blob/main/CUSTOMTHEME.md) To see how to setup and submit your own custom themes.
+Click [here](https://github.com/sheetau/monapad/blob/main/CONTRIBUTING.md#how-to-setup-custom-theme) to see how to setup and submit your own custom themes.
 
 ## Disclaimer and Privacy statement:
 
@@ -93,12 +96,12 @@ Feel free to review the source code since it is 100% open sourced.
 
 ## Contributing:
 
-- [Submit your custom themes](https://github.com/sheetau/monapad/blob/main/CUSTOMTHEME.md)
-- [Internationalization and localization](https://github.com/sheetau/monapad/blob/main/LANGUAGE.md)
-- Report bugs or submit feature requests [here](https://github.com/sheetau/monapad/issues).
-- If you like my work, please consider:
-  - Star this project on GitHub
-  - [![ko-fi](https://www.ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/sheeta)
+Monapad is open source and we welcome contributions; see the [Contributing Guidelines](https://github.com/sheetau/monapad/blob/main/CONTRIBUTING.md) for custom theme submissions and translations. Report bugs or submit feature requests [here](https://github.com/sheetau/monapad/issues).
+
+If you like my work, please consider:
+
+- Star this project on GitHub
+- [![ko-fi](https://www.ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/sheeta)
 
 ## Dependencies and References:
 

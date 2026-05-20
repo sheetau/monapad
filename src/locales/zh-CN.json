@@ -135,11 +135,11 @@
     "defaultNewTabNote": "默认使用笔记",
     "tabSize": "制表符大小",
     "language": "语言",
-    "langDescription": "您可以 <a href=\"https://github.com/sheetau/monapad/blob/main/LANGUAGE.md\" target=\"_blank\">前往此处</a> 贡献翻译。",
+    "langDescription": "您可以 <a href=\"https://github.com/sheetau/monapad/blob/main/CONTRIBUTING.md#internationalization-and-localization-guidelines\" target=\"_blank\">前往此处</a> 贡献翻译。",
     "monacoRestartWarning": "需要重启 Monapad 才能将此语言应用到 Monaco 编辑器界面。",
     "customTheme": "自定义主题",
     "openThemeFolder": "打开主题文件夹",
-    "customThemeDescription": "在此文件夹中创建 CSS 文件，即可从主题菜单添加和应用自定义主题。详细说明请 <a href=\"https://github.com/sheetau/monapad/blob/main/CUSTOMTHEME.md\" target=\"_blank\">查看此处</a>。",
+    "customThemeDescription": "在此文件夹中创建 CSS 文件，即可从主题菜单添加和应用自定义主题。详细说明请 <a href=\"https://github.com/sheetau/monapad/blob/main/CONTRIBUTING.md#how-to-setup-custom-theme\" target=\"_blank\">查看此处</a>。",
     "resetTooltip": "重置设置"
   },
   "modal": {

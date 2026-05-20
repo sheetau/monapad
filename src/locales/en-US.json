@@ -173,11 +173,11 @@
     "defaultNewTabNote": "Use Notes by Default",
     "tabSize": "Tab Size",
     "language": "Language",
-    "langDescription": "Contribute translations <a href=\"https://github.com/sheetau/monapad/blob/main/LANGUAGE.md\" target=\"_blank\">here</a>.",
+    "langDescription": "Contribute translations <a href=\"https://github.com/sheetau/monapad/blob/main/CONTRIBUTING.md#internationalization-and-localization-guidelines\" target=\"_blank\">here</a>.",
     "monacoRestartWarning": "Restart Monapad to apply this language to Monaco editor UI.",
     "customTheme": "Custom Theme",
     "openThemeFolder": "Open Theme Folder",
-    "customThemeDescription": "Create a CSS file in this folder to add and apply custom themes from the theme menu. Details <a href=\"https://github.com/sheetau/monapad/blob/main/CUSTOMTHEME.md\" target=\"_blank\">here</a>.",
+    "customThemeDescription": "Create a CSS file in this folder to add and apply custom themes from the theme menu. Details <a href=\"https://github.com/sheetau/monapad/blob/main/CONTRIBUTING.md#how-to-setup-custom-theme\" target=\"_blank\">here</a>.",
     "resetTooltip": "Reset Settings"
   },
   "modal": {

@@ -135,11 +135,11 @@
     "defaultNewTabNote": "Notizen standardmäßig verwenden",
     "tabSize": "Tabulatorgröße",
     "language": "Sprache",
-    "langDescription": "Übersetzungen beitragen <a href=\"https://github.com/sheetau/monapad/blob/main/LANGUAGE.md\" target=\"_blank\">hier</a>.",
+    "langDescription": "Übersetzungen beitragen <a href=\"https://github.com/sheetau/monapad/blob/main/CONTRIBUTING.md#internationalization-and-localization-guidelines\" target=\"_blank\">hier</a>.",
     "monacoRestartWarning": "Starte Monapad neu, um diese Sprache auf die Monaco-Editor-Oberfläche anzuwenden.",
     "customTheme": "Eigenes Design",
     "openThemeFolder": "Design-Ordner öffnen",
-    "customThemeDescription": "Erstelle in diesem Ordner eine CSS-Datei, um eigene Designs hinzuzufügen und sie über das Design-Menü anzuwenden. Details <a href=\"https://github.com/sheetau/monapad/blob/main/CUSTOMTHEME.md\" target=\"_blank\">hier</a>.",
+    "customThemeDescription": "Erstelle in diesem Ordner eine CSS-Datei, um eigene Designs hinzuzufügen und sie über das Design-Menü anzuwenden. Details <a href=\"https://github.com/sheetau/monapad/blob/main/CONTRIBUTING.md#how-to-setup-custom-theme\" target=\"_blank\">hier</a>.",
     "resetTooltip": "Einstellungen zurücksetzen"
   },
   "modal": {
