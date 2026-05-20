@@ -1099,6 +1099,7 @@
         max-width: 100%;
         opacity: 0;
         visibility: hidden;
+        color: var(--editorText);
       }
       #status-left.show-message .status-message {
         opacity: 1;
@@ -1812,6 +1813,7 @@
         justify-content: center;
         line-height: 1;
         cursor: pointer;
+        box-sizing: border-box;
       }
       .codicon[class*="codicon-"] {
         font-size: 16px;
@@ -1878,7 +1880,7 @@
       }
       .global-search-toggle.active {
         background: color-mix(in srgb, var(--highlight) 25%, transparent);
-        outline: 1px solid var(--highlight);
+        border: 1px solid var(--highlight);
       }
       #global-search-section {
         width: 100%;
@@ -2346,7 +2348,7 @@
       #notes-list:not(:has(.note-list-item.dragging)) .note-list-item.pinned:hover {
         background: var(--color3);
       }
-      .note-list-item.active-note {
+      .note-list-item.active-note:not(.dragging) {
         background: color-mix(in srgb, var(--color3) 60%, transparent);
         /* color: var(--highlight); */
       }
@@ -3037,6 +3039,7 @@
           <div class="note-context-badge-buttons"></div>
         </div>
         <div class="hr"></div>
+        <button data-action="togglePin">Pin Note</button>
         <button data-action="copyText">Copy Text</button>
         <button data-action="duplicate">Duplicate</button>
         <button data-action="convertToUntitled">Convert to Untitled</button>

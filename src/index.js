@@ -4,8 +4,39 @@ import { INotificationService } from "monaco-editor/esm/vs/platform/notification
 import { IQuickInputService } from "monaco-editor/esm/vs/platform/quickinput/common/quickInput.js";
 import "monaco-editor/esm/vs/base/browser/ui/codicons/codicon/codicon.css";
 import { CustomSelect } from "./custom-select.js";
+import { createDeviceShareController } from "./device-share.js";
+import {
+  registerMonacoFormattingActions as registerMonacoFormattingEditorActions,
+  registerMonacoQuickInputActions as registerMonacoQuickInputEditorActions,
+} from "./monaco-actions.js";
+import {
+  updateNoteBadgeContextMenuLabelsUi,
+  updateNoteBadgeToggleButtonUi,
+  updateSettingsTooltipsUi,
+  updateStaticUiText,
+} from "./i18next.js";
+import { createGlobalSearchController } from "./search.js";
+import {
+  createNoteBadgeElement,
+  createNotesPanelController,
+  sortNotesForPanel,
+  updateNoteBadgeElement,
+} from "./notes.js";
+import {
+  NOTE_BADGE_ALL_FILTER,
+  NOTE_BADGE_EDGES,
+  clampNumber,
+  formatNoteUpdatedAt,
+  getPathBasename,
+  getUiLanguageTag,
+  isDefaultThemeName,
+  isPointInRect,
+  normalizeFileReadResult,
+  normalizeNoteBadgeMask,
+  normalizeTextForModelComparison,
+  truncateNoteTitle,
+} from "./app-utils.js";
 import i18next from "i18next";
-import QRCode from "qrcode";
 
 const toolbar = document.getElementById("toolbar");
 const tabsContainer = document.getElementById("tabs-container");
@@ -82,10 +113,6 @@ const tabSizeDecrease = document.getElementById("tab-size-decrease");
 const tabSizeIncrease = document.getElementById("tab-size-increase");
 let tabSize = Math.min(10, Math.max(1, parseInt(localStorage.getItem("tabSize")) || 4));
 
-function clampNumber(value, min, max) {
-  return Math.min(max, Math.max(min, value));
-}
-
 // status bar
 const statusLeft = document.getElementById("status-left");
 const statusPathEl = statusLeft?.querySelector(".status-path");
@@ -116,23 +143,7 @@ const autosaveRestoreNo = document.getElementById("autosave-restore-no");
 const about = document.getElementById("about");
 const fileDropBox = document.getElementById("file-drop-background");
 const fileDrop = document.getElementById("file-drop");
-const deviceShareBtn = document.getElementById("device-share-btn");
-const deviceShareTitle = document.getElementById("device-share-title");
-const deviceShareModal = document.getElementById("device-share-modal");
-const deviceShareClose = document.getElementById("device-share-close");
-const deviceShareQr = document.getElementById("device-share-qr");
-const deviceShareQrWrap = document.getElementById("device-share-qr-wrap");
-const deviceShareUrlRow = document.getElementById("device-share-url-row");
-const deviceShareUrl = document.getElementById("device-share-url");
-const deviceShareCopy = document.getElementById("device-share-copy");
-const deviceShareRegenerate = document.getElementById("device-share-regenerate");
-const deviceShareDescription = document.getElementById("device-share-description");
-const deviceShareError = document.getElementById("device-share-error");
-let activeDeviceShareUrl = null;
-let deviceShareExpiresAt = null;
-let deviceShareCountdownTimer = null;
-let deviceShareStatusSyncing = false;
-let deviceShareCopyResetTimer = null;
+let deviceShareController = null;
 
 // tab dragging
 let lastPreviewX = null;
@@ -165,7 +176,6 @@ let zoomLevel = 1;
 let currentTab = { content: "", selection: null, fontSize: persistentFontSize };
 let tabData = [];
 let recentlyClosedFiles = [];
-const DEFAULT_THEME_NAMES = ["dark", "onyx", "ash"];
 let currentTheme = localStorage.getItem("theme") || "dark";
 let currentFilePath = `${i18next.t("file.untitled")}.txt`;
 const defaultSettings = {
@@ -195,7 +205,6 @@ const WRAP_MEASURE_OPTIONS = {
 const AUTOSAVE_DEBOUNCE_MS = 3000;
 const AUTOSAVE_FORCE_MS = 30000;
 const AUTOSAVE_MAX_ITEM_BYTES = 5 * 1024 * 1024;
-const DEVICE_SHARE_DIRECT_URL_MAX_BYTES = 1500;
 const autosaveTimers = new Map();
 let isRestoringAutosaveDrafts = false;
 let transientStatusMessageId = null;
@@ -220,59 +229,9 @@ let dragCounter = 0;
 
 // store right clicked tab
 let rightClickedTab = null;
-let rightClickedNoteId = null;
 let notesIndexCache = [];
-const NOTE_BADGE_STORAGE_KEY = "monapadNoteBadgesVisible";
-const NOTE_BADGE_FILTER_STORAGE_KEY = "monapadNoteBadgeFilter";
-const NOTE_BADGE_EDGES = [
-  { key: "top", bit: 1 },
-  { key: "right", bit: 2 },
-  { key: "bottom", bit: 4 },
-  { key: "left", bit: 8 },
-];
-const NOTE_BADGE_ALL_FILTER = "all";
-let areNoteBadgesVisible = localStorage.getItem(NOTE_BADGE_STORAGE_KEY) !== "false";
-let noteBadgeFilter = localStorage.getItem(NOTE_BADGE_FILTER_STORAGE_KEY) || NOTE_BADGE_ALL_FILTER;
-const GLOBAL_SEARCH_DEBOUNCE_MS = 120;
-const GLOBAL_SEARCH_MAX_MATCHES = 10000;
-const GLOBAL_SEARCH_WORD_SEPARATORS = "`~!@#$%^&*()-=+[{]}\\|;:'\",.<>/?";
-const GLOBAL_SEARCH_PREVIEW_MAX = 1000;
-const GLOBAL_SEARCH_HOVER_MAX = 100;
-const GLOBAL_SEARCH_BEFORE_MAX_RATIO = 0.7;
-const GLOBAL_SEARCH_MATCH_MIN_RATIO = 0.3;
-const GLOBAL_SEARCH_HISTORY_LIMIT = 100;
-const GLOBAL_SEARCH_INPUT_MIN_HEIGHT = 26;
-const GLOBAL_SEARCH_INPUT_MAX_HEIGHT = 118;
-const GLOBAL_SEARCH_IDLE_PREVIEW_BATCH = 16;
-let globalSearchTimer = null;
-let globalSearchSeq = 0;
-let globalSearchPreviewFrame = null;
-let globalSearchPreviewIdleHandle = null;
-let globalSearchFilePathFrame = null;
-let globalSearchMeasureContext = null;
-let globalSearchPreviewObserver = null;
-let globalSearchVisiblePreviewRows = new Set();
-let globalSearchIdlePreviewRows = new Set();
-let globalSearchHistory = [];
-let globalSearchHistoryIndex = -1;
-let globalSearchHistoryDraft = "";
-let openTabSearchIdSeq = 0;
-let globalSearchResultsSignature = "";
-const globalSearchPreviewDisplayCache = new Map();
-let globalSearchState = {
-  query: "",
-  matchCase: false,
-  wholeWord: false,
-  regex: false,
-  results: [],
-  totalMatches: 0,
-  totalItems: 0,
-  limitHit: false,
-  allCollapsed: false,
-  collapsedTargetIds: new Set(),
-  dismissedMatches: new Set(),
-};
-const noteContentCache = new Map();
+let globalSearchController = null;
+let notesController = null;
 
 // watch only active tab, remove old watcher when tab switched (switchTab)
 let currentWatchedFilePath = null;
@@ -536,17 +495,6 @@ const initialMonacoNlsLang = globalThis.__MONAPAD_INITIAL_MONACO_NLS_LANG__ || s
 const monacoNlsRestartWarning = document.getElementById("monacoNlsRestartWarning");
 langSwitcher.value = savedLang;
 
-function getUiLanguageTag(lang = "en") {
-  return (
-    {
-      en: "en-US",
-      ja: "ja-JP",
-      zh: "zh-CN",
-      de: "de-DE",
-    }[lang] || lang
-  );
-}
-
 function applyUiLanguage(lang) {
   document.documentElement.lang = getUiLanguageTag(lang);
 }
@@ -588,207 +536,71 @@ i18next
     registerMonacoQuickInputActions();
   });
 
+function getI18nUiContext() {
+  return {
+    t: i18next.t.bind(i18next),
+    refs: {
+      autosaveRestoreMessage,
+      autosaveRestoreNo,
+      autosaveRestoreYes,
+      deviceShareController,
+      globalSearchHeading,
+      globalSearchInput,
+      monacoNlsRestartWarning,
+      noteContextMenu,
+      notesAddButton,
+      notesBadgeFilterBar,
+      notesBadgeToggleButton,
+      notesListHeading,
+      notesListRefreshButton,
+      sidePanelClose,
+      tabContextMenu,
+    },
+    state: {
+      areNoteBadgesVisible: notesController?.areNoteBadgesVisible() ?? true,
+      noteBadgeEdges: NOTE_BADGE_EDGES,
+      rightClickedTab,
+      selectedFontFamily,
+    },
+    callbacks: {
+      ensureNoteBadgeContextButtons,
+      updateGlobalSearchLabels,
+      updateGlobalSearchPlaceholder,
+      updateGlobalSearchResultHeaderLabels,
+      updateMainMenuState,
+      updateNewTabShortcutLabels,
+      updateTabContextMenuState,
+    },
+  };
+}
+
 function updateMenuLabels() {
-  // menu
-  document.querySelector("#newTabBtn .label").textContent = i18next.t("menu.new");
-  document.querySelector("#newNoteBtn .label").textContent = i18next.t("menu.newNote");
-  document.querySelector("#newWindowBtn .label").textContent = i18next.t("menu.newWindow");
-  document.querySelector("#openFileBtn .label").textContent = i18next.t("menu.open");
-  document.querySelector("#openRecent .btn-text").textContent = i18next.t("menu.openRecent");
-  document.querySelector("#saveFileBtn .label").textContent = i18next.t("menu.save");
-  document.querySelector("#saveAsFileBtn .label").textContent = i18next.t("menu.saveAs");
-  document.querySelector("#saveAsNoteBtn .label").textContent = i18next.t("menu.saveAsNote");
-  document.querySelector("#triggerFindBtn .label").textContent = i18next.t("menu.find");
-  document.querySelector("#triggerReplaceBtn .label").textContent = i18next.t("menu.replace");
-  document.querySelector("#triggerGoToLineBtn .label").textContent = i18next.t("menu.goToLine");
-  document.querySelector("#triggerGoToSymbolBtn .label").textContent = i18next.t("menu.goToSymbol");
-  document.querySelector("#triggerQuickOpenBtn .label").textContent = i18next.t("menu.quickOpen");
-  document.querySelector("#triggerShowCommandsBtn .label").textContent = i18next.t("menu.showCommands");
-  // document.getElementById("print-button").textContent = i18next.t("menu.print");
-  document.querySelector("#changeTheme .btn-text").textContent = i18next.t("menu.theme");
-  document.querySelector("#settingsBtn .label").textContent = i18next.t("menu.settings");
-  document.querySelector("#toggleSidePanelBtn .label").textContent = i18next.t("menu.sidePanel");
-  document.getElementById("aboutBtn").textContent = i18next.t("menu.about");
-  document.getElementById("aboutBtn").textContent = i18next.t("menu.about");
-  document.getElementById("aboutBtn").textContent = i18next.t("menu.about");
-  document.querySelector('button[data-theme="onyx"] span').textContent = i18next.t("menu.onyx");
-  document.querySelector('button[data-theme="dark"] span').textContent = i18next.t("menu.dark");
-  document.querySelector('button[data-theme="ash"] span').textContent = i18next.t("menu.ash");
-  updateMainMenuState();
-
-  // message
-  document.getElementById("file-saved").textContent = i18next.t("message.saved");
-  document.getElementById("file-opened").textContent = i18next.t("message.fileAlreadyOpened");
-  document.getElementById("file-updated").textContent = i18next.t("message.fileUpdated");
-  document.getElementById("file-modified").textContent = i18next.t("message.fileModified");
-  document.getElementById("autosave-restored").textContent = i18next.t("message.autosaveRestored");
-
-  // device share modal
-  if (deviceShareBtn) deviceShareBtn.title = i18next.t("deviceShare.tooltip");
-  if (deviceShareTitle) deviceShareTitle.textContent = i18next.t("deviceShare.title");
-  if (deviceShareCopy) deviceShareCopy.textContent = i18next.t("deviceShare.copyLink");
-  if (deviceShareClose) deviceShareClose.textContent = i18next.t("deviceShare.close");
-  if (deviceShareDescription) deviceShareDescription.textContent = i18next.t("deviceShare.description");
-  updateDeviceShareRegenerateButton();
-
-  // editor context menu
-  document.querySelector('button[data-action="cut"] .label').textContent = i18next.t("editorMenu.cut");
-  document.querySelector('button[data-action="copy"] .label').textContent = i18next.t("editorMenu.copy");
-  document.querySelector('button[data-action="paste"] .label').textContent = i18next.t("editorMenu.paste");
-  document.querySelector('button[data-action="undo"] .label').textContent = i18next.t("editorMenu.undo");
-  document.querySelector('button[data-action="redo"] .label').textContent = i18next.t("editorMenu.redo");
-  document.querySelector('button[data-action="selectAll"] .label').textContent = i18next.t("editorMenu.selectAll");
-  document.querySelector('button[data-action="wordWrap"] span').textContent = i18next.t("editorMenu.wordWrap");
-  document.querySelector('button[data-action="toggleMarkdown"] span').textContent =
-    i18next.t("editorMenu.markdownMode");
-
-  // tab context menu
-  document.querySelector('button[data-action="close"] .label').textContent = i18next.t("tabMenu.close");
-  document.querySelector('button[data-action="closeOthers"] .label').textContent = i18next.t("tabMenu.closeOthers");
-  document.querySelector('button[data-action="closeToRight"] .label').textContent = i18next.t("tabMenu.closeToRight");
-  document.querySelector('button[data-action="closeSaved"] .label').textContent = i18next.t("tabMenu.closeSaved");
-  document.querySelector('button[data-action="copyPath"] .label').textContent = i18next.t("tabMenu.copyPath");
-  document.querySelector('button[data-action="openPath"] .label').textContent = i18next.t("tabMenu.openPath");
-  document.querySelector('button[data-action="reopenClosedTab"] .label').textContent =
-    i18next.t("tabMenu.reopenClosedTab");
-  document.querySelector('button[data-action="openInNewWindow"] .label').textContent =
-    i18next.t("tabMenu.openInNewWindow");
-  document.querySelector('button[data-action="keepOpen"] .label').textContent = i18next.t("tabMenu.keepOpen");
-  updateTabContextMenuState(tabContextMenu, rightClickedTab);
-
-  // side panel
-  const globalSearch = document.getElementById("global-search");
-  if (globalSearch) updateGlobalSearchPlaceholder(document.activeElement === globalSearchInput);
-  updateGlobalSearchLabels();
-  updateGlobalSearchResultHeaderLabels();
-  if (notesListHeading) notesListHeading.textContent = i18next.t("sidePanel.notesSection");
-  if (globalSearchHeading) {
-    const label = i18next.t("sidePanel.searchSection");
-    globalSearchHeading.textContent = label;
-    globalSearchHeading.title = `${label} (Ctrl+Shift+F)`;
-  }
-  if (notesAddButton) {
-    const newNoteLabel = i18next.t("sidePanel.newNote");
-    notesAddButton.setAttribute("aria-label", newNoteLabel);
-    notesAddButton.title = newNoteLabel;
-  }
-  if (notesListRefreshButton) {
-    const refreshLabel = i18next.t("sidePanel.refresh");
-    notesListRefreshButton.setAttribute("aria-label", refreshLabel);
-    notesListRefreshButton.title = refreshLabel;
-  }
-  updateNoteBadgeToggleButton();
-  updateNoteBadgeContextMenuLabels();
-  if (sidePanelClose) sidePanelClose.setAttribute("aria-label", i18next.t("sidePanel.closePanel"));
-  document.querySelector('#note-context-menu button[data-action="copyText"]').textContent =
-    i18next.t("sidePanel.copyText");
-  document.querySelector('#note-context-menu button[data-action="duplicate"]').textContent =
-    i18next.t("sidePanel.duplicate");
-  document.querySelector('#note-context-menu button[data-action="convertToUntitled"]').textContent =
-    i18next.t("sidePanel.convertToUntitled");
-  document.querySelector('#note-context-menu button[data-action="convertToFile"]').textContent =
-    i18next.t("sidePanel.convertToFile");
-  document.querySelector('#note-context-menu button[data-action="delete"]').textContent = i18next.t("sidePanel.delete");
-
-  // settings
-  document.querySelector("#settings-menu .font .h1").textContent = i18next.t("settings.font");
-  document.querySelector("#settings-menu .size").textContent = i18next.t("settings.size");
-  document.querySelector("#settingsLayout .h1").textContent = i18next.t("settings.layout");
-  document.querySelector("#toggleStatusBar span").textContent = i18next.t("settings.statusBar");
-  document.querySelector("#toggleKuromoji span").textContent = i18next.t("settings.kuromoji");
-  document.querySelector("#toggleKuromoji").title = i18next.t("settings.kuromojiTooltip");
-  document.querySelector("#default-new-tab-note span").textContent = i18next.t("settings.defaultNewTabNote");
-  document.querySelector("#line-highlight span").textContent = i18next.t("settings.highlightLine");
-  document.querySelector("#line-num span").textContent = i18next.t("settings.lineNumbers");
-  document.querySelector("#minimap span").textContent = i18next.t("settings.displayMinimap");
-  document.querySelector("#toggleSyntaxHighlight span").textContent = i18next.t("settings.syntaxHighlight");
-  document.querySelector("#toggleFolding span").textContent = i18next.t("settings.folding");
-  document.querySelector("#settings-menu .tabSize").textContent = i18next.t("settings.tabSize");
-  document.getElementById("settingsLanguage").textContent = i18next.t("settings.language");
-  document.getElementById("langDescription").innerHTML = i18next.t("settings.langDescription");
-  if (monacoNlsRestartWarning) {
-    monacoNlsRestartWarning.textContent = i18next.t("settings.monacoRestartWarning");
-  }
-  document.getElementById("settingsCustomTheme").textContent = i18next.t("settings.customTheme");
-  document.getElementById("openThemeFolder").textContent = i18next.t("settings.openThemeFolder");
-  document.getElementById("customThemeDescription").innerHTML = i18next.t("settings.customThemeDescription");
-  document.querySelector(".font .reset").title = i18next.t("settings.resetTooltip");
-  document.querySelector("#settingsLayout .reset").title = i18next.t("settings.resetTooltip");
-  updateSettingsTooltips();
-  updateNewTabShortcutLabels();
-
-  // modal
-  document.querySelector("#file-drop p").textContent = i18next.t("modal.fileDrop");
-  document.getElementById("confirm-save-yes").innerHTML = i18next.t("modal.confirmSave");
-  document.getElementById("confirm-save-no").innerHTML = i18next.t("modal.dontSave");
-  document.getElementById("confirm-save-cancel").innerHTML = i18next.t("modal.cancel");
-  document.querySelector("#confirm-save-window p").textContent = i18next.t("modal.confirmSaveWindow");
-  document.getElementById("confirm-save-all").innerHTML = i18next.t("modal.saveAll");
-  document.getElementById("confirm-discard-all").innerHTML = i18next.t("modal.discardAll");
-  document.getElementById("confirm-cancel-all").innerHTML = i18next.t("modal.cancel");
-  if (autosaveRestoreMessage) autosaveRestoreMessage.textContent = i18next.t("autosave.restoreMessage");
-  if (autosaveRestoreYes) autosaveRestoreYes.textContent = i18next.t("autosave.restore");
-  if (autosaveRestoreNo) autosaveRestoreNo.textContent = i18next.t("autosave.discard");
-  // document.getElementById("description").textContent = i18next.t("modal.description");
-  document.getElementById("discordServer").textContent = i18next.t("modal.discordServer");
-  document.getElementById("website").textContent = i18next.t("modal.website");
-  document.getElementById("creator").textContent = i18next.t("modal.creator");
-  document.getElementById("disclaimer-title").textContent = i18next.t("modal.disclaimer");
-}
-
-function setTitle(selector, title) {
-  const el = document.querySelector(selector);
-  if (el) el.title = title || "";
-}
-
-function removeTitle(selector) {
-  const el = document.querySelector(selector);
-  if (el) el.removeAttribute("title");
+  updateStaticUiText(getI18nUiContext());
 }
 
 function updateSettingsTooltips() {
-  removeTitle("#settingsLayout .h1");
-  setTitle("#default-new-tab-note", i18next.t("settings.defaultNewTabNote"));
-  setTitle("#line-highlight", i18next.t("settings.highlightLine"));
-  setTitle("#line-num", i18next.t("settings.lineNumbers"));
-  setTitle("#toggleFolding", i18next.t("settings.folding"));
-  setTitle("#minimap", i18next.t("settings.displayMinimap"));
-  setTitle("#toggleSyntaxHighlight", i18next.t("settings.syntaxHighlight"));
-  setTitle("#toggleStatusBar", i18next.t("settings.statusBar"));
-  setTitle("#toggleKuromoji", i18next.t("settings.kuromoji"));
-  setTitle("#settings-menu .tabSize", i18next.t("settings.tabSize"));
-  removeTitle("#settings-menu .font .h1");
-  setTitle(".font-select-row .custom-select__trigger", selectedFontFamily);
-  setTitle(".font-select-row .custom-select__input", selectedFontFamily);
-  setTitle("#settings-menu .size", i18next.t("settings.size"));
-  removeTitle("#settingsCustomTheme");
-  setTitle("#openThemeFolder", i18next.t("settings.openThemeFolder"));
-  removeTitle("#settingsLanguage");
+  updateSettingsTooltipsUi({
+    t: i18next.t.bind(i18next),
+    selectedFontFamily,
+  });
 }
 
 function updateNoteBadgeContextMenuLabels() {
-  ensureNoteBadgeContextButtons();
-  const badgeButtonLabel = noteContextMenu?.querySelector(".note-context-badge-row .label");
-  if (badgeButtonLabel) badgeButtonLabel.textContent = i18next.t("sidePanel.noteMark");
-  NOTE_BADGE_EDGES.forEach((edge) => {
-    const button = noteContextMenu?.querySelector(`.note-badge-edge-button[data-edge="${edge.key}"]`);
-    if (!button) return;
-    const label = i18next.t(`sidePanel.noteMark${edge.key[0].toUpperCase()}${edge.key.slice(1)}`);
-    button.title = label;
-    button.setAttribute("aria-label", label);
+  updateNoteBadgeContextMenuLabelsUi({
+    t: i18next.t.bind(i18next),
+    noteContextMenu,
+    noteBadgeEdges: NOTE_BADGE_EDGES,
+    ensureNoteBadgeContextButtons,
   });
 }
 
 function updateNoteBadgeToggleButton() {
-  if (notesBadgeFilterBar) notesBadgeFilterBar.setAttribute("aria-label", i18next.t("sidePanel.noteMark"));
-  if (!notesBadgeToggleButton) return;
-  const label = i18next.t(areNoteBadgesVisible ? "sidePanel.hideNoteMarks" : "sidePanel.showNoteMarks");
-  notesBadgeToggleButton.setAttribute("aria-label", label);
-  notesBadgeToggleButton.title = label;
-  notesBadgeToggleButton.classList.toggle("active", areNoteBadgesVisible);
-  notesBadgeToggleButton.classList.toggle("codicon-filter", !areNoteBadgesVisible);
-  notesBadgeToggleButton.classList.toggle("codicon-filter-filled", areNoteBadgesVisible);
-  document.body.classList.toggle("note-badges-visible", areNoteBadgesVisible);
+  updateNoteBadgeToggleButtonUi({
+    t: i18next.t.bind(i18next),
+    notesBadgeFilterBar,
+    notesBadgeToggleButton,
+    areNoteBadgesVisible: notesController?.areNoteBadgesVisible() ?? true,
+  });
 }
 
 function updateMainMenuState() {
@@ -1575,151 +1387,15 @@ let setKuromojiEnabled = () => {};
   });
 })();
 
-let monacoFormattingActionDisposables = [];
-
-function disposeMonacoActions(disposables) {
-  disposables.forEach((disposable) => disposable?.dispose?.());
-  disposables.length = 0;
-}
-
-// subtext / tab / heading shortcuts
 function registerMonacoFormattingActions() {
-  disposeMonacoActions(monacoFormattingActionDisposables);
-
-  monacoFormattingActionDisposables.push(
-    monacoEditor.addAction({
-      id: "toggle-subtext",
-      label: i18next.t("monaco.actions.toggleSubtext"),
-      keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.Slash],
-      precondition: null,
-      keybindingContext: null,
-      run: function (ed) {
-        const model = ed.getModel();
-        const selections = ed.getSelections();
-
-        ed.pushUndoStop();
-        ed.executeEdits(
-          "toggle-subtext",
-          selections
-            .map((selection) => {
-              const startLine = selection.startLineNumber;
-              const endLine = selection.endLineNumber;
-              const edits = [];
-
-              for (let line = startLine; line <= endLine; line++) {
-                const lineContent = model.getLineContent(line);
-                if (/^\s*-# /.test(lineContent)) {
-                  // remove subtext
-                  const newText = lineContent.replace(/^(\s*)-# /, "$1");
-                  edits.push({
-                    range: new monaco.Range(line, 1, line, lineContent.length + 1),
-                    text: newText,
-                  });
-                } else {
-                  // add subtext
-                  edits.push({
-                    range: new monaco.Range(line, 1, line, lineContent.length + 1),
-                    text: `-# ${lineContent}`,
-                  });
-                }
-              }
-
-              return edits;
-            })
-            .flat(),
-        );
-        ed.pushUndoStop();
-      },
-    }),
-  );
-
-  monacoFormattingActionDisposables.push(
-    monacoEditor.addAction({
-      id: "monapad.keepOpenNotePreview",
-      label: i18next.t("monaco.actions.keepOpen"),
-      keybindings: [monaco.KeyMod.chord(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyK, monaco.KeyCode.Enter)],
-      precondition: null,
-      keybindingContext: null,
-      run: function () {
-        keepOpenNoteTab(currentTab);
-      },
-    }),
-  );
-
-  monacoFormattingActionDisposables.push(
-    monacoEditor.addAction({
-      id: "monapad.toggleTabPin",
-      label: i18next.t("monaco.actions.toggleTabPin"),
-      keybindings: [
-        monaco.KeyMod.chord(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyK, monaco.KeyMod.Shift | monaco.KeyCode.Enter),
-      ],
-      precondition: null,
-      keybindingContext: null,
-      run: function () {
-        toggleTabPinned(currentTab);
-      },
-    }),
-  );
-
-  [1, 2, 3].forEach((level) => {
-    monacoFormattingActionDisposables.push(monacoEditor.addAction(createToggleHeadingAction(level)));
+  registerMonacoFormattingEditorActions({
+    monaco,
+    monacoEditor,
+    t: i18next.t.bind(i18next),
+    getCurrentTab: () => currentTab,
+    keepOpenNoteTab,
+    toggleTabPinned,
   });
-}
-
-// heading shortcut
-function createToggleHeadingAction(level) {
-  const id = `toggle-h${level}`;
-  const label = i18next.t("monaco.actions.toggleHeading", { level });
-  const keyCode = monaco.KeyCode.Digit1 + (level - 1);
-  const prefix = "#".repeat(level) + " ";
-
-  return {
-    id,
-    label,
-    keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | keyCode],
-    precondition: null,
-    keybindingContext: null,
-    run: function (ed) {
-      const model = ed.getModel();
-      const selections = ed.getSelections();
-
-      ed.pushUndoStop();
-      ed.executeEdits(
-        id,
-        selections
-          .map((selection) => {
-            const startLine = selection.startLineNumber;
-            const endLine = selection.endLineNumber;
-            const edits = [];
-
-            for (let line = startLine; line <= endLine; line++) {
-              const lineContent = model.getLineContent(line);
-              const trimmed = lineContent.trimStart();
-              const leadingSpaces = lineContent.slice(0, lineContent.length - trimmed.length);
-
-              const isCurrentHeading = new RegExp(`^${prefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`).test(trimmed);
-
-              let newText;
-              if (isCurrentHeading) {
-                newText = trimmed.replace(new RegExp(`^${prefix}`), "");
-              } else {
-                newText = trimmed.replace(/^#{1,6}\s*/, "");
-                newText = prefix + newText;
-              }
-
-              edits.push({
-                range: new monaco.Range(line, 1, line, lineContent.length + 1),
-                text: leadingSpaces + newText,
-              });
-            }
-
-            return edits;
-          })
-          .flat(),
-      );
-      ed.pushUndoStop();
-    },
-  };
 }
 registerMonacoFormattingActions();
 
@@ -1846,61 +1522,27 @@ function getCurrentEditorText() {
   return currentTab.model?.getValue() ?? currentTab.content ?? "";
 }
 
-function normalizeTextForModelComparison(text) {
-  return (typeof text === "string" ? text : "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
-}
-
-function isDefaultThemeName(theme) {
-  return DEFAULT_THEME_NAMES.includes(theme);
-}
-
-function normalizeNoteBadgeMask(mask) {
-  const value = Number(mask);
-  return Number.isInteger(value) ? value & 15 : 0;
-}
-
-function getNoteBadgeClass(mask) {
-  const value = normalizeNoteBadgeMask(mask);
-  return [
-    value & 1 ? "has-top" : "",
-    value & 2 ? "has-right" : "",
-    value & 4 ? "has-bottom" : "",
-    value & 8 ? "has-left" : "",
-  ]
-    .filter(Boolean)
-    .join(" ");
-}
-
-function createNoteBadgeElement(mask, className = "") {
-  const badge = document.createElement("span");
-  badge.className = ["note-badge", getNoteBadgeClass(mask), className].filter(Boolean).join(" ");
-  badge.dataset.badgeMask = String(normalizeNoteBadgeMask(mask));
-  for (const edge of NOTE_BADGE_EDGES) {
-    const edgeEl = document.createElement("span");
-    edgeEl.className = `note-badge-edge ${edge.key}`;
-    badge.appendChild(edgeEl);
-  }
-  return badge;
-}
+deviceShareController = createDeviceShareController({
+  i18next,
+  electronAPI: window.electronAPI,
+  getCSSVar,
+  getCurrentEditorText,
+  getSharePayload: () => ({
+    title: currentTab?.name || "Monapad Note",
+    text: getCurrentEditorText(),
+  }),
+  focusEditor: () => monacoEditor?.focus(),
+  setModalDisplayed: (visible) => {
+    isModalDisplayed = visible;
+  },
+});
 
 function ensureNoteBadgeContextButtons() {
-  const container = noteContextMenu?.querySelector(".note-context-badge-buttons");
-  if (!container || container.dataset.initialized === "true") return;
-  const fragment = document.createDocumentFragment();
-  for (const edge of NOTE_BADGE_EDGES) {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "note-badge-edge-button";
-    button.dataset.edge = edge.key;
-    button.appendChild(createNoteBadgeElement(edge.bit, "note-context-badge"));
-    fragment.appendChild(button);
-  }
-  container.appendChild(fragment);
-  container.dataset.initialized = "true";
+  notesController?.ensureNoteBadgeContextButtons();
 }
 
 function getCurrentNoteCreationBadgeMask() {
-  return noteBadgeFilter === NOTE_BADGE_ALL_FILTER ? 0 : normalizeNoteBadgeMask(noteBadgeFilter);
+  return notesController?.getCurrentNoteCreationBadgeMask() ?? 0;
 }
 
 function isNoteContentSaved(tab, content = null) {
@@ -1921,14 +1563,6 @@ function getTabAutosaveKey(tab) {
   if (tab.isNote) return tab.noteId ? `note:${tab.noteId}` : tab.draftId ? `pending-note:${tab.draftId}` : null;
   if (tab.path) return `file:${tab.path}`;
   return tab.draftId ? `draft:${tab.draftId}` : null;
-}
-
-const NOTE_TITLE_MAX_LENGTH = 100;
-
-function truncateNoteTitle(title) {
-  const value = String(title || "").trim();
-  if (value.length <= NOTE_TITLE_MAX_LENGTH) return value;
-  return `${value.slice(0, NOTE_TITLE_MAX_LENGTH)}...`;
 }
 
 function getDefaultNoteTitle() {
@@ -1960,15 +1594,6 @@ function getNoteTitleFromContent(content) {
   return truncateNoteTitle(firstTextLine || getDefaultNoteTitle());
 }
 
-function formatNoteUpdatedAt(updatedAt) {
-  if (!updatedAt) return "";
-  try {
-    return new Date(updatedAt).toLocaleString();
-  } catch {
-    return "";
-  }
-}
-
 function updateNoteTabTitle(tab, content = null) {
   if (!tab?.isNote) return;
   const title = truncateNoteTitle(getNoteTitleFromContent(content ?? tab.model?.getValue() ?? tab.content ?? ""));
@@ -1979,20 +1604,6 @@ function updateNoteTabTitle(tab, content = null) {
     nameSpan.textContent = title;
     nameSpan.title = title;
   }
-}
-
-function updateNoteBadgeElement(badge, mask) {
-  if (!badge) return;
-  const className = [
-    "note-badge",
-    getNoteBadgeClass(mask),
-    badge.classList.contains("tab-note-badge") ? "tab-note-badge" : "",
-    badge.classList.contains("note-list-badge") ? "note-list-badge" : "",
-  ]
-    .filter(Boolean)
-    .join(" ");
-  badge.className = className;
-  badge.dataset.badgeMask = String(normalizeNoteBadgeMask(mask));
 }
 
 function updateTabNoteBadge(tab) {
@@ -2038,27 +1649,6 @@ function acceptSelfSaveFileChange(tab, content, fileInfo = null) {
   tab.element.querySelector(".close")?.classList.remove("show-unsaved");
   reloadButton(tab, null, "remove");
   if (tab === currentTab) updateStatusBar();
-}
-
-function normalizeFileReadResult(result) {
-  if (result === null || result === undefined) return null;
-  if (typeof result === "string") {
-    return {
-      content: result,
-      encoding: "UTF-8",
-      isUtf8Valid: true,
-      hasBom: false,
-    };
-  }
-  if (typeof result === "object" && typeof result.content === "string") {
-    return {
-      content: result.content,
-      encoding: result.encoding || (result.isUtf8Valid === false ? "Invalid UTF-8" : "UTF-8"),
-      isUtf8Valid: result.isUtf8Valid !== false,
-      hasBom: Boolean(result.hasBom),
-    };
-  }
-  return null;
 }
 
 async function readFileWithEncodingInfo(filePath) {
@@ -2203,16 +1793,6 @@ async function deleteNoteTabStorage(tab) {
   } catch (error) {
     console.warn("Failed to delete empty note:", error);
   }
-}
-
-function sortNotesForPanel(notes = []) {
-  return [...notes].sort((a, b) => {
-    if (Boolean(a.pinned) !== Boolean(b.pinned)) return a.pinned ? -1 : 1;
-    const aOrder = Number.isFinite(a.order) ? a.order : Number.MAX_SAFE_INTEGER;
-    const bOrder = Number.isFinite(b.order) ? b.order : Number.MAX_SAFE_INTEGER;
-    if (aOrder !== bOrder) return aOrder - bOrder;
-    return (a.createdAt || 0) - (b.createdAt || 0);
-  });
 }
 
 function getReusableEmptyTab({ includeNotes = false } = {}) {
@@ -2822,10 +2402,7 @@ async function restorePinnedTabs() {
 }
 
 function updateDeviceShareButtonState() {
-  if (!deviceShareBtn) return;
-
-  const hasMeaningfulText = getCurrentEditorText().trim().length > 0;
-  deviceShareBtn.disabled = !hasMeaningfulText;
+  deviceShareController?.updateButtonState();
 }
 
 function updateCurrentTabStatusBar() {
@@ -3359,85 +2936,63 @@ monacoEditor.onDidChangeCursorSelection(() => {
 });
 
 // call Find from menu
-window.triggerFind = function () {
+function triggerFind() {
   monacoEditor.getAction("actions.find").run();
-};
+}
+window.triggerFind = triggerFind;
 document.getElementById("triggerFindBtn").addEventListener("click", triggerFind);
 
 // call Replace from menu
-window.triggerReplace = function () {
+function triggerReplace() {
   monacoEditor.getAction("editor.action.startFindReplaceAction").run();
-};
+}
+window.triggerReplace = triggerReplace;
 document.getElementById("triggerReplaceBtn").addEventListener("click", triggerReplace);
 
 // call Go to Line from menu
-window.triggerGoToLine = function () {
+function triggerGoToLine() {
   monacoEditor?.focus();
   monacoEditor.getAction("editor.action.gotoLine").run();
-};
+}
+window.triggerGoToLine = triggerGoToLine;
 document.getElementById("triggerGoToLineBtn").addEventListener("click", triggerGoToLine);
 
 // call Go to Symbol from menu
-window.triggerGoToSymbol = function () {
+function triggerGoToSymbol() {
   monacoEditor?.focus();
   monacoEditor.getAction("editor.action.quickOutline").run();
-};
+}
+window.triggerGoToSymbol = triggerGoToSymbol;
 document.getElementById("triggerGoToSymbolBtn").addEventListener("click", triggerGoToSymbol);
 
 // call Quick Open from menu
-window.triggerQuickOpen = function () {
+function triggerQuickOpen() {
   openQuickOpenPicker();
-};
+}
+window.triggerQuickOpen = triggerQuickOpen;
 document.getElementById("triggerQuickOpenBtn").addEventListener("click", triggerQuickOpen);
 
 // call Command Palette from menu
-window.triggerShowCommands = function () {
+function triggerShowCommands() {
   monacoEditor?.focus();
   monacoEditor.trigger("keyboard", "editor.action.quickCommand", {});
-};
+}
+window.triggerShowCommands = triggerShowCommands;
 document.getElementById("triggerShowCommandsBtn").addEventListener("click", triggerShowCommands);
 
-let monacoQuickInputActionDisposables = [];
-
 function registerMonacoQuickInputActions() {
-  disposeMonacoActions(monacoQuickInputActionDisposables);
-
-  monacoQuickInputActionDisposables.push(
-    monacoEditor.addAction({
-      id: "monapad.quickOpen",
-      label: i18next.t("monaco.actions.quickOpen"),
-      alias: "Quick Open",
-      keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyP],
-      run: () => {
-        openQuickOpenPicker();
-      },
-    }),
-  );
-
-  monacoQuickInputActionDisposables.push(
-    monacoEditor.addAction({
-      id: "monapad.showCommands",
-      label: i18next.t("monaco.actions.showCommands"),
-      alias: "Command List",
-      keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyP],
-      run: () => {
-        triggerShowCommands();
-      },
-    }),
-  );
+  registerMonacoQuickInputEditorActions({
+    monaco,
+    monacoEditor,
+    t: i18next.t.bind(i18next),
+    openQuickOpenPicker,
+    triggerShowCommands,
+  });
 }
 
 registerMonacoQuickInputActions();
 
 let activeQuickOpenPicker = null;
-
-function getPathBasename(filePath) {
-  return (
-    String(filePath || "")
-      .split(/[/\\]/)
-      .pop() || String(filePath || "")
-  );
-}
 
 function getQuickOpenNoteTitle(note) {
   return truncateNoteTitle(note?.title || getDefaultNoteTitle());
@@ -3741,19 +3296,9 @@ notesListRefreshButton?.addEventListener("click", async () => {
   await refreshNotesListNow();
 });
 notesBadgeToggleButton?.addEventListener("click", () => {
-  areNoteBadgesVisible = !areNoteBadgesVisible;
-  localStorage.setItem(NOTE_BADGE_STORAGE_KEY, String(areNoteBadgesVisible));
+  notesController?.toggleBadgesVisible();
   updateNoteBadgeToggleButton();
 });
-notesBadgeFilterBar?.addEventListener(
-  "wheel",
-  (e) => {
-    if (!notesBadgeFilterBar || Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
-    notesBadgeFilterBar.scrollLeft += e.deltaY;
-    e.preventDefault();
-  },
-  { passive: false },
-);
 
 // menu button
 menuButton.onclick = toggleMainMenuFromButton;
@@ -3799,8 +3344,7 @@ document.addEventListener("mousedown", (e) => {
     customContextMenu.style.display = "none";
   }
   if (noteContextMenu && !noteContextMenu.contains(e.target)) {
-    noteContextMenu.style.display = "none";
-    rightClickedNoteId = null;
+    notesController?.closeContextMenu();
   }
   if (!tabContextMenu.contains(e.target)) {
     tabContextMenu.style.display = "none";
@@ -3827,8 +3371,7 @@ document.addEventListener("click", (e) => {
     rightClickedTab = null;
   }
   if (noteContextMenu?.contains(e.target) && button && !button.dataset.edge) {
-    noteContextMenu.style.display = "none";
-    rightClickedNoteId = null;
+    notesController?.closeContextMenu();
   }
 
   // themeMenu & menu (except for cetain buttons)
@@ -4122,246 +3665,6 @@ document.getElementById("aboutBtn").addEventListener("click", () => {
 });
 
 document.getElementById("about-close").addEventListener("click", closeAboutModal);
-
-function stopDeviceShareCountdown() {
-  if (deviceShareCountdownTimer) {
-    clearInterval(deviceShareCountdownTimer);
-    deviceShareCountdownTimer = null;
-  }
-}
-
-function formatRemainingTime(ms) {
-  const totalSeconds = Math.max(0, Math.ceil(ms / 1000));
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = String(totalSeconds % 60).padStart(2, "0");
-  return `${minutes}:${seconds}`;
-}
-
-function updateDeviceShareRegenerateButton() {
-  if (!deviceShareRegenerate) return;
-
-  if (!deviceShareExpiresAt && !activeDeviceShareUrl) {
-    deviceShareRegenerate.disabled = true;
-    deviceShareRegenerate.textContent = i18next.t("deviceShare.regenerate");
-    return;
-  }
-
-  const remainingMs = deviceShareExpiresAt ? deviceShareExpiresAt - Date.now() : 0;
-  if (remainingMs > 0) {
-    deviceShareRegenerate.disabled = true;
-    deviceShareRegenerate.textContent = `${i18next.t("deviceShare.regenerate")} (${formatRemainingTime(remainingMs)})`;
-    return;
-  }
-
-  stopDeviceShareCountdown();
-  deviceShareRegenerate.disabled = false;
-  deviceShareRegenerate.innerHTML = `${i18next.t("deviceShare.regenerate")} <span id="device-share-expired">(${i18next.t(
-    "deviceShare.expired",
-  )})</span>`;
-}
-
-async function syncDeviceShareStatus() {
-  if (!activeDeviceShareUrl || deviceShareStatusSyncing) return;
-
-  deviceShareStatusSyncing = true;
-  try {
-    const status = await window.electronAPI.getMobileShareStatus(activeDeviceShareUrl);
-    if (!status?.exists || status.expired) {
-      deviceShareExpiresAt = Date.now();
-      updateDeviceShareRegenerateButton();
-      return;
-    }
-    if (typeof status.expiresAt === "number" && status.expiresAt !== deviceShareExpiresAt) {
-      deviceShareExpiresAt = status.expiresAt;
-      updateDeviceShareRegenerateButton();
-    }
-  } finally {
-    deviceShareStatusSyncing = false;
-  }
-}
-
-function startDeviceShareCountdown(expiresAt) {
-  deviceShareExpiresAt = expiresAt || null;
-  stopDeviceShareCountdown();
-  updateDeviceShareRegenerateButton();
-  deviceShareCountdownTimer = setInterval(() => {
-    updateDeviceShareRegenerateButton();
-    syncDeviceShareStatus();
-  }, 1000);
-}
-
-function resetDeviceShareCopyButton() {
-  if (!deviceShareCopy) return;
-  clearTimeout(deviceShareCopyResetTimer);
-  deviceShareCopy.textContent = i18next.t("deviceShare.copyLink");
-}
-
-function setDeviceShareCopyButtonCopied() {
-  if (!deviceShareCopy) return;
-  clearTimeout(deviceShareCopyResetTimer);
-  deviceShareCopy.textContent = i18next.t("deviceShare.copied");
-  deviceShareCopyResetTimer = setTimeout(resetDeviceShareCopyButton, 1200);
-}
-
-function setDeviceShareLinkContentVisible(visible) {
-  if (deviceShareQrWrap) deviceShareQrWrap.style.display = visible ? "flex" : "none";
-  if (deviceShareUrlRow) deviceShareUrlRow.style.display = visible ? "flex" : "none";
-}
-
-function resetDeviceShareModal() {
-  deviceShareQr.removeAttribute("src");
-  deviceShareUrl.value = "";
-  deviceShareError.style.display = "none";
-  deviceShareError.textContent = "";
-  deviceShareDescription.textContent = i18next.t("deviceShare.description");
-  resetDeviceShareCopyButton();
-  stopDeviceShareCountdown();
-  deviceShareExpiresAt = null;
-  deviceShareRegenerate.disabled = true;
-  deviceShareRegenerate.textContent = i18next.t("deviceShare.regenerate");
-  setDeviceShareLinkContentVisible(true);
-}
-
-function getDeviceShareErrorMessage(result) {
-  if (result?.errorKey === "tooLarge") {
-    return i18next.t("deviceShare.tooLarge", { maxMb: result.maxMb || 2 });
-  }
-  return i18next.t("deviceShare.createError");
-}
-
-function getDirectShareUrl(text) {
-  const trimmed = (typeof text === "string" ? text : "").trim();
-  if (!trimmed || /\s/.test(trimmed)) return null;
-  if (new Blob([trimmed]).size > DEVICE_SHARE_DIRECT_URL_MAX_BYTES) return null;
-
-  try {
-    const url = new URL(trimmed);
-    if (url.protocol !== "http:" && url.protocol !== "https:") return null;
-    return url.href;
-  } catch {
-    return null;
-  }
-}
-
-async function closeDeviceShareModal() {
-  confirmBox.style.display = "none";
-  deviceShareModal.style.display = "none";
-  isModalDisplayed = false;
-  stopDeviceShareCountdown();
-  deviceShareExpiresAt = null;
-
-  if (activeDeviceShareUrl) {
-    await window.electronAPI.revokeMobileShare(activeDeviceShareUrl);
-    activeDeviceShareUrl = null;
-  }
-
-  monacoEditor?.focus();
-}
-
-async function createDeviceShareLink() {
-  if (!monacoEditor || !currentTab) return;
-
-  if (activeDeviceShareUrl) {
-    await window.electronAPI.revokeMobileShare(activeDeviceShareUrl);
-    activeDeviceShareUrl = null;
-  }
-
-  deviceShareDescription.textContent = i18next.t("deviceShare.preparing");
-  setDeviceShareLinkContentVisible(false);
-  deviceShareRegenerate.disabled = true;
-  deviceShareRegenerate.textContent = i18next.t("deviceShare.regenerate");
-  resetDeviceShareCopyButton();
-
-  const title = currentTab.name || "Monapad Note";
-  const text = monacoEditor.getModel() === currentTab.model ? monacoEditor.getValue() : currentTab.model.getValue();
-  const directUrl = getDirectShareUrl(text);
-
-  if (directUrl) {
-    activeDeviceShareUrl = null;
-    deviceShareUrl.value = directUrl;
-    deviceShareQr.src = await QRCode.toDataURL(directUrl, {
-      errorCorrectionLevel: "M",
-      margin: 1,
-      width: 220,
-      color: {
-        dark: getCSSVar("--editorText") || "#ffffff",
-        light: getCSSVar("--color2") || "#000000",
-      },
-    });
-    setDeviceShareLinkContentVisible(true);
-    stopDeviceShareCountdown();
-    deviceShareExpiresAt = null;
-    deviceShareDescription.textContent = i18next.t("deviceShare.directLinkDescription");
-    deviceShareRegenerate.disabled = true;
-    deviceShareRegenerate.textContent = i18next.t("deviceShare.regenerate");
-    return;
-  }
-
-  const result = await window.electronAPI.createMobileShare({
-    title,
-    text,
-    labels: {
-      copy: i18next.t("deviceShare.pageCopy"),
-      copied: i18next.t("deviceShare.pageCopied"),
-    },
-  });
-
-  if (!result?.success) {
-    deviceShareDescription.textContent = "";
-    deviceShareError.textContent = getDeviceShareErrorMessage(result);
-    deviceShareError.style.display = "block";
-    deviceShareRegenerate.disabled = false;
-    deviceShareRegenerate.textContent = i18next.t("deviceShare.regenerate");
-    return;
-  }
-
-  activeDeviceShareUrl = result.url;
-  deviceShareUrl.value = result.url;
-  deviceShareQr.src = await QRCode.toDataURL(result.url, {
-    errorCorrectionLevel: "M",
-    margin: 1,
-    width: 220,
-    color: {
-      dark: getCSSVar("--editorText") || "#ffffff",
-      light: getCSSVar("--color2") || "#000000",
-    },
-  });
-  setDeviceShareLinkContentVisible(true);
-  deviceShareDescription.textContent = i18next.t("deviceShare.description");
-  startDeviceShareCountdown(result.expiresAt);
-}
-
-async function openDeviceShareModal() {
-  if (!monacoEditor || !currentTab) return;
-  if (!getCurrentEditorText().trim()) {
-    updateDeviceShareButtonState();
-    return;
-  }
-
-  confirmBox.style.display = "flex";
-  deviceShareModal.style.display = "flex";
-  isModalDisplayed = true;
-  resetDeviceShareModal();
-  await createDeviceShareLink();
-}
-
-deviceShareBtn?.addEventListener("click", openDeviceShareModal);
-deviceShareClose?.addEventListener("click", closeDeviceShareModal);
-deviceShareRegenerate?.addEventListener("click", async () => {
-  if (deviceShareRegenerate.disabled) return;
-  await createDeviceShareLink();
-});
-deviceShareCopy?.addEventListener("click", async () => {
-  if (!deviceShareUrl.value) return;
-
-  try {
-    await navigator.clipboard.writeText(deviceShareUrl.value);
-    setDeviceShareCopyButtonCopied();
-  } catch (err) {
-    deviceShareUrl.focus();
-    deviceShareUrl.select();
-  }
-});
 
 // window controls
 const maxButton = document.getElementById("max-button");
@@ -4998,6 +4301,7 @@ function enableTabDragging(tab, data) {
             noteTitle: releasedTabData.noteTitle,
             noteCreatedAt: releasedTabData.noteCreatedAt,
             noteUpdatedAt: releasedTabData.noteUpdatedAt,
+            noteBadgeMask: releasedTabData.noteBadgeMask,
             isFileSaved: releasedTabData.isFileSaved,
             originalContent: releasedTabData.originalContent,
             fontSize: releasedTabData.fontSize,
@@ -5106,6 +4410,7 @@ async function openTabInNewWindow(targetTabData, position) {
     noteTitle: targetTabData.noteTitle,
     noteCreatedAt: targetTabData.noteCreatedAt,
     noteUpdatedAt: targetTabData.noteUpdatedAt,
+    noteBadgeMask: targetTabData.noteBadgeMask,
     isFileSaved: targetTabData.isFileSaved,
     originalContent: targetTabData.originalContent,
     fontSize: targetTabData.fontSize,
@@ -6570,583 +5875,172 @@ async function openNoteById(noteId, options = {}) {
   }
 }
 
-function getVisibleNotesForPanel(notes) {
-  if (noteBadgeFilter === NOTE_BADGE_ALL_FILTER) return notes;
-  const targetMask = normalizeNoteBadgeMask(noteBadgeFilter);
-  return notes.filter((note) => normalizeNoteBadgeMask(note.badgeMask) === targetMask);
-}
+notesController = createNotesPanelController({
+  i18next,
+  electronAPI: window.electronAPI,
+  refs: {
+    notesList,
+    notesBadgeFilterBar,
+    notesBadgeToggleButton,
+    noteContextMenu,
+  },
+  getNotesIndexCache: () => notesIndexCache,
+  setNotesIndexCache: (notes) => {
+    notesIndexCache = notes;
+  },
+  getCurrentTab: () => currentTab,
+  getNoteTitleFromContent,
+  openNoteById,
+  beginNoteListDrag,
+  isNoteClickSuppressed: () => suppressNoteClick,
+  populateRecentMenu,
+  updateGlobalSearchActionState,
+  isGlobalSearchActive,
+  scheduleGlobalSearch,
+  getLiveNoteContent,
+  createNoteTab,
+  switchTab,
+  updateRecentNote,
+  convertNoteToUntitled,
+  convertNoteToFile,
+  deleteNoteEverywhere,
+  getOpenNoteTabById,
+  updateTabNoteBadge,
+  savePinnedTabsState,
+  onNotesIndexUpdated: syncOpenNoteTabsWithNotesIndex,
+  onShowContextMenu: () => {
+    customContextMenu.style.display = "none";
+    tabContextMenu.style.display = "none";
+    rightClickedTab = null;
+  },
+});
+updateNoteBadgeToggleButton();
+updateNoteBadgeContextMenuLabels();
 
-function getNoteBadgeFilterMasks(notes) {
-  const masks = [...new Set(notes.map((note) => normalizeNoteBadgeMask(note.badgeMask)))];
-  return masks.sort((a, b) => {
-    const countDiff = countNoteBadgeEdges(b) - countNoteBadgeEdges(a);
-    if (countDiff) return countDiff;
-    return a - b;
-  });
-}
-
-function countNoteBadgeEdges(mask) {
-  let value = normalizeNoteBadgeMask(mask);
-  let count = 0;
-  while (value) {
-    count += value & 1;
-    value >>= 1;
-  }
-  return count;
-}
-
-function renderNoteBadgeFilterBar() {
-  if (!notesBadgeFilterBar) return;
-  notesBadgeFilterBar.innerHTML = "";
-  const availableMasks = getNoteBadgeFilterMasks(notesIndexCache);
-  const entries = [
-    { value: NOTE_BADGE_ALL_FILTER, all: true, title: i18next.t("sidePanel.noteMarkAll") },
-    ...availableMasks
-      .filter((mask) => mask !== 0)
-      .map((mask) => ({ value: mask, title: i18next.t("sidePanel.noteMarkFilter", { mask }) })),
-    ...(availableMasks.includes(0) ? [{ value: 0, title: i18next.t("sidePanel.noteMarkNone") }] : []),
-  ];
-
-  for (const entry of entries) {
-    const button = document.createElement("button");
-    button.className = "note-badge-filter-button";
-    button.type = "button";
-    button.dataset.badgeFilter = String(entry.value);
-    button.title = entry.title;
-    button.setAttribute("aria-label", entry.title);
-    button.classList.toggle("is-active", String(noteBadgeFilter) === String(entry.value));
-    const badge = entry.all ? createNoteBadgeElement(15) : createNoteBadgeElement(entry.value);
-    if (entry.all) badge.classList.add("is-all");
-    button.appendChild(badge);
-    button.addEventListener("click", async () => {
-      noteBadgeFilter = entry.value;
-      localStorage.setItem(NOTE_BADGE_FILTER_STORAGE_KEY, String(noteBadgeFilter));
-      await renderNotesList();
-    });
-    notesBadgeFilterBar.appendChild(button);
-  }
-}
-
-async function renderNotesList({ scheduleSearch = true } = {}) {
-  if (!notesList) return;
-  const notes = await window.electronAPI.listNotes();
-  notesIndexCache = sortNotesForPanel(Array.isArray(notes) ? notes : []);
-  if (noteBadgeFilter !== NOTE_BADGE_ALL_FILTER) {
-    const hasFilter = notesIndexCache.some(
-      (note) => normalizeNoteBadgeMask(note.badgeMask) === normalizeNoteBadgeMask(noteBadgeFilter),
-    );
-    if (!hasFilter) noteBadgeFilter = NOTE_BADGE_ALL_FILTER;
-  }
-  renderNoteBadgeFilterBar();
-  notesList.innerHTML = "";
-
-  for (const note of getVisibleNotesForPanel(notesIndexCache)) {
-    if (!note?.id) continue;
-    const item = document.createElement("div");
-    item.className = `note-list-item${note.pinned ? " pinned" : ""}`;
-    item.dataset.noteId = note.id;
-    item.dataset.badgeMask = String(normalizeNoteBadgeMask(note.badgeMask));
-
-    const badge = createNoteBadgeElement(note.badgeMask, "note-list-badge");
-
-    const title = document.createElement("span");
-    title.className = "note-list-title";
-    title.textContent = truncateNoteTitle(note.title || getNoteTitleFromContent(""));
-    title.title = title.textContent;
-
-    const pinButton = document.createElement("button");
-    pinButton.className = `note-pin-button codicon ${note.pinned ? "codicon-pinned" : "codicon-pin"}`;
-    pinButton.type = "button";
-    const pinLabel = note.pinned ? i18next.t("sidePanel.unpinNote") : i18next.t("sidePanel.pinNote");
-    pinButton.setAttribute("aria-label", pinLabel);
-    pinButton.title = pinLabel;
-    pinButton.addEventListener("click", async (e) => {
-      e.stopPropagation();
-      await window.electronAPI.updateNoteMeta({ noteId: note.id, pinned: !note.pinned });
-      await renderNotesList();
-      await populateRecentMenu();
-    });
-
-    item.append(badge, title, pinButton);
-    item.addEventListener("click", async () => {
-      if (suppressNoteClick) return;
-      await openNoteById(note.id, { preview: true });
-    });
-    item.addEventListener("dblclick", async () => {
-      if (suppressNoteClick) return;
-      await openNoteById(note.id, { preview: false });
-    });
-    item.addEventListener("auxclick", async (e) => {
-      if (e.button !== 1 || suppressNoteClick) return;
-      e.preventDefault();
-      await openNoteById(note.id, { preview: false });
-    });
-    item.addEventListener("contextmenu", (e) => showNoteContextMenu(e, note.id));
-    item.addEventListener("mousedown", (e) => beginNoteListDrag(e, item));
-    notesList.appendChild(item);
-  }
-
-  updateActiveNoteListItem();
-  updateGlobalSearchActionState();
-  if (scheduleSearch && isGlobalSearchActive()) scheduleGlobalSearch();
+async function renderNotesList(options = {}) {
+  return await notesController?.renderNotesList(options);
 }
 
 function updateActiveNoteListItem() {
-  if (!notesList) return;
-  const activeNoteId = currentTab?.isNote && currentTab.noteId ? currentTab.noteId : null;
-  notesList.querySelectorAll(".note-list-item").forEach((item) => {
-    item.classList.toggle("active-note", Boolean(activeNoteId && item.dataset.noteId === activeNoteId));
-  });
+  notesController?.updateActiveNoteListItem();
 }
-
-function resizeGlobalSearchInput() {
-  if (!globalSearchInput) return;
-  globalSearchInput.style.height = "auto";
-  const scrollHeight = globalSearchInput.scrollHeight || GLOBAL_SEARCH_INPUT_MIN_HEIGHT;
-  const nextHeight = clampNumber(scrollHeight, GLOBAL_SEARCH_INPUT_MIN_HEIGHT, GLOBAL_SEARCH_INPUT_MAX_HEIGHT);
-  globalSearchInput.style.height = `${nextHeight}px`;
-  globalSearchInput.style.overflowY = scrollHeight > GLOBAL_SEARCH_INPUT_MAX_HEIGHT ? "auto" : "hidden";
-}
-
-function handleGlobalSearchInputChange() {
-  globalSearchHistoryIndex = -1;
-  globalSearchHistoryDraft = "";
-  resizeGlobalSearchInput();
-  updateGlobalSearchPlaceholder(true);
-  globalSearchState.dismissedMatches.clear();
-  globalSearchState.allCollapsed = false;
-  globalSearchState.collapsedTargetIds.clear();
-  if (!getGlobalSearchQuery()) {
-    clearGlobalSearchResults();
-    return;
-  }
-  setGlobalSearchActive(true);
-  scheduleGlobalSearch();
-}
-
-function insertGlobalSearchInputText(text) {
-  if (!globalSearchInput) return;
-  const value = globalSearchInput.value || "";
-  const start = globalSearchInput.selectionStart ?? value.length;
-  const end = globalSearchInput.selectionEnd ?? start;
-  globalSearchInput.value = `${value.slice(0, start)}${text}${value.slice(end)}`;
-  const nextPosition = start + text.length;
-  globalSearchInput.setSelectionRange(nextPosition, nextPosition);
-  handleGlobalSearchInputChange();
-}
-
-function shouldKeepGlobalSearchArrowInInput(key) {
-  if (!globalSearchInput || !globalSearchInput.value.includes("\n")) return false;
-  if (key === "ArrowUp") return (globalSearchInput.selectionStart ?? 0) > 0;
-  if (key === "ArrowDown") return (globalSearchInput.selectionEnd ?? 0) < globalSearchInput.value.length;
-  return false;
-}
-
-globalSearchInput?.addEventListener("input", handleGlobalSearchInputChange);
-
-globalSearchInput?.addEventListener("keydown", (e) => {
-  if ((e.key === "ArrowUp" || e.key === "ArrowDown") && !e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
-    if (shouldKeepGlobalSearchArrowInInput(e.key)) {
-      e.stopPropagation();
-      return;
-    }
-    if (showGlobalSearchHistoryValue(e.key === "ArrowUp" ? -1 : 1)) e.preventDefault();
-    return;
-  }
-
-  if (e.key === "Enter" && !e.altKey && (e.ctrlKey || e.metaKey || e.shiftKey)) {
-    e.preventDefault();
-    insertGlobalSearchInputText("\n");
-    return;
-  }
-
-  if (e.key === "Enter" && !e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
-    e.preventDefault();
-    addGlobalSearchHistory(getGlobalSearchQuery());
-    return;
-  }
-
-  if (e.key === "Escape" && getGlobalSearchQuery()) {
-    e.preventDefault();
-    clearGlobalSearchInput();
-    return;
-  }
-
-  if (!e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
-  const key = e.key.toLowerCase();
-  if (key === "c") {
-    e.preventDefault();
-    toggleGlobalSearchOption("matchCase");
-  } else if (key === "w") {
-    e.preventDefault();
-    toggleGlobalSearchOption("wholeWord");
-  } else if (key === "r") {
-    e.preventDefault();
-    toggleGlobalSearchOption("regex");
-  }
+globalSearchController = createGlobalSearchController({
+  monaco,
+  i18next,
+  electronAPI: window.electronAPI,
+  refs: {
+    globalSearchInput,
+    globalSearchPlaceholder,
+    globalSearchResults,
+    globalSearchResultsList,
+    globalSearchCaseButton,
+    globalSearchWordButton,
+    globalSearchRegexButton,
+    globalSearchRefreshButton,
+    globalSearchClearButton,
+    globalSearchCollapseButton,
+  },
+  getTabData: () => tabData,
+  getNotesIndexCache: () => notesIndexCache,
+  sortNotesForPanel,
+  getNoteTitleFromContent,
+  openNoteById,
+  switchTab,
+  revealSearchRange,
+  getMonacoEditor: () => monacoEditor,
+  onBeginMatchDrag: beginGlobalSearchMatchDrag,
+  isMatchClickSuppressed: () => suppressGlobalSearchMatchClick,
 });
-
-globalSearchInput?.addEventListener("focus", () => {
-  updateGlobalSearchPlaceholder(true);
-});
-
-globalSearchInput?.addEventListener("blur", () => {
-  addGlobalSearchHistory(getGlobalSearchQuery());
-  globalSearchHistoryIndex = -1;
-  globalSearchHistoryDraft = "";
-  updateGlobalSearchPlaceholder(false);
-});
-
-globalSearchCaseButton?.addEventListener("click", () => {
-  toggleGlobalSearchOption("matchCase");
-});
-
-globalSearchWordButton?.addEventListener("click", () => {
-  toggleGlobalSearchOption("wholeWord");
-});
-
-globalSearchRegexButton?.addEventListener("click", () => {
-  toggleGlobalSearchOption("regex");
-});
-
-globalSearchRefreshButton?.addEventListener("click", async () => {
-  await refreshGlobalSearchNow();
-  globalSearchInput?.focus();
-});
-
-globalSearchClearButton?.addEventListener("click", () => {
-  clearGlobalSearchInput();
-  globalSearchInput?.focus();
-});
-
-globalSearchCollapseButton?.addEventListener("click", () => {
-  toggleGlobalSearchCollapseAll();
-  globalSearchInput?.focus();
-});
-
-document.addEventListener("keydown", (e) => {
-  if (!document.body.classList.contains("side-panel-open") || document.activeElement === globalSearchInput) return;
-  const target = e.target instanceof Element ? e.target : document.activeElement;
-  if (target?.closest?.(".monaco-editor, .find-widget, .rename-box, .suggest-widget, .quick-input-widget")) return;
-  if (!e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
-  const key = e.key.toLowerCase();
-  if (key === "c") {
-    e.preventDefault();
-    toggleGlobalSearchOption("matchCase", false);
-  } else if (key === "w") {
-    e.preventDefault();
-    toggleGlobalSearchOption("wholeWord", false);
-  } else if (key === "r") {
-    e.preventDefault();
-    toggleGlobalSearchOption("regex", false);
-  }
-});
-updateGlobalSearchToggleState();
-resizeGlobalSearchInput();
-
-function showNoteContextMenu(e, noteId) {
-  e.preventDefault();
-  e.stopPropagation();
-  rightClickedNoteId = noteId;
-  customContextMenu.style.display = "none";
-  tabContextMenu.style.display = "none";
-  rightClickedTab = null;
-
-  noteContextMenu.style.display = "block";
-  noteContextMenu.style.visibility = "hidden";
-  const menuWidth = noteContextMenu.offsetWidth;
-  const menuHeight = noteContextMenu.offsetHeight;
-  let left = e.pageX;
-  let top = e.pageY;
-  if (left + menuWidth > window.innerWidth) left = Math.max(0, window.innerWidth - menuWidth);
-  if (top + menuHeight > window.innerHeight) top = Math.max(0, window.innerHeight - menuHeight);
-  noteContextMenu.style.left = `${left}px`;
-  noteContextMenu.style.top = `${top}px`;
-  noteContextMenu.style.visibility = "visible";
-  noteContextMenu.style.display = "block";
-  updateNoteBadgeContextButtonsState();
-}
-
-function getNoteMetaById(noteId) {
-  return notesIndexCache.find((note) => note.id === noteId) || null;
-}
-
-function updateNoteBadgeContextButtonsState() {
-  if (!noteContextMenu || !rightClickedNoteId) return;
-  ensureNoteBadgeContextButtons();
-  const mask = normalizeNoteBadgeMask(getNoteMetaById(rightClickedNoteId)?.badgeMask);
-  NOTE_BADGE_EDGES.forEach((edge) => {
-    const button = noteContextMenu.querySelector(`.note-badge-edge-button[data-edge="${edge.key}"]`);
-    button?.classList.toggle("is-active", Boolean(mask & edge.bit));
-  });
-}
-
-async function getLiveNoteContent(noteId) {
-  const openTab = tabData.find((tab) => tab.isNote && tab.noteId === noteId);
-  if (openTab) return openTab.model?.getValue() ?? openTab.content ?? "";
-  const note = await window.electronAPI.readNote(noteId);
-  return note?.exists ? note.content || "" : null;
-}
 
 function getGlobalSearchQuery() {
-  return globalSearchInput?.value || "";
+  return globalSearchController?.getQuery() || "";
 }
 
 function isGlobalSearchActive() {
-  return Boolean(getGlobalSearchQuery());
-}
-
-function setGlobalSearchActive(active) {
-  document.body.classList.toggle("global-search-active", Boolean(active));
-  updateGlobalSearchActionState();
-}
-
-function getGlobalSearchLabel(key, fallback) {
-  return i18next.isInitialized ? i18next.t(`sidePanel.${key}`) : fallback;
-}
-
-function getGlobalSearchBasePlaceholder() {
-  return getGlobalSearchLabel("search", "Search");
-}
-
-function updateGlobalSearchPlaceholder(focused = document.activeElement === globalSearchInput) {
-  if (!globalSearchInput || !globalSearchPlaceholder) return;
-  const base = getGlobalSearchBasePlaceholder();
-  globalSearchInput.placeholder = "";
-  globalSearchPlaceholder.classList.toggle("hidden", Boolean(globalSearchInput.value));
-  globalSearchPlaceholder.textContent = "";
-
-  if (!focused || !globalSearchHistory.length) {
-    globalSearchPlaceholder.textContent = base;
-    return;
-  }
-
-  const symbol = document.createElement("span");
-  symbol.className = "global-search-history-symbol";
-  symbol.textContent = "\u21c5";
-
-  globalSearchPlaceholder.append(
-    document.createTextNode(`${base} (`),
-    symbol,
-    document.createTextNode(` ${getGlobalSearchLabel("historyHint", "for history")})`),
-  );
-}
-
-function addGlobalSearchHistory(value) {
-  const entry = String(value || "");
-  if (!entry) return;
-  globalSearchHistory = globalSearchHistory.filter((item) => item !== entry);
-  globalSearchHistory.push(entry);
-  if (globalSearchHistory.length > GLOBAL_SEARCH_HISTORY_LIMIT) {
-    globalSearchHistory = globalSearchHistory.slice(-GLOBAL_SEARCH_HISTORY_LIMIT);
-  }
-  globalSearchHistoryIndex = -1;
-  updateGlobalSearchPlaceholder(document.activeElement === globalSearchInput);
-}
-
-function setGlobalSearchInputValue(value) {
-  if (!globalSearchInput) return;
-  globalSearchInput.value = value;
-  globalSearchInput.setSelectionRange(value.length, value.length);
-  resizeGlobalSearchInput();
-  updateGlobalSearchPlaceholder(document.activeElement === globalSearchInput);
-  globalSearchState.dismissedMatches.clear();
-  globalSearchState.allCollapsed = false;
-  globalSearchState.collapsedTargetIds.clear();
-  if (!value) {
-    clearGlobalSearchResults();
-    return;
-  }
-  setGlobalSearchActive(true);
-  scheduleGlobalSearch();
-}
-
-function showGlobalSearchHistoryValue(direction) {
-  if (!globalSearchInput || !globalSearchHistory.length) return false;
-
-  if (direction < 0) {
-    if (globalSearchHistoryIndex === -1) {
-      globalSearchHistoryDraft = globalSearchInput.value;
-      globalSearchHistoryIndex = globalSearchHistory.length - 1;
-    } else {
-      globalSearchHistoryIndex = Math.max(0, globalSearchHistoryIndex - 1);
-    }
-    setGlobalSearchInputValue(globalSearchHistory[globalSearchHistoryIndex] || "");
-    return true;
-  }
-
-  if (globalSearchHistoryIndex === -1) return false;
-  if (globalSearchHistoryIndex >= globalSearchHistory.length - 1) {
-    globalSearchHistoryIndex = -1;
-    setGlobalSearchInputValue(globalSearchHistoryDraft);
-    globalSearchHistoryDraft = "";
-    return true;
-  }
-
-  globalSearchHistoryIndex++;
-  setGlobalSearchInputValue(globalSearchHistory[globalSearchHistoryIndex] || "");
-  return true;
-}
-
-function setGlobalSearchButtonLabel(button, labelKey, fallback, shortcut) {
-  if (!button) return;
-  const label = `${getGlobalSearchLabel(labelKey, fallback)} (${shortcut})`;
-  button.title = label;
-  button.setAttribute("aria-label", label);
-}
-
-function setGlobalSearchActionLabel(button, labelKey, fallback) {
-  if (!button) return;
-  const label = getGlobalSearchLabel(labelKey, fallback);
-  button.title = label;
-  button.setAttribute("aria-label", label);
-}
-
-function updateGlobalSearchLabels() {
-  setGlobalSearchButtonLabel(globalSearchCaseButton, "matchCase", "Match Case", "Alt+C");
-  setGlobalSearchButtonLabel(globalSearchWordButton, "matchWholeWord", "Match Whole Word", "Alt+W");
-  setGlobalSearchButtonLabel(globalSearchRegexButton, "useRegex", "Use Regular Expression", "Alt+R");
-  setGlobalSearchActionLabel(globalSearchRefreshButton, "refresh", "Refresh");
-  setGlobalSearchActionLabel(globalSearchClearButton, "clearSearchResults", "Clear Search Results");
-  setGlobalSearchActionLabel(
-    globalSearchCollapseButton,
-    globalSearchState.allCollapsed ? "expandAll" : "collapseAll",
-    globalSearchState.allCollapsed ? "Expand All" : "Collapse All",
-  );
-}
-
-function hasGlobalSearchResults() {
-  return Boolean(isGlobalSearchActive() && globalSearchResultsList?.querySelector(".global-search-file"));
-}
-
-function updateGlobalSearchActionState() {
-  updateGlobalSearchLabels();
-  if (globalSearchRefreshButton) globalSearchRefreshButton.disabled = !isGlobalSearchActive();
-  if (globalSearchClearButton)
-    globalSearchClearButton.disabled = !isGlobalSearchActive() && !globalSearchState.totalMatches;
-  if (globalSearchCollapseButton) {
-    globalSearchCollapseButton.disabled = !hasGlobalSearchResults();
-    globalSearchCollapseButton.classList.toggle("codicon-collapse-all", !globalSearchState.allCollapsed);
-    globalSearchCollapseButton.classList.toggle("codicon-expand-all", globalSearchState.allCollapsed);
-    globalSearchCollapseButton.setAttribute("aria-pressed", String(globalSearchState.allCollapsed));
-  }
-}
-
-function updateGlobalSearchToggleState() {
-  updateGlobalSearchLabels();
-  globalSearchCaseButton?.classList.toggle("active", globalSearchState.matchCase);
-  globalSearchCaseButton?.setAttribute("aria-pressed", String(globalSearchState.matchCase));
-  globalSearchWordButton?.classList.toggle("active", globalSearchState.wholeWord);
-  globalSearchWordButton?.setAttribute("aria-pressed", String(globalSearchState.wholeWord));
-  globalSearchRegexButton?.classList.toggle("active", globalSearchState.regex);
-  globalSearchRegexButton?.setAttribute("aria-pressed", String(globalSearchState.regex));
-  updateGlobalSearchActionState();
-}
-
-function toggleGlobalSearchOption(option, focusInput = true) {
-  globalSearchState[option] = !globalSearchState[option];
-  globalSearchState.dismissedMatches.clear();
-  globalSearchState.allCollapsed = false;
-  globalSearchState.collapsedTargetIds.clear();
-  updateGlobalSearchToggleState();
-  if (isGlobalSearchActive()) scheduleGlobalSearch();
-  if (focusInput) globalSearchInput?.focus();
-}
-
-function validateGlobalSearchRegex(query) {
-  if (!globalSearchState.regex || !query) return null;
-  try {
-    new RegExp(query, "u");
-    return null;
-  } catch (error) {
-    return error?.message || "Invalid regular expression";
-  }
+  return Boolean(globalSearchController?.isActive());
 }
 
 function scheduleGlobalSearch() {
-  if (globalSearchTimer) clearTimeout(globalSearchTimer);
-  globalSearchTimer = setTimeout(() => {
-    globalSearchTimer = null;
-    runGlobalSearch();
-  }, GLOBAL_SEARCH_DEBOUNCE_MS);
+  globalSearchController?.schedule();
 }
 
 function scheduleGlobalSearchAfterTabSetChange() {
-  if (!isGlobalSearchActive()) return;
-  scheduleGlobalSearch();
+  globalSearchController?.scheduleAfterTabSetChange();
 }
 
-function getGlobalSearchResultsSignature(results, totalMatches) {
-  return JSON.stringify({
-    totalMatches,
-    limitHit: globalSearchState.limitHit,
-    results: results.map((result) => ({
-      targetId: result.targetId,
-      type: result.type,
-      title: result.title,
-      path: result.path,
-      fullPath: result.fullPath,
-      matches: result.matches.map((match) => ({
-        id: match.id,
-        lineNumber: match.lineNumber,
-        startLineNumber: match.range.startLineNumber,
-        startColumn: match.range.startColumn,
-        endLineNumber: match.range.endLineNumber,
-        endColumn: match.range.endColumn,
-        before: match.preview.fullBefore,
-        inside: match.preview.inside,
-        after: match.preview.after,
-        fullLine: match.preview.fullLine,
-      })),
-    })),
-  });
+function scheduleGlobalSearchPreviewUpdate() {
+  globalSearchController?.schedulePreviewUpdate();
+}
+
+function scheduleGlobalSearchFilePathUpdate() {
+  globalSearchController?.scheduleFilePathUpdate();
+}
+
+function updateGlobalSearchActionState() {
+  globalSearchController?.updateActionState();
+}
+
+function updateGlobalSearchLabels() {
+  globalSearchController?.updateLabels();
+}
+
+function updateGlobalSearchPlaceholder(focused = document.activeElement === globalSearchInput) {
+  globalSearchController?.updatePlaceholder(focused);
 }
 
 function updateGlobalSearchResultHeaderLabels() {
-  if (!globalSearchResults) return;
-  const summary = globalSearchResults.querySelector(".global-search-summary");
-  if (summary) {
-    summary.textContent = i18next.isInitialized
-      ? i18next.t("sidePanel.searchSummary", {
-          count: globalSearchState.totalMatches,
-          items: globalSearchState.totalItems,
-        })
-      : `${globalSearchState.totalMatches} results in ${globalSearchState.totalItems} items`;
-  }
+  globalSearchController?.updateResultHeaderLabels();
+}
 
-  const warning = globalSearchResults.querySelector(".global-search-warning");
-  if (warning) {
-    const icon = warning.querySelector(".global-search-warning-icon");
-    warning.textContent = "";
-    if (icon) warning.appendChild(icon);
-    else {
-      const nextIcon = document.createElement("span");
-      nextIcon.className = "global-search-warning-icon";
-      nextIcon.setAttribute("aria-hidden", "true");
-      warning.appendChild(nextIcon);
+async function refreshGlobalSearchNow() {
+  await globalSearchController?.refreshNow();
+}
+
+function syncOpenNoteTabsWithNotesIndex(notes = notesIndexCache) {
+  const notesById = new Map((Array.isArray(notes) ? notes : []).filter((note) => note?.id).map((note) => [note.id, note]));
+  let changed = false;
+  for (const tab of tabData) {
+    if (!tab?.isNote || !tab.noteId) continue;
+    const meta = notesById.get(tab.noteId);
+    if (!meta) continue;
+
+    const nextMask = normalizeNoteBadgeMask(meta.badgeMask);
+    if (tab.noteBadgeMask !== nextMask) {
+      tab.noteBadgeMask = nextMask;
+      updateTabNoteBadge(tab);
+      changed = true;
     }
-    warning.appendChild(
-      document.createTextNode(
-        getGlobalSearchLabel(
-          "searchLimitWarning",
-          "The result set only contains a subset of all matches. Be more specific in your search to narrow down the results.",
-        ),
-      ),
-    );
+    if (meta.createdAt && tab.noteCreatedAt !== meta.createdAt) tab.noteCreatedAt = meta.createdAt;
+    if (meta.updatedAt && tab.noteUpdatedAt !== meta.updatedAt) tab.noteUpdatedAt = meta.updatedAt;
   }
+  if (changed) savePinnedTabsState();
+}
 
-  const message = globalSearchResultsList?.querySelector(".global-search-message");
-  if (message) {
-    if (!getGlobalSearchQuery()) return;
-    if (!globalSearchState.totalMatches) message.textContent = getGlobalSearchLabel("noResults", "No results found");
+let notesWindowFocusRefreshPromise = null;
+
+async function refreshNotesOnWindowFocus() {
+  if (notesWindowFocusRefreshPromise) return notesWindowFocusRefreshPromise;
+  notesWindowFocusRefreshPromise = (async () => {
+    const notes = await window.electronAPI.listNotes();
+    notesIndexCache = sortNotesForPanel(Array.isArray(notes) ? notes : []);
+    syncOpenNoteTabsWithNotesIndex(notesIndexCache);
+    globalSearchController?.clearNoteContentCache();
+    await renderNotesList({ scheduleSearch: false });
+    await populateRecentMenu();
+    updateGlobalSearchActionState();
+    if (isGlobalSearchActive()) scheduleGlobalSearch();
+  })();
+  try {
+    await notesWindowFocusRefreshPromise;
+  } catch (error) {
+    console.warn("Failed to refresh notes on window focus:", error);
+  } finally {
+    notesWindowFocusRefreshPromise = null;
   }
 }
 
 async function refreshNotesListNow() {
-  if (globalSearchTimer) {
-    clearTimeout(globalSearchTimer);
-    globalSearchTimer = null;
-  }
+  globalSearchController?.clearPendingSearch();
   const dirtyNoteTabs = tabData.filter((tab) => {
     if (!tab?.isNote) return false;
     const content = tab.model?.getValue() ?? tab.content ?? "";
@@ -7159,861 +6053,9 @@ async function refreshNotesListNow() {
   if (window.electronAPI.refreshNotesIndex) {
     notesIndexCache = sortNotesForPanel(await window.electronAPI.refreshNotesIndex());
   }
-  noteContentCache.clear();
+  globalSearchController?.clearNoteContentCache();
   await renderNotesList({ scheduleSearch: false });
   updateGlobalSearchActionState();
-}
-
-async function refreshGlobalSearchNow() {
-  if (globalSearchTimer) {
-    clearTimeout(globalSearchTimer);
-    globalSearchTimer = null;
-  }
-  globalSearchState.dismissedMatches.clear();
-  globalSearchState.allCollapsed = false;
-  globalSearchState.collapsedTargetIds.clear();
-  if (isGlobalSearchActive()) await runGlobalSearch();
-  else updateGlobalSearchActionState();
-}
-
-function syncGlobalSearchCollapseStateFromDom() {
-  if (!globalSearchResultsList || !hasGlobalSearchResults()) {
-    globalSearchState.allCollapsed = false;
-  } else {
-    const files = Array.from(globalSearchResultsList.querySelectorAll(".global-search-file"));
-    globalSearchState.allCollapsed = files.length > 0 && files.every((file) => file.classList.contains("collapsed"));
-  }
-  updateGlobalSearchActionState();
-}
-
-function isGlobalSearchFileSticky(fileRow) {
-  if (!globalSearchResultsList || !fileRow) return false;
-  const rowTop = fileRow.getBoundingClientRect().top;
-  const listTop = globalSearchResultsList.getBoundingClientRect().top;
-  return Math.abs(rowTop - listTop) <= 1;
-}
-
-function getGlobalSearchFlowOffsetTop(fileRow) {
-  if (!fileRow || !globalSearchResultsList) return null;
-  let top = 0;
-  for (let node = globalSearchResultsList.firstElementChild; node && node !== fileRow; node = node.nextElementSibling) {
-    top += node.offsetHeight;
-  }
-  return top;
-}
-
-function toggleGlobalSearchFileCollapsed(fileRow, targetId) {
-  if (!fileRow || !targetId) return;
-  const shouldCollapse = !fileRow.classList.contains("collapsed");
-  const wasSticky = isGlobalSearchFileSticky(fileRow);
-  const targetScrollTop = wasSticky ? getGlobalSearchFlowOffsetTop(fileRow) : null;
-  fileRow.classList.toggle("collapsed", shouldCollapse);
-  if (shouldCollapse) globalSearchState.collapsedTargetIds.add(targetId);
-  else globalSearchState.collapsedTargetIds.delete(targetId);
-  syncGlobalSearchCollapseStateFromDom();
-
-  if (targetScrollTop !== null && globalSearchResultsList) {
-    requestAnimationFrame(() => {
-      globalSearchResultsList.scrollTop = targetScrollTop;
-    });
-  }
-}
-
-function setGlobalSearchCollapseAll(collapsed) {
-  if (!globalSearchResultsList || !hasGlobalSearchResults()) return;
-  globalSearchState.allCollapsed = Boolean(collapsed);
-  if (globalSearchState.allCollapsed) {
-    globalSearchState.results.forEach((result) => globalSearchState.collapsedTargetIds.add(result.targetId));
-  } else {
-    globalSearchState.collapsedTargetIds.clear();
-  }
-  globalSearchResultsList.querySelectorAll(".global-search-file").forEach((fileRow) => {
-    fileRow.classList.toggle("collapsed", globalSearchState.allCollapsed);
-  });
-  updateGlobalSearchActionState();
-}
-
-function toggleGlobalSearchCollapseAll() {
-  setGlobalSearchCollapseAll(!globalSearchState.allCollapsed);
-}
-
-function clearGlobalSearchResults() {
-  globalSearchSeq++;
-  resetGlobalSearchPreviewObserver();
-  globalSearchState.results = [];
-  globalSearchState.totalMatches = 0;
-  globalSearchState.totalItems = 0;
-  globalSearchState.limitHit = false;
-  globalSearchResultsSignature = "";
-  globalSearchState.allCollapsed = false;
-  globalSearchState.collapsedTargetIds.clear();
-  globalSearchState.dismissedMatches.clear();
-  globalSearchInput?.classList.remove("invalid");
-  globalSearchResults?.querySelector(".global-search-summary")?.remove();
-  globalSearchResults?.querySelector(".global-search-warning")?.remove();
-  if (globalSearchResultsList) globalSearchResultsList.innerHTML = "";
-  setGlobalSearchActive(false);
-  updateGlobalSearchActionState();
-}
-
-function clearGlobalSearchInput() {
-  if (globalSearchTimer) {
-    clearTimeout(globalSearchTimer);
-    globalSearchTimer = null;
-  }
-  if (globalSearchInput) globalSearchInput.value = "";
-  resizeGlobalSearchInput();
-  globalSearchHistoryIndex = -1;
-  globalSearchHistoryDraft = "";
-  updateGlobalSearchPlaceholder(document.activeElement === globalSearchInput);
-  clearGlobalSearchResults();
-}
-
-function normalizeSearchPreviewText(text) {
-  return String(text || "").replace(/\s+/g, " ");
-}
-
-function escapeSearchPreview(text, maxLength = GLOBAL_SEARCH_PREVIEW_MAX) {
-  const value = normalizeSearchPreviewText(text);
-  if (value.length <= maxLength) return value;
-  return `${value.slice(0, Math.max(0, maxLength - 3))}...`;
-}
-
-function createGlobalSearchPreview(model, match) {
-  const range = match.range;
-  const startLine = model.getLineContent(range.startLineNumber);
-  const endLine = model.getLineContent(range.endLineNumber);
-  const beforeFull = startLine.slice(0, range.startColumn - 1);
-  const inside = model.getValueInRange(range);
-  const after = endLine.slice(range.endColumn - 1);
-  const fullLine = range.startLineNumber === range.endLineNumber ? startLine : `${beforeFull}${inside}${after}`;
-  return {
-    fullBefore: normalizeSearchPreviewText(beforeFull).slice(-GLOBAL_SEARCH_PREVIEW_MAX),
-    inside: escapeSearchPreview(inside || match.matches?.[0] || "", GLOBAL_SEARCH_PREVIEW_MAX),
-    after: escapeSearchPreview(after, GLOBAL_SEARCH_PREVIEW_MAX),
-    fullLine,
-  };
-}
-
-function getGlobalSearchMeasureContext() {
-  if (!globalSearchMeasureContext) {
-    const canvas = document.createElement("canvas");
-    globalSearchMeasureContext = canvas.getContext("2d");
-  }
-  return globalSearchMeasureContext;
-}
-
-function getGlobalSearchPreviewFont(previewElement) {
-  const style = window.getComputedStyle(previewElement);
-  return `${style.fontStyle} ${style.fontVariant} ${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
-}
-
-function measureGlobalSearchText(text, font) {
-  const context = getGlobalSearchMeasureContext();
-  if (!context) return String(text || "").length * 8;
-  context.font = font;
-  return context.measureText(String(text || "")).width;
-}
-
-function fitGlobalSearchTextEnd(text, maxWidth, font, prefix = "") {
-  const value = String(text || "");
-  if (!value) return "";
-  if (measureGlobalSearchText(value, font) <= maxWidth) return value;
-
-  const prefixWidth = measureGlobalSearchText(prefix, font);
-  const targetWidth = Math.max(0, maxWidth - prefixWidth);
-  let low = 0;
-  let high = value.length;
-
-  while (low < high) {
-    const mid = Math.ceil((low + high) / 2);
-    const suffix = value.slice(value.length - mid);
-    if (measureGlobalSearchText(suffix, font) <= targetWidth) low = mid;
-    else high = mid - 1;
-  }
-
-  return `${prefix}${value.slice(value.length - low)}`;
-}
-
-function fitGlobalSearchTextStart(text, maxWidth, font, suffix = "") {
-  const value = String(text || "");
-  if (!value) return "";
-  if (measureGlobalSearchText(value, font) <= maxWidth) return value;
-
-  const suffixWidth = measureGlobalSearchText(suffix, font);
-  const targetWidth = Math.max(0, maxWidth - suffixWidth);
-  let low = 0;
-  let high = value.length;
-
-  while (low < high) {
-    const mid = Math.ceil((low + high) / 2);
-    const prefix = value.slice(0, mid);
-    if (measureGlobalSearchText(prefix, font) <= targetWidth) low = mid;
-    else high = mid - 1;
-  }
-
-  return `${value.slice(0, low)}${suffix}`;
-}
-
-function applyGlobalSearchPreviewDisplay(row, display) {
-  if (!row || !display) return;
-  const before = row.querySelector?.(".global-search-before");
-  const hit = row.querySelector?.(".global-search-hit");
-  const after = row.querySelector?.(".global-search-after");
-  if (!before || !hit || !after) return;
-  if (before.textContent !== display.before) before.textContent = display.before;
-  if (hit.textContent !== display.hit) hit.textContent = display.hit;
-  if (after.textContent !== display.after) after.textContent = display.after;
-  row.classList.add("preview-ready");
-}
-
-function updateGlobalSearchPreviewElement(row) {
-  const preview = row?.querySelector?.(".global-search-preview");
-  const before = row?.querySelector?.(".global-search-before");
-  const hit = row?.querySelector?.(".global-search-hit");
-  const after = row?.querySelector?.(".global-search-after");
-  const matchId = row?.dataset?.matchId;
-  if (!preview || !before || !hit || !after || !matchId) return false;
-
-  const match =
-    row.globalSearchMatch ||
-    globalSearchState.results.flatMap((result) => result.matches).find((item) => item.id === matchId);
-  if (!match) return false;
-
-  const width = preview.clientWidth;
-  if (!width) return false;
-  const font = getGlobalSearchPreviewFont(preview);
-  const beforeText = match.preview.fullBefore;
-  const hitText = match.preview.inside;
-  const afterText = match.preview.after;
-  const beforeWidth = measureGlobalSearchText(beforeText, font);
-  const hitWidth = measureGlobalSearchText(hitText, font);
-  const ellipsis = "...";
-
-  const beforeLimit = width * GLOBAL_SEARCH_BEFORE_MAX_RATIO;
-  const minMatchWidth = Math.min(hitWidth, width * GLOBAL_SEARCH_MATCH_MIN_RATIO);
-  const shouldShiftWindow = beforeWidth + minMatchWidth > width;
-  const beforeTargetWidth = shouldShiftWindow ? beforeLimit : Math.min(beforeWidth, width);
-  const beforeDisplay = fitGlobalSearchTextEnd(beforeText, beforeTargetWidth, font, shouldShiftWindow ? ellipsis : "");
-  const remainingWidth = Math.max(0, width - measureGlobalSearchText(beforeDisplay, font));
-  const hitDisplay = fitGlobalSearchTextStart(hitText, remainingWidth, font, ellipsis);
-  const hitComplete = hitDisplay === hitText;
-  const afterDisplay = hitComplete ? afterText : "";
-  const display = {
-    width: Math.round(width),
-    before: beforeDisplay,
-    hit: hitDisplay,
-    after: afterDisplay,
-  };
-
-  applyGlobalSearchPreviewDisplay(row, display);
-  globalSearchPreviewDisplayCache.set(matchId, display);
-  globalSearchIdlePreviewRows.delete(row);
-  return true;
-}
-
-function updateGlobalSearchPreviewElements() {
-  if (!globalSearchResultsList) return;
-  if (globalSearchVisiblePreviewRows.size) {
-    globalSearchVisiblePreviewRows.forEach((row) => updateGlobalSearchPreviewElement(row));
-    return;
-  }
-  globalSearchResultsList
-    .querySelectorAll(".global-search-match")
-    .forEach((row) => updateGlobalSearchPreviewElement(row));
-}
-
-function scheduleGlobalSearchPreviewUpdate() {
-  if (globalSearchPreviewFrame !== null) return;
-  globalSearchPreviewFrame = requestAnimationFrame(() => {
-    globalSearchPreviewFrame = null;
-    updateGlobalSearchPreviewElements();
-  });
-}
-
-function requestGlobalSearchIdleCallback(callback) {
-  if (typeof window.requestIdleCallback === "function") {
-    return window.requestIdleCallback(callback, { timeout: 600 });
-  }
-  return window.setTimeout(() => callback({ didTimeout: true, timeRemaining: () => 0 }), 32);
-}
-
-function cancelGlobalSearchIdleCallback(handle) {
-  if (handle === null) return;
-  if (typeof window.cancelIdleCallback === "function") window.cancelIdleCallback(handle);
-  else window.clearTimeout(handle);
-}
-
-function isGlobalSearchRowInCollapsedGroup(row) {
-  const group = row?.closest?.(".global-search-match-group");
-  return Boolean(group?.previousElementSibling?.classList?.contains("collapsed"));
-}
-
-function processGlobalSearchIdlePreviewRows(deadline) {
-  globalSearchPreviewIdleHandle = null;
-  if (!globalSearchResultsList || !isGlobalSearchActive()) {
-    globalSearchIdlePreviewRows.clear();
-    return;
-  }
-
-  let processed = 0;
-  while (globalSearchIdlePreviewRows.size) {
-    if (
-      processed >= GLOBAL_SEARCH_IDLE_PREVIEW_BATCH ||
-      (processed > 0 && !deadline.didTimeout && deadline.timeRemaining() < 4)
-    ) {
-      break;
-    }
-
-    const row = globalSearchIdlePreviewRows.values().next().value;
-    globalSearchIdlePreviewRows.delete(row);
-    if (!row?.isConnected || row.classList.contains("preview-ready") || isGlobalSearchRowInCollapsedGroup(row))
-      continue;
-    updateGlobalSearchPreviewElement(row);
-    processed++;
-  }
-
-  if (globalSearchIdlePreviewRows.size) scheduleGlobalSearchIdlePreviewUpdate();
-}
-
-function scheduleGlobalSearchIdlePreviewUpdate() {
-  if (globalSearchPreviewIdleHandle !== null || !globalSearchIdlePreviewRows.size) return;
-  globalSearchPreviewIdleHandle = requestGlobalSearchIdleCallback(processGlobalSearchIdlePreviewRows);
-}
-
-function queueGlobalSearchIdlePreviewRow(row) {
-  if (!row || row.classList.contains("preview-ready")) return;
-  globalSearchIdlePreviewRows.add(row);
-  scheduleGlobalSearchIdlePreviewUpdate();
-}
-
-function updateGlobalSearchFilePathVisibility() {
-  if (!globalSearchResultsList) return;
-  globalSearchResultsList.querySelectorAll(".global-search-file.has-path").forEach((row) => {
-    const label = row.querySelector(".global-search-file-label");
-    const title = row.querySelector(".global-search-file-title");
-    const path = row.querySelector(".global-search-file-path");
-    if (!label || !title || !path?.textContent) {
-      row.classList.remove("show-path");
-      return;
-    }
-    row.classList.remove("show-path");
-    const available = label.clientWidth;
-    const titleWidth = title.scrollWidth;
-    row.classList.toggle("show-path", available - titleWidth >= 36);
-  });
-}
-
-function scheduleGlobalSearchFilePathUpdate() {
-  if (globalSearchFilePathFrame !== null) return;
-  globalSearchFilePathFrame = requestAnimationFrame(() => {
-    globalSearchFilePathFrame = null;
-    updateGlobalSearchFilePathVisibility();
-  });
-}
-
-function resetGlobalSearchPreviewObserver() {
-  if (globalSearchPreviewFrame !== null) {
-    cancelAnimationFrame(globalSearchPreviewFrame);
-    globalSearchPreviewFrame = null;
-  }
-  if (globalSearchPreviewIdleHandle !== null) {
-    cancelGlobalSearchIdleCallback(globalSearchPreviewIdleHandle);
-    globalSearchPreviewIdleHandle = null;
-  }
-  if (globalSearchFilePathFrame !== null) {
-    cancelAnimationFrame(globalSearchFilePathFrame);
-    globalSearchFilePathFrame = null;
-  }
-  if (globalSearchPreviewObserver) {
-    globalSearchPreviewObserver.disconnect();
-    globalSearchPreviewObserver = null;
-  }
-  globalSearchVisiblePreviewRows.clear();
-  globalSearchIdlePreviewRows.clear();
-}
-
-function getGlobalSearchPreviewObserver() {
-  if (!("IntersectionObserver" in window) || !globalSearchResultsList) return null;
-  if (!globalSearchPreviewObserver) {
-    globalSearchPreviewObserver = new IntersectionObserver(
-      (entries) => {
-        for (const entry of entries) {
-          const row = entry.target;
-          if (!entry.isIntersecting) {
-            globalSearchVisiblePreviewRows.delete(row);
-            continue;
-          }
-          globalSearchVisiblePreviewRows.add(row);
-          updateGlobalSearchPreviewElement(row);
-        }
-      },
-      {
-        root: globalSearchResultsList,
-        rootMargin: "220px 0px",
-        threshold: 0,
-      },
-    );
-  }
-  return globalSearchPreviewObserver;
-}
-
-function observeGlobalSearchPreviewRow(row) {
-  queueGlobalSearchIdlePreviewRow(row);
-  const observer = getGlobalSearchPreviewObserver();
-  if (!observer) {
-    globalSearchVisiblePreviewRows.add(row);
-    updateGlobalSearchPreviewElement(row);
-    return;
-  }
-  observer.observe(row);
-}
-
-function getOpenTabSearchId(tab) {
-  if (!tab._searchTargetId) tab._searchTargetId = `tab:${++openTabSearchIdSeq}`;
-  return tab._searchTargetId;
-}
-
-function getSearchResultPathDisplay(fullPath) {
-  const value = String(fullPath || "");
-  if (!value) return "";
-  const index = Math.max(value.lastIndexOf("\\"), value.lastIndexOf("/"));
-  return index > 0 ? value.slice(0, index) : value;
-}
-
-function getGlobalSearchMatchId(targetId, range, query) {
-  return `${targetId}:${range.startLineNumber}:${range.startColumn}:${range.endLineNumber}:${range.endColumn}:${query}`;
-}
-
-function createOpenTabSearchTarget(tab, order) {
-  const title = truncateNoteTitle(tab.name || getNoteTitleFromContent(tab.model?.getValue() ?? tab.content ?? ""));
-  return {
-    type: tab.isNote ? "note" : "tab",
-    targetId: tab.isNote && tab.noteId ? `note:${tab.noteId}` : getOpenTabSearchId(tab),
-    noteId: tab.isNote ? tab.noteId : null,
-    tabId: tab.isNote ? null : getOpenTabSearchId(tab),
-    tab,
-    title,
-    path: tab.isNote ? "" : getSearchResultPathDisplay(tab.path),
-    fullPath: tab.isNote ? title : tab.path || title,
-    order,
-  };
-}
-
-function createGlobalSearchTarget(note, order) {
-  return {
-    type: "note",
-    targetId: `note:${note.id}`,
-    noteId: note.id,
-    note,
-    title: truncateNoteTitle(note.title || getNoteTitleFromContent("")),
-    path: "",
-    fullPath: truncateNoteTitle(note.title || getNoteTitleFromContent("")),
-    order,
-  };
-}
-
-function createSearchTargets(notes) {
-  const targets = [];
-  const openNoteIds = new Set();
-
-  tabData.forEach((tab, index) => {
-    if (!tab) return;
-    if (tab.isNotePreview) return;
-    if (tab.isNote && tab.noteId) openNoteIds.add(tab.noteId);
-    targets.push(createOpenTabSearchTarget(tab, index));
-  });
-
-  notes.forEach((note, index) => {
-    if (!note?.id || openNoteIds.has(note.id)) return;
-    targets.push(createGlobalSearchTarget(note, tabData.length + index));
-  });
-
-  return targets;
-}
-
-async function getSearchableTargetContent(target) {
-  if (target.type === "tab") {
-    if (!tabData.includes(target.tab)) return null;
-    return target.tab.model?.getValue() ?? target.tab.content ?? "";
-  }
-  if (target.tab && tabData.includes(target.tab)) {
-    return target.tab.model?.getValue() ?? target.tab.content ?? "";
-  }
-  return getSearchableNoteContent(target.note);
-}
-
-function searchTargetContent(target, content, query, maxMatches = GLOBAL_SEARCH_MAX_MATCHES) {
-  const existingModel = target.type === "tab" || target.tab ? target.tab?.model : null;
-  const model = existingModel || monaco.editor.createModel(content || "", "monapad");
-  try {
-    const askMax = Math.max(1, maxMatches + 1);
-    const matches = model.findMatches(
-      query,
-      model.getFullModelRange(),
-      globalSearchState.regex,
-      globalSearchState.matchCase,
-      globalSearchState.wholeWord ? GLOBAL_SEARCH_WORD_SEPARATORS : null,
-      false,
-      askMax,
-    );
-
-    const limitHit = matches.length >= askMax;
-    const visibleMatches = limitHit ? matches.slice(0, maxMatches) : matches;
-
-    return {
-      limitHit,
-      matches: visibleMatches.map((match) => {
-        const range = match.range;
-        return {
-          id: getGlobalSearchMatchId(target.targetId, range, query),
-          targetId: target.targetId,
-          type: target.type,
-          noteId: target.noteId,
-          tabId: target.tabId,
-          lineNumber: range.startLineNumber,
-          range,
-          preview: createGlobalSearchPreview(model, match),
-        };
-      }),
-    };
-  } finally {
-    if (!existingModel) model.dispose();
-  }
-}
-
-async function getSearchableNoteContent(note) {
-  const openTab = tabData.find((tab) => tab.isNote && tab.noteId === note.id);
-  if (openTab) {
-    const content = openTab.model?.getValue() ?? openTab.content ?? "";
-    noteContentCache.set(note.id, { updatedAt: openTab.noteUpdatedAt || note.updatedAt || 0, content });
-    return content;
-  }
-
-  const cached = noteContentCache.get(note.id);
-  if (cached && cached.updatedAt === (note.updatedAt || 0)) return cached.content;
-
-  const fullNote = await window.electronAPI.readNote(note.id);
-  if (!fullNote?.exists) return null;
-
-  const content = fullNote.content || "";
-  noteContentCache.set(note.id, { updatedAt: fullNote.meta?.updatedAt || note.updatedAt || 0, content });
-  return content;
-}
-
-async function runGlobalSearch() {
-  const query = getGlobalSearchQuery();
-  globalSearchState.query = query;
-  updateGlobalSearchToggleState();
-
-  if (!query) {
-    clearGlobalSearchResults();
-    return;
-  }
-
-  setGlobalSearchActive(true);
-  const seq = ++globalSearchSeq;
-  const regexError = validateGlobalSearchRegex(query);
-  globalSearchInput?.classList.toggle("invalid", Boolean(regexError));
-  if (regexError) {
-    renderGlobalSearchMessage(regexError);
-    return;
-  }
-
-  if (!globalSearchResultsSignature && !globalSearchState.totalMatches)
-    renderGlobalSearchMessage(getGlobalSearchLabel("searching", "Searching..."));
-
-  try {
-    const notes = sortNotesForPanel(
-      Array.isArray(notesIndexCache) && notesIndexCache.length ? notesIndexCache : await window.electronAPI.listNotes(),
-    );
-    const targets = createSearchTargets(notes);
-    const results = [];
-    let totalMatches = 0;
-    let limitHit = false;
-
-    for (const target of targets) {
-      if (target.type === "note" && target.note?.contentBytes === 0) continue;
-      if (totalMatches >= GLOBAL_SEARCH_MAX_MATCHES) {
-        limitHit = true;
-        break;
-      }
-
-      const content = await getSearchableTargetContent(target);
-      if (seq !== globalSearchSeq || content === null) return;
-
-      const remaining = GLOBAL_SEARCH_MAX_MATCHES - totalMatches;
-      const searchResult = searchTargetContent(target, content, query, remaining);
-      let matches = searchResult.matches.filter((match) => !globalSearchState.dismissedMatches.has(match.id));
-      if (searchResult.limitHit || matches.length > remaining) {
-        limitHit = true;
-        matches = matches.slice(0, remaining);
-      }
-      if (!matches.length) {
-        if (limitHit) break;
-        continue;
-      }
-
-      totalMatches += matches.length;
-      results.push({
-        targetId: target.targetId,
-        type: target.type,
-        noteId: target.noteId,
-        tabId: target.tabId,
-        title:
-          target.type === "note" ? truncateNoteTitle(target.title || getNoteTitleFromContent(content)) : target.title,
-        path: target.path,
-        fullPath: target.fullPath,
-        order: target.order,
-        matches,
-      });
-
-      if (limitHit || totalMatches >= GLOBAL_SEARCH_MAX_MATCHES) {
-        limitHit = true;
-        break;
-      }
-    }
-
-    if (seq !== globalSearchSeq) return;
-    results.sort((a, b) => a.order - b.order);
-
-    globalSearchState.limitHit = limitHit;
-    const nextSignature = getGlobalSearchResultsSignature(results, totalMatches);
-    if (nextSignature === globalSearchResultsSignature) {
-      updateGlobalSearchActionState();
-      return;
-    }
-
-    globalSearchState.results = results;
-    const resultTargetIds = new Set(results.map((result) => result.targetId));
-    globalSearchState.collapsedTargetIds = new Set(
-      [...globalSearchState.collapsedTargetIds].filter((targetId) => resultTargetIds.has(targetId)),
-    );
-    globalSearchState.totalMatches = totalMatches;
-    globalSearchState.totalItems = results.length;
-    globalSearchState.limitHit = limitHit;
-    globalSearchResultsSignature = nextSignature;
-    renderGlobalSearchResults();
-  } catch (error) {
-    if (seq !== globalSearchSeq) return;
-    renderGlobalSearchMessage(error?.message || getGlobalSearchLabel("searchFailed", "Search failed"));
-  }
-}
-
-function renderGlobalSearchMessage(message) {
-  if (!globalSearchResults || !globalSearchResultsList) return;
-  resetGlobalSearchPreviewObserver();
-  globalSearchResults.querySelector(".global-search-summary")?.remove();
-  globalSearchResults.querySelector(".global-search-warning")?.remove();
-  globalSearchResultsList.innerHTML = "";
-  const item = document.createElement("div");
-  item.className = "global-search-message";
-  item.textContent = message;
-  globalSearchResultsList.appendChild(item);
-  updateGlobalSearchActionState();
-}
-
-function renderGlobalSearchResults() {
-  if (!globalSearchResults || !globalSearchResultsList) return;
-  resetGlobalSearchPreviewObserver();
-  globalSearchResults.querySelector(".global-search-summary")?.remove();
-  globalSearchResults.querySelector(".global-search-warning")?.remove();
-  globalSearchResultsList.innerHTML = "";
-
-  if (!globalSearchState.totalMatches) {
-    renderGlobalSearchMessage(getGlobalSearchLabel("noResults", "No results found"));
-    return;
-  }
-
-  const summary = document.createElement("div");
-  summary.className = "global-search-summary";
-  summary.textContent = i18next.isInitialized
-    ? i18next.t("sidePanel.searchSummary", {
-        count: globalSearchState.totalMatches,
-        items: globalSearchState.totalItems,
-      })
-    : `${globalSearchState.totalMatches} results in ${globalSearchState.totalItems} items`;
-  globalSearchResults.insertBefore(summary, globalSearchResultsList);
-
-  if (globalSearchState.limitHit) {
-    const warning = document.createElement("div");
-    warning.className = "global-search-warning";
-    const icon = document.createElement("span");
-    icon.className = "global-search-warning-icon";
-    icon.setAttribute("aria-hidden", "true");
-    warning.append(icon);
-    globalSearchResults.insertBefore(warning, globalSearchResultsList);
-  }
-  updateGlobalSearchResultHeaderLabels();
-
-  for (const result of globalSearchState.results) {
-    const fileRow = document.createElement("div");
-    const isCollapsed = globalSearchState.allCollapsed || globalSearchState.collapsedTargetIds.has(result.targetId);
-    fileRow.className = `global-search-file ${result.type}-target${isCollapsed ? " collapsed" : ""}`;
-    fileRow.classList.toggle("has-path", Boolean(result.path));
-    fileRow.dataset.targetId = result.targetId;
-    if (result.noteId) fileRow.dataset.noteId = result.noteId;
-
-    const twistie = document.createElement("span");
-    twistie.className = "global-search-twistie codicon codicon-chevron-down";
-
-    const label = document.createElement("span");
-    label.className = "global-search-file-label";
-    label.title = result.fullPath || result.title;
-
-    const title = document.createElement("span");
-    title.className = "global-search-file-title";
-    title.textContent = result.title;
-
-    const path = document.createElement("span");
-    path.className = "global-search-file-path";
-    path.textContent = result.path || "";
-    label.append(title, path);
-
-    const count = document.createElement("span");
-    count.className = "global-search-count";
-    count.textContent = result.matches.length;
-
-    const dismiss = document.createElement("button");
-    dismiss.className = "global-search-file-dismiss codicon codicon-close";
-    dismiss.type = "button";
-    dismiss.title = getGlobalSearchLabel("dismiss", "Dismiss");
-    dismiss.setAttribute("aria-label", getGlobalSearchLabel("dismiss", "Dismiss"));
-    dismiss.addEventListener("click", (e) => {
-      e.stopPropagation();
-      dismissGlobalSearchFile(result.targetId);
-    });
-
-    const matchGroup = document.createElement("div");
-    matchGroup.className = "global-search-match-group";
-    const rowsToObserve = [];
-
-    fileRow.append(twistie, label, count, dismiss);
-    fileRow.addEventListener("click", () => {
-      toggleGlobalSearchFileCollapsed(fileRow, result.targetId);
-    });
-
-    for (const match of result.matches) {
-      const matchRow = createGlobalSearchMatchElement(match);
-      matchGroup.appendChild(matchRow);
-      rowsToObserve.push(matchRow);
-    }
-
-    globalSearchResultsList.append(fileRow, matchGroup);
-    rowsToObserve.forEach((row) => observeGlobalSearchPreviewRow(row));
-  }
-  scheduleGlobalSearchFilePathUpdate();
-  updateGlobalSearchActionState();
-}
-
-function createGlobalSearchMatchElement(match) {
-  const row = document.createElement("div");
-  row.className = "global-search-match";
-  row.dataset.targetId = match.targetId;
-  if (match.noteId) row.dataset.noteId = match.noteId;
-  row.dataset.matchId = match.id;
-  row.globalSearchMatch = match;
-  row.title = `${match.lineNumber}: ${escapeSearchPreview(match.preview.fullLine, GLOBAL_SEARCH_HOVER_MAX)}`;
-  const cachedPreview = globalSearchPreviewDisplayCache.get(match.id);
-  if (cachedPreview) row.classList.add("preview-ready");
-
-  const preview = document.createElement("span");
-  preview.className = "global-search-preview";
-
-  const before = document.createElement("span");
-  before.className = "global-search-before";
-  before.textContent = match.preview.fullBefore;
-  const hit = document.createElement("span");
-  hit.className = "global-search-hit";
-  hit.textContent = match.preview.inside;
-  const after = document.createElement("span");
-  after.className = "global-search-after";
-  after.textContent = cachedPreview?.after ?? match.preview.after;
-  if (cachedPreview) {
-    before.textContent = cachedPreview.before;
-    hit.textContent = cachedPreview.hit;
-  }
-  preview.append(before, hit, after);
-
-  const dismiss = document.createElement("button");
-  dismiss.className = "global-search-dismiss codicon codicon-close";
-  dismiss.type = "button";
-  dismiss.title = getGlobalSearchLabel("dismiss", "Dismiss");
-  dismiss.setAttribute("aria-label", getGlobalSearchLabel("dismiss", "Dismiss"));
-  dismiss.addEventListener("click", (e) => {
-    e.stopPropagation();
-    dismissGlobalSearchMatch(match.id);
-  });
-
-  row.append(preview, dismiss);
-  row.addEventListener("click", async () => {
-    if (suppressGlobalSearchMatchClick) return;
-    await openGlobalSearchMatch(match, { preview: true });
-  });
-  row.addEventListener("dblclick", async () => {
-    if (suppressGlobalSearchMatchClick) return;
-    await openGlobalSearchMatch(match, { preview: false });
-  });
-  row.addEventListener("auxclick", async (e) => {
-    if (e.button !== 1 || suppressGlobalSearchMatchClick) return;
-    e.preventDefault();
-    await openGlobalSearchMatch(match, { preview: false });
-  });
-  row.addEventListener("mousedown", (e) => beginGlobalSearchMatchDrag(e, row, match));
-  return row;
-}
-
-function dismissGlobalSearchMatch(matchId) {
-  globalSearchState.dismissedMatches.add(matchId);
-  for (const result of globalSearchState.results) {
-    result.matches = result.matches.filter((match) => match.id !== matchId);
-  }
-  globalSearchState.results = globalSearchState.results.filter((result) => result.matches.length);
-  globalSearchState.totalMatches = globalSearchState.results.reduce(
-    (total, result) => total + result.matches.length,
-    0,
-  );
-  globalSearchState.totalItems = globalSearchState.results.length;
-  globalSearchResultsSignature = getGlobalSearchResultsSignature(
-    globalSearchState.results,
-    globalSearchState.totalMatches,
-  );
-  renderGlobalSearchResults();
-}
-
-function dismissGlobalSearchFile(targetId) {
-  const result = globalSearchState.results.find((item) => item.targetId === targetId);
-  if (!result) return;
-  result.matches.forEach((match) => globalSearchState.dismissedMatches.add(match.id));
-  globalSearchState.results = globalSearchState.results.filter((item) => item.targetId !== targetId);
-  globalSearchState.totalMatches = globalSearchState.results.reduce((total, item) => total + item.matches.length, 0);
-  globalSearchState.totalItems = globalSearchState.results.length;
-  globalSearchResultsSignature = getGlobalSearchResultsSignature(
-    globalSearchState.results,
-    globalSearchState.totalMatches,
-  );
-  renderGlobalSearchResults();
-}
-
-async function openGlobalSearchMatch(match, options = {}) {
-  const tab =
-    match.type === "tab"
-      ? tabData.find((item) => item._searchTargetId === match.tabId)
-      : await openNoteById(match.noteId, { preview: options.preview !== false });
-  if (!tab || !monacoEditor) return;
-  if (match.type === "tab") switchTab(tab);
-
-  revealSearchRange(createRangeFromGlobalSearchMatch(match));
-}
-
-function createRangeFromGlobalSearchMatch(match) {
-  if (!match?.range) return null;
-  return new monaco.Range(
-    match.range.startLineNumber,
-    match.range.startColumn,
-    match.range.endLineNumber,
-    match.range.endColumn,
-  );
 }
 
 function createSearchRangePayload(match) {
@@ -8131,6 +6173,13 @@ async function deleteNoteEverywhere(noteId, { trash = false } = {}) {
   await renderNotesList();
   await populateRecentMenu();
   return true;
+}
+
+async function getLiveNoteContent(noteId) {
+  const openTab = tabData.find((tab) => tab.isNote && tab.noteId === noteId);
+  if (openTab) return openTab.model?.getValue() ?? openTab.content ?? "";
+  const note = await window.electronAPI.readNote(noteId);
+  return note?.exists ? note.content || "" : null;
 }
 
 async function convertNoteToUntitled(noteId) {
@@ -8392,7 +6441,7 @@ function startSidePanelNoteDragFromItem(item, e, options = {}) {
     payloadPromise: getNoteTabPayload(item.dataset.noteId),
     externalStarted: false,
     transferringToTabDrag: false,
-    sortLocked: noteBadgeFilter !== NOTE_BADGE_ALL_FILTER,
+    sortLocked: notesController?.getNoteBadgeFilter() !== NOTE_BADGE_ALL_FILTER,
   };
   if (options.forceDragging) {
     noteDragState.dragging = true;
@@ -8400,10 +6449,6 @@ function startSidePanelNoteDragFromItem(item, e, options = {}) {
     noteDragState.dragIndex = moveNoteListItemToCursor(item, e.clientY);
     positionNoteListItemAtCursor(noteDragState, e.clientY);
   }
-}
-
-function isPointInRect(x, y, rect) {
-  return x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom;
 }
 
 function isPointInSidePanel(e) {
@@ -8880,7 +6925,7 @@ window.addEventListener("mouseup", async (e) => {
   const orderedIds = [...notesList.querySelectorAll(".note-list-item")]
     .map((node) => node.dataset.noteId)
     .filter(Boolean);
-  if (noteBadgeFilter === NOTE_BADGE_ALL_FILTER) await window.electronAPI.reorderNotes({ orderedIds });
+  if (notesController?.getNoteBadgeFilter() === NOTE_BADGE_ALL_FILTER) await window.electronAPI.reorderNotes({ orderedIds });
   await renderNotesList();
   await populateRecentMenu();
 });
@@ -9239,6 +7284,7 @@ function processQueue() {
 // get forcus state
 window.electronAPI.onWindowFocus((focused) => {
   isWindowFocused = focused;
+  if (focused) refreshNotesOnWindowFocus();
   if (focused && messageQueue.length > 0 && !isShowingMessage) {
     processQueue();
   }
@@ -9282,8 +7328,7 @@ document.addEventListener("contextmenu", async (e) => {
 
   // Hide editor context menu
   customContextMenu.style.display = "none";
-  noteContextMenu.style.display = "none";
-  rightClickedNoteId = null;
+  notesController?.closeContextMenu();
 
   // Update copy & open path button
   updateTabContextMenuState(tabContextMenu, rightClickedTab);
@@ -9426,90 +7471,13 @@ tabContextMenu.addEventListener("click", async (e) => {
   }
 });
 
-noteContextMenu?.addEventListener("click", async (e) => {
-  const edgeButton = e.target.closest("button[data-edge]");
-  if (edgeButton) {
-    e.stopPropagation();
-    await toggleNoteBadgeEdge(edgeButton.dataset.edge);
-    return;
-  }
-
-  const action = e.target.closest("button")?.dataset.action;
-  if (!action || !rightClickedNoteId) return;
-  const noteId = rightClickedNoteId;
-  noteContextMenu.style.display = "none";
-  rightClickedNoteId = null;
-
-  switch (action) {
-    case "copyText": {
-      const content = await getLiveNoteContent(noteId);
-      if (content !== null) await navigator.clipboard.writeText(content);
-      break;
-    }
-
-    case "duplicate": {
-      const result = await window.electronAPI.duplicateNote(noteId);
-      if (result?.success) {
-        const note = await window.electronAPI.readNote(result.id);
-        const duplicatedTab = await createNoteTab(note?.content || "", null, note);
-        if (duplicatedTab) {
-          switchTab(duplicatedTab);
-          updateRecentNote(duplicatedTab.noteId);
-        }
-        await renderNotesList();
-        await populateRecentMenu();
-      }
-      break;
-    }
-
-    case "convertToUntitled":
-      await convertNoteToUntitled(noteId);
-      break;
-
-    case "convertToFile":
-      await convertNoteToFile(noteId);
-      break;
-
-    case "delete":
-      await deleteNoteEverywhere(noteId, { trash: true });
-      break;
-  }
-});
-
-async function toggleNoteBadgeEdge(edgeKey) {
-  if (!rightClickedNoteId) return;
-  const edge = NOTE_BADGE_EDGES.find((item) => item.key === edgeKey);
-  if (!edge) return;
-  const noteId = rightClickedNoteId;
-  const currentMask = normalizeNoteBadgeMask(getNoteMetaById(noteId)?.badgeMask);
-  const nextMask = currentMask ^ edge.bit;
-  const result = await window.electronAPI.updateNoteMeta({ noteId, badgeMask: nextMask });
-  if (!result?.success) return;
-  const cached = getNoteMetaById(noteId);
-  if (cached) cached.badgeMask = nextMask;
-  const openTab = getOpenNoteTabById(noteId);
-  if (openTab) {
-    openTab.noteBadgeMask = nextMask;
-    updateTabNoteBadge(openTab);
-    savePinnedTabsState();
-  }
-  updateNoteBadgeContextButtonsState();
-  await renderNotesList();
-  if (noteBadgeFilter !== NOTE_BADGE_ALL_FILTER && normalizeNoteBadgeMask(noteBadgeFilter) !== nextMask) {
-    noteContextMenu.style.display = "none";
-    rightClickedNoteId = null;
-  }
-  await populateRecentMenu();
-}
-
 // editor context menu display & position handler
 editor.addEventListener("contextmenu", (e) => {
   e.preventDefault();
 
   tabContextMenu.style.display = "none";
   rightClickedTab = null;
-  noteContextMenu.style.display = "none";
-  rightClickedNoteId = null;
+  notesController?.closeContextMenu();
 
   customContextMenu.style.display = "block";
   customContextMenu.style.visibility = "hidden";
@@ -9708,8 +7676,7 @@ function closeContextMenus({ focus = true } = {}) {
   }
 
   if (isElementOpen(noteContextMenu)) {
-    noteContextMenu.style.display = "none";
-    rightClickedNoteId = null;
+    notesController?.closeContextMenu();
     closed = true;
   }
 
@@ -9733,8 +7700,8 @@ async function closeTopOverlayByEscape() {
     return false;
   }
 
-  if (isElementOpen(deviceShareModal)) {
-    await closeDeviceShareModal();
+  if (deviceShareController?.isOpen()) {
+    await deviceShareController.closeModal();
     return true;
   }
 
