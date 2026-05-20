@@ -786,6 +786,8 @@ function updateNoteBadgeToggleButton() {
   notesBadgeToggleButton.setAttribute("aria-label", label);
   notesBadgeToggleButton.title = label;
   notesBadgeToggleButton.classList.toggle("active", areNoteBadgesVisible);
+  notesBadgeToggleButton.classList.toggle("codicon-filter", !areNoteBadgesVisible);
+  notesBadgeToggleButton.classList.toggle("codicon-filter-filled", areNoteBadgesVisible);
   document.body.classList.toggle("note-badges-visible", areNoteBadgesVisible);
 }
 
