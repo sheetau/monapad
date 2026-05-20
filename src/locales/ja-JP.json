@@ -40,8 +40,6 @@
     "goToLine": "行に移動",
     "goToSymbol": "見出しに移動",
     "quickOpen": "クイックオープン",
-    "quickOpenPlaceholder": "ファイルとノートを名前で検索",
-    "quickOpenNoResults": "ファイルやノートは見つかりません",
     "showCommands": "コマンド一覧",
     "print": "印刷",
     "settings": "設定",
@@ -52,6 +50,21 @@
     "onyx": "オニキス",
     "dark": "ダーク",
     "ash": "アッシュ"
+  },
+  "monaco": {
+    "actions": {
+      "toggleSubtext": "サブテキストの切り替え",
+      "keepOpen": "開いたままにする",
+      "toggleTabPin": "タブのピン留め切り替え",
+      "toggleHeading": "見出し {{level}} の切り替え",
+      "quickOpen": "クイックオープン",
+      "showCommands": "コマンド一覧"
+    },
+    "quickOpen": {
+      "placeholder": "ファイルとノートを名前で検索",
+      "noResults": "ファイルやノートは見つかりません",
+      "notes": "ノート"
+    }
   },
   "message": {
     "saved": "保存しました",
@@ -122,6 +135,7 @@
     "tabSize": "インデント幅",
     "language": "言語",
     "langDescription": "翻訳の貢献は<a href=\"https://github.com/sheetau/monapad/blob/main/LANGUAGE.md\" target=\"_blank\">こちら</a>。",
+    "monacoRestartWarning": "Monaco エディタ側の表示言語を反映するには Monapad の再起動が必要です。",
     "customTheme": "カスタムテーマ",
     "openThemeFolder": "テーマフォルダを開く",
     "customThemeDescription": "このフォルダにCSSファイルを作成すると、テーマメニューにカスタムテーマとして表示され適用できるようになります。詳細は<a href=\"https://github.com/sheetau/monapad/blob/main/CUSTOMTHEME.md\" target=\"_blank\">こちら</a>。",

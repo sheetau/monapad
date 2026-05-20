@@ -2,7 +2,7 @@ const path = require("path");
 const MonacoWebpackPlugin = require("monaco-editor-webpack-plugin");
 
 module.exports = {
-  entry: "./src/index.js",
+  entry: "./src/bootstrap.js",
   output: {
     filename: "bundle.js",
     path: path.resolve(__dirname, "src/build"),

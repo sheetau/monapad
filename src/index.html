@@ -2530,6 +2530,12 @@
         padding: 0 20px;
         margin: 5px 0 0 0;
       }
+      .settings-info.warn {
+        color: var(--warn);
+      }
+      .settings-info[hidden] {
+        display: none;
+      }
 
       /* custom dropdown menu */
       .custom-select-source {
@@ -3319,6 +3325,9 @@
         <p id="langDescription" class="settings-info">
           Contribute translations
           <a href="https://github.com/sheetau/monapad/blob/main/LANGUAGE.md" target="_blank">here</a>.
+        </p>
+        <p id="monacoNlsRestartWarning" class="settings-info warn" hidden>
+          Restart Monapad to apply this language to Monaco editor UI.
         </p>
 
         <!-- file importing -->

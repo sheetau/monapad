@@ -40,8 +40,6 @@
     "goToLine": "跳转到行",
     "goToSymbol": "跳转到符号",
     "quickOpen": "快速打开",
-    "quickOpenPlaceholder": "按名称搜索文件和笔记",
-    "quickOpenNoResults": "未找到文件或笔记",
     "showCommands": "显示命令",
     "print": "打印",
     "settings": "设置",
@@ -52,6 +50,21 @@
     "onyx": "玛瑙黑",
     "dark": "深色",
     "ash": "灰色"
+  },
+  "monaco": {
+    "actions": {
+      "toggleSubtext": "切换副文本",
+      "keepOpen": "保持打开",
+      "toggleTabPin": "固定/取消固定标签页",
+      "toggleHeading": "切换标题 {{level}}",
+      "quickOpen": "快速打开",
+      "showCommands": "显示命令"
+    },
+    "quickOpen": {
+      "placeholder": "按名称搜索文件和笔记",
+      "noResults": "未找到文件或笔记",
+      "notes": "笔记"
+    }
   },
   "message": {
     "saved": "已保存",
@@ -122,6 +135,7 @@
     "tabSize": "制表符大小",
     "language": "语言",
     "langDescription": "您可以 <a href=\"https://github.com/sheetau/monapad/blob/main/LANGUAGE.md\" target=\"_blank\">前往此处</a> 贡献翻译。",
+    "monacoRestartWarning": "需要重启 Monapad 才能将此语言应用到 Monaco 编辑器界面。",
     "customTheme": "自定义主题",
     "openThemeFolder": "打开主题文件夹",
     "customThemeDescription": "在此文件夹中创建 CSS 文件，即可从主题菜单添加和应用自定义主题。详细说明请 <a href=\"https://github.com/sheetau/monapad/blob/main/CUSTOMTHEME.md\" target=\"_blank\">查看此处</a>。",

@@ -532,6 +532,8 @@ window.electronAPI.onLoadTabData(async (receivedTabData) => {
 // language
 const langSwitcher = document.getElementById("langSwitcher");
 const savedLang = localStorage.getItem("lang") || "en";
+const initialMonacoNlsLang = globalThis.__MONAPAD_INITIAL_MONACO_NLS_LANG__ || savedLang;
+const monacoNlsRestartWarning = document.getElementById("monacoNlsRestartWarning");
 langSwitcher.value = savedLang;
 
 function getUiLanguageTag(lang = "en") {
@@ -547,6 +549,11 @@ function getUiLanguageTag(lang = "en") {
 
 function applyUiLanguage(lang) {
   document.documentElement.lang = getUiLanguageTag(lang);
+}
+
+function updateMonacoNlsRestartWarning(lang) {
+  if (!monacoNlsRestartWarning) return;
+  monacoNlsRestartWarning.hidden = lang === initialMonacoNlsLang;
 }
 
 applyUiLanguage(savedLang);
@@ -577,6 +584,8 @@ i18next
   .then(() => {
     applyUiLanguage(i18next.language);
     updateMenuLabels();
+    registerMonacoFormattingActions();
+    registerMonacoQuickInputActions();
   });
 
 function updateMenuLabels() {
@@ -697,6 +706,9 @@ function updateMenuLabels() {
   document.querySelector("#settings-menu .tabSize").textContent = i18next.t("settings.tabSize");
   document.getElementById("settingsLanguage").textContent = i18next.t("settings.language");
   document.getElementById("langDescription").innerHTML = i18next.t("settings.langDescription");
+  if (monacoNlsRestartWarning) {
+    monacoNlsRestartWarning.textContent = i18next.t("settings.monacoRestartWarning");
+  }
   document.getElementById("settingsCustomTheme").textContent = i18next.t("settings.customTheme");
   document.getElementById("openThemeFolder").textContent = i18next.t("settings.openThemeFolder");
   document.getElementById("customThemeDescription").innerHTML = i18next.t("settings.customThemeDescription");
@@ -787,6 +799,9 @@ langSwitcher.addEventListener("change", () => {
   i18next.changeLanguage(newLang).then(async () => {
     applyUiLanguage(newLang);
     updateMenuLabels();
+    updateMonacoNlsRestartWarning(newLang);
+    registerMonacoFormattingActions();
+    registerMonacoQuickInputActions();
     await renderNotesList();
     await populateRecentMenu();
     updateStatusBar();
@@ -1558,80 +1573,101 @@ let setKuromojiEnabled = () => {};
   });
 })();
 
-// subtext shortcut
-monacoEditor.addAction({
-  id: "toggle-subtext",
-  label: "Toggle Subtext",
-  keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.Slash],
-  precondition: null,
-  keybindingContext: null,
-  run: function (ed) {
-    const model = ed.getModel();
-    const selections = ed.getSelections();
+let monacoFormattingActionDisposables = [];
 
-    ed.pushUndoStop();
-    ed.executeEdits(
-      "toggle-subtext",
-      selections
-        .map((selection) => {
-          const startLine = selection.startLineNumber;
-          const endLine = selection.endLineNumber;
-          const edits = [];
+function disposeMonacoActions(disposables) {
+  disposables.forEach((disposable) => disposable?.dispose?.());
+  disposables.length = 0;
+}
 
-          for (let line = startLine; line <= endLine; line++) {
-            const lineContent = model.getLineContent(line);
-            if (/^\s*-# /.test(lineContent)) {
-              // remove subtext
-              const newText = lineContent.replace(/^(\s*)-# /, "$1");
-              edits.push({
-                range: new monaco.Range(line, 1, line, lineContent.length + 1),
-                text: newText,
-              });
-            } else {
-              // add subtext
-              edits.push({
-                range: new monaco.Range(line, 1, line, lineContent.length + 1),
-                text: `-# ${lineContent}`,
-              });
-            }
-          }
+// subtext / tab / heading shortcuts
+function registerMonacoFormattingActions() {
+  disposeMonacoActions(monacoFormattingActionDisposables);
 
-          return edits;
-        })
-        .flat(),
-    );
-    ed.pushUndoStop();
-  },
-});
+  monacoFormattingActionDisposables.push(
+    monacoEditor.addAction({
+      id: "toggle-subtext",
+      label: i18next.t("monaco.actions.toggleSubtext"),
+      keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.Slash],
+      precondition: null,
+      keybindingContext: null,
+      run: function (ed) {
+        const model = ed.getModel();
+        const selections = ed.getSelections();
 
-monacoEditor.addAction({
-  id: "monapad.keepOpenNotePreview",
-  label: "Keep Open",
-  keybindings: [monaco.KeyMod.chord(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyK, monaco.KeyCode.Enter)],
-  precondition: null,
-  keybindingContext: null,
-  run: function () {
-    keepOpenNoteTab(currentTab);
-  },
-});
+        ed.pushUndoStop();
+        ed.executeEdits(
+          "toggle-subtext",
+          selections
+            .map((selection) => {
+              const startLine = selection.startLineNumber;
+              const endLine = selection.endLineNumber;
+              const edits = [];
 
-monacoEditor.addAction({
-  id: "monapad.toggleTabPin",
-  label: "Pin/Unpin Tab",
-  keybindings: [
-    monaco.KeyMod.chord(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyK, monaco.KeyMod.Shift | monaco.KeyCode.Enter),
-  ],
-  precondition: null,
-  keybindingContext: null,
-  run: function () {
-    toggleTabPinned(currentTab);
-  },
-});
+              for (let line = startLine; line <= endLine; line++) {
+                const lineContent = model.getLineContent(line);
+                if (/^\s*-# /.test(lineContent)) {
+                  // remove subtext
+                  const newText = lineContent.replace(/^(\s*)-# /, "$1");
+                  edits.push({
+                    range: new monaco.Range(line, 1, line, lineContent.length + 1),
+                    text: newText,
+                  });
+                } else {
+                  // add subtext
+                  edits.push({
+                    range: new monaco.Range(line, 1, line, lineContent.length + 1),
+                    text: `-# ${lineContent}`,
+                  });
+                }
+              }
+
+              return edits;
+            })
+            .flat(),
+        );
+        ed.pushUndoStop();
+      },
+    }),
+  );
+
+  monacoFormattingActionDisposables.push(
+    monacoEditor.addAction({
+      id: "monapad.keepOpenNotePreview",
+      label: i18next.t("monaco.actions.keepOpen"),
+      keybindings: [monaco.KeyMod.chord(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyK, monaco.KeyCode.Enter)],
+      precondition: null,
+      keybindingContext: null,
+      run: function () {
+        keepOpenNoteTab(currentTab);
+      },
+    }),
+  );
+
+  monacoFormattingActionDisposables.push(
+    monacoEditor.addAction({
+      id: "monapad.toggleTabPin",
+      label: i18next.t("monaco.actions.toggleTabPin"),
+      keybindings: [
+        monaco.KeyMod.chord(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyK, monaco.KeyMod.Shift | monaco.KeyCode.Enter),
+      ],
+      precondition: null,
+      keybindingContext: null,
+      run: function () {
+        toggleTabPinned(currentTab);
+      },
+    }),
+  );
+
+  [1, 2, 3].forEach((level) => {
+    monacoFormattingActionDisposables.push(monacoEditor.addAction(createToggleHeadingAction(level)));
+  });
+}
 
 // heading shortcut
 function createToggleHeadingAction(level) {
   const id = `toggle-h${level}`;
-  const label = `Toggle Heading ${level}`;
+  const label = i18next.t("monaco.actions.toggleHeading", { level });
   const keyCode = monaco.KeyCode.Digit1 + (level - 1);
   const prefix = "#".repeat(level) + " ";
 
@@ -1683,9 +1719,7 @@ function createToggleHeadingAction(level) {
     },
   };
 }
-monacoEditor.addAction(createToggleHeadingAction(1)); // Ctrl+Shift+1
-monacoEditor.addAction(createToggleHeadingAction(2)); // Ctrl+Shift+2
-monacoEditor.addAction(createToggleHeadingAction(3)); // Ctrl+Shift+3
+registerMonacoFormattingActions();
 
 let currentDecorations = [];
 let decorationFrameId = null;
@@ -3361,25 +3395,37 @@ window.triggerShowCommands = function () {
 };
 document.getElementById("triggerShowCommandsBtn").addEventListener("click", triggerShowCommands);
 
-monacoEditor.addAction({
-  id: "monapad.quickOpen",
-  label: i18next.t("menu.quickOpen"),
-  alias: "Quick Open",
-  keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyP],
-  run: () => {
-    triggerQuickOpen();
-  },
-});
+let monacoQuickInputActionDisposables = [];
 
-monacoEditor.addAction({
-  id: "monapad.showCommands",
-  label: i18next.t("menu.showCommands"),
-  alias: "Command List",
-  keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyP],
-  run: () => {
-    triggerShowCommands();
-  },
-});
+function registerMonacoQuickInputActions() {
+  disposeMonacoActions(monacoQuickInputActionDisposables);
+
+  monacoQuickInputActionDisposables.push(
+    monacoEditor.addAction({
+      id: "monapad.quickOpen",
+      label: i18next.t("monaco.actions.quickOpen"),
+      alias: "Quick Open",
+      keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyP],
+      run: () => {
+        openQuickOpenPicker();
+      },
+    }),
+  );
+
+  monacoQuickInputActionDisposables.push(
+    monacoEditor.addAction({
+      id: "monapad.showCommands",
+      label: i18next.t("monaco.actions.showCommands"),
+      alias: "Command List",
+      keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyP],
+      run: () => {
+        triggerShowCommands();
+      },
+    }),
+  );
+}
+
+registerMonacoQuickInputActions();
 
 let activeQuickOpenPicker = null;
 
@@ -3412,9 +3458,9 @@ function createQuickOpenNoteItem(note, sourceRank) {
   const title = getQuickOpenNoteTitle(note);
   return {
     label: `$(notebook) ${title}`,
-    description: i18next.t("menu.notes"),
+    description: i18next.t("monaco.quickOpen.notes"),
     tooltip: title,
-    ariaLabel: `${title} ${i18next.t("menu.notes")}`,
+    ariaLabel: `${title} ${i18next.t("monaco.quickOpen.notes")}`,
     iconClasses: ["monapad-quick-open-note"],
     kind: "note",
     noteId: note.id,
@@ -3482,7 +3528,7 @@ async function openQuickOpenPicker() {
   }
 
   activeQuickOpenPicker = picker;
-  picker.placeholder = i18next.t("menu.quickOpenPlaceholder");
+  picker.placeholder = i18next.t("monaco.quickOpen.placeholder");
   picker.matchOnDescription = true;
   picker.sortByLabel = true;
   picker.busy = true;
@@ -3511,7 +3557,7 @@ async function openQuickOpenPicker() {
     ? items
     : [
         {
-          label: i18next.t("menu.quickOpenNoResults"),
+          label: i18next.t("monaco.quickOpen.noResults"),
           pickable: false,
         },
       ];

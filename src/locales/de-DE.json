@@ -40,8 +40,6 @@
     "goToLine": "Gehe zu Zeile",
     "goToSymbol": "Gehe zu Überschrift",
     "quickOpen": "Schnell öffnen",
-    "quickOpenPlaceholder": "Dateien und Notizen nach Name suchen",
-    "quickOpenNoResults": "Keine Dateien oder Notizen gefunden",
     "showCommands": "Befehlsliste",
     "print": "Drucken",
     "settings": "Einstellungen",
@@ -52,6 +50,21 @@
     "onyx": "Onyx",
     "dark": "Dunkel",
     "ash": "Asche"
+  },
+  "monaco": {
+    "actions": {
+      "toggleSubtext": "Subtext umschalten",
+      "keepOpen": "Geöffnet lassen",
+      "toggleTabPin": "Tab anheften/lösen",
+      "toggleHeading": "Überschrift {{level}} umschalten",
+      "quickOpen": "Schnell öffnen",
+      "showCommands": "Befehlsliste"
+    },
+    "quickOpen": {
+      "placeholder": "Dateien und Notizen nach Name suchen",
+      "noResults": "Keine Dateien oder Notizen gefunden",
+      "notes": "Notizen"
+    }
   },
   "message": {
     "saved": "Gespeichert",
@@ -122,6 +135,7 @@
     "tabSize": "Tabulatorgröße",
     "language": "Sprache",
     "langDescription": "Übersetzungen beitragen <a href=\"https://github.com/sheetau/monapad/blob/main/LANGUAGE.md\" target=\"_blank\">hier</a>.",
+    "monacoRestartWarning": "Starte Monapad neu, um diese Sprache auf die Monaco-Editor-Oberfläche anzuwenden.",
     "customTheme": "Eigenes Design",
     "openThemeFolder": "Design-Ordner öffnen",
     "customThemeDescription": "Erstelle in diesem Ordner eine CSS-Datei, um eigene Designs hinzuzufügen und sie über das Design-Menü anzuwenden. Details <a href=\"https://github.com/sheetau/monapad/blob/main/CUSTOMTHEME.md\" target=\"_blank\">hier</a>.",
