@@ -492,6 +492,7 @@ window.electronAPI.onLoadTabData(async (receivedTabData) => {
 const langSwitcher = document.getElementById("langSwitcher");
 const savedLang = localStorage.getItem("lang") || "en";
 const initialMonacoNlsLang = globalThis.__MONAPAD_INITIAL_MONACO_NLS_LANG__ || savedLang;
+const monacoNlsSupportedLangs = new Set(globalThis.__MONAPAD_MONACO_NLS_SUPPORTED_LANGS__ || ["en"]);
 const monacoNlsRestartWarning = document.getElementById("monacoNlsRestartWarning");
 langSwitcher.value = savedLang;
 
@@ -501,7 +502,8 @@ function applyUiLanguage(lang) {
 
 function updateMonacoNlsRestartWarning(lang) {
   if (!monacoNlsRestartWarning) return;
-  monacoNlsRestartWarning.hidden = lang === initialMonacoNlsLang;
+  const monacoNlsLang = monacoNlsSupportedLangs.has(lang) ? lang : "en";
+  monacoNlsRestartWarning.hidden = monacoNlsLang === initialMonacoNlsLang;
 }
 
 applyUiLanguage(savedLang);
@@ -527,6 +529,7 @@ i18next
       ja: { translation: require("./locales/ja-JP.json") },
       zh: { translation: require("./locales/zh-CN.json") },
       de: { translation: require("./locales/de-DE.json") },
+      pt: { translation: require("./locales/pt-BR.json") },
     },
   })
   .then(() => {

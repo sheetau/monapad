@@ -20,6 +20,7 @@ export function getUiLanguageTag(lang = "en") {
       ja: "ja-JP",
       zh: "zh-CN",
       de: "de-DE",
+      pt: "pt-BR",
     }[lang] || lang
   );
 }

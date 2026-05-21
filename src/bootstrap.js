@@ -6,10 +6,14 @@ const monacoNlsLoaders = {
   de: () => require("monaco-editor/esm/nls.messages.de.js"),
 };
 
-if (monacoNlsLoaders[savedLang]) {
-  monacoNlsLoaders[savedLang]();
+const monacoNlsSupportedLangs = ["en", ...Object.keys(monacoNlsLoaders)];
+const initialMonacoNlsLang = monacoNlsSupportedLangs.includes(savedLang) ? savedLang : "en";
+
+if (monacoNlsLoaders[initialMonacoNlsLang]) {
+  monacoNlsLoaders[initialMonacoNlsLang]();
 }
 
-globalThis.__MONAPAD_INITIAL_MONACO_NLS_LANG__ = savedLang;
+globalThis.__MONAPAD_INITIAL_MONACO_NLS_LANG__ = initialMonacoNlsLang;
+globalThis.__MONAPAD_MONACO_NLS_SUPPORTED_LANGS__ = monacoNlsSupportedLangs;
 
 require("./index.js");
