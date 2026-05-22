@@ -170,6 +170,8 @@
     "delete": "削除",
     "pinNote": "ピン留め",
     "unpinNote": "ピン留めを解除",
+    "archive": "アーカイブ",
+    "unarchive": "アーカイブを解除",
     "showNoteMarks": "ノートマークを表示",
     "hideNoteMarks": "ノートマークを非表示",
     "noteMark": "マーク",

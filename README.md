@@ -119,6 +119,7 @@ If you like my work, please consider:
 - Localization Contributors:
   - [zh-CN][Chinese]: [kazepu](https://github.com/kazepu)
   - [de-DE][German]: [Undertaker-afk](https://github.com/Undertaker-afk)
+  - [pt-BR][Brazilian Portuguese]: [akaimxntis](https://github.com/akaimxntis)
 
 ## Stay tuned:
 

@@ -170,6 +170,8 @@
     "delete": "Löschen",
     "pinNote": "Notiz anheften",
     "unpinNote": "Anheftung lösen",
+    "archive": "Archivieren",
+    "unarchive": "Aus Archiv holen",
     "showNoteMarks": "Notizmarkierungen anzeigen",
     "hideNoteMarks": "Notizmarkierungen ausblenden",
     "noteMark": "Markierung",

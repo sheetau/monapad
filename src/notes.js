@@ -1,4 +1,5 @@
 import {
+  NOTE_ARCHIVE_FILTER,
   NOTE_BADGE_ALL_FILTER,
   NOTE_BADGE_EDGES,
   countNoteBadgeEdges,
@@ -19,6 +20,15 @@ export function createNoteBadgeElement(mask, className = "") {
     edgeEl.className = `note-badge-edge ${edge.key}`;
     badge.appendChild(edgeEl);
   }
+  return badge;
+}
+
+function createNoteArchiveBadgeElement(className = "") {
+  const badge = createNoteBadgeElement(0, className);
+  badge.classList.add("is-archive");
+  const fill = document.createElement("span");
+  fill.className = "note-badge-archive-fill";
+  badge.appendChild(fill);
   return badge;
 }
 
@@ -89,9 +99,11 @@ export function createNotesPanelController({
   let noteBadgeFilter = localStorage.getItem(NOTE_BADGE_FILTER_STORAGE_KEY) || NOTE_BADGE_ALL_FILTER;
 
   function getVisibleNotesForPanel(notes) {
-    if (noteBadgeFilter === NOTE_BADGE_ALL_FILTER) return notes;
+    if (noteBadgeFilter === NOTE_ARCHIVE_FILTER) return notes.filter((note) => note?.archived);
+    const activeNotes = notes.filter((note) => !note?.archived);
+    if (noteBadgeFilter === NOTE_BADGE_ALL_FILTER) return activeNotes;
     const targetMask = normalizeNoteBadgeMask(noteBadgeFilter);
-    return notes.filter((note) => normalizeNoteBadgeMask(note.badgeMask) === targetMask);
+    return activeNotes.filter((note) => normalizeNoteBadgeMask(note.badgeMask) === targetMask);
   }
 
   function ensureNoteBadgeContextButtons() {
@@ -130,7 +142,17 @@ export function createNotesPanelController({
     if (!button) return;
     const note = getNoteMetaById(rightClickedNoteId);
     const label = note?.pinned ? i18next.t("sidePanel.unpinNote") : i18next.t("sidePanel.pinNote");
+    button.hidden = Boolean(note?.archived);
+    button.style.display = note?.archived ? "none" : "";
     button.textContent = label;
+  }
+
+  function updateNoteContextArchiveButtonState() {
+    if (!noteContextMenu || !rightClickedNoteId) return;
+    const button = noteContextMenu.querySelector('button[data-action="toggleArchive"]');
+    if (!button) return;
+    const note = getNoteMetaById(rightClickedNoteId);
+    button.textContent = note?.archived ? i18next.t("sidePanel.unarchive") : i18next.t("sidePanel.archive");
   }
 
   function showNoteContextMenu(e, noteId) {
@@ -153,18 +175,23 @@ export function createNotesPanelController({
     noteContextMenu.style.display = "block";
     updateNoteBadgeContextButtonsState();
     updateNoteContextPinButtonState();
+    updateNoteContextArchiveButtonState();
   }
 
   function renderNoteBadgeFilterBar() {
     if (!notesBadgeFilterBar) return;
     notesBadgeFilterBar.innerHTML = "";
-    const availableMasks = getNoteBadgeFilterMasks(getNotesIndexCache());
+    const notes = getNotesIndexCache();
+    const activeNotes = notes.filter((note) => !note?.archived);
+    const hasArchivedNotes = notes.some((note) => note?.archived);
+    const availableMasks = getNoteBadgeFilterMasks(activeNotes);
     const entries = [
       { value: NOTE_BADGE_ALL_FILTER, all: true, title: i18next.t("sidePanel.noteMarkAll") },
       ...availableMasks
         .filter((mask) => mask !== 0)
         .map((mask) => ({ value: mask, title: i18next.t("sidePanel.noteMarkFilter", { mask }) })),
       ...(availableMasks.includes(0) ? [{ value: 0, title: i18next.t("sidePanel.noteMarkNone") }] : []),
+      ...(hasArchivedNotes ? [{ value: NOTE_ARCHIVE_FILTER, archive: true, title: i18next.t("sidePanel.archive") }] : []),
     ];
 
     for (const entry of entries) {
@@ -175,7 +202,11 @@ export function createNotesPanelController({
       button.title = entry.title;
       button.setAttribute("aria-label", entry.title);
       button.classList.toggle("is-active", String(noteBadgeFilter) === String(entry.value));
-      const badge = entry.all ? createNoteBadgeElement(15) : createNoteBadgeElement(entry.value);
+      const badge = entry.archive
+        ? createNoteArchiveBadgeElement()
+        : entry.all
+          ? createNoteBadgeElement(15)
+          : createNoteBadgeElement(entry.value);
       if (entry.all) badge.classList.add("is-all");
       button.appendChild(badge);
       button.addEventListener("click", async () => {
@@ -193,9 +224,12 @@ export function createNotesPanelController({
     setNotesIndexCache(sortNotesForPanel(Array.isArray(notes) ? notes : []));
     onNotesIndexUpdated?.(getNotesIndexCache());
     if (noteBadgeFilter !== NOTE_BADGE_ALL_FILTER) {
-      const hasFilter = getNotesIndexCache().some(
-        (note) => normalizeNoteBadgeMask(note.badgeMask) === normalizeNoteBadgeMask(noteBadgeFilter),
-      );
+      const hasFilter =
+        noteBadgeFilter === NOTE_ARCHIVE_FILTER
+          ? getNotesIndexCache().some((note) => note?.archived)
+          : getNotesIndexCache().some(
+              (note) => !note?.archived && normalizeNoteBadgeMask(note.badgeMask) === normalizeNoteBadgeMask(noteBadgeFilter),
+            );
       if (!hasFilter) noteBadgeFilter = NOTE_BADGE_ALL_FILTER;
     }
     renderNoteBadgeFilterBar();
@@ -204,9 +238,10 @@ export function createNotesPanelController({
     for (const note of getVisibleNotesForPanel(getNotesIndexCache())) {
       if (!note?.id) continue;
       const item = document.createElement("div");
-      item.className = `note-list-item${note.pinned ? " pinned" : ""}`;
+      item.className = `note-list-item${note.pinned ? " pinned" : ""}${note.archived ? " archived" : ""}`;
       item.dataset.noteId = note.id;
       item.dataset.badgeMask = String(normalizeNoteBadgeMask(note.badgeMask));
+      item.dataset.archived = String(Boolean(note.archived));
 
       const badge = createNoteBadgeElement(note.badgeMask, "note-list-badge");
 
@@ -218,6 +253,7 @@ export function createNotesPanelController({
       const pinButton = document.createElement("button");
       pinButton.className = `note-pin-button codicon ${note.pinned ? "codicon-pinned" : "codicon-pin"}`;
       pinButton.type = "button";
+      pinButton.hidden = Boolean(note.archived);
       const pinLabel = note.pinned ? i18next.t("sidePanel.unpinNote") : i18next.t("sidePanel.pinNote");
       pinButton.setAttribute("aria-label", pinLabel);
       pinButton.title = pinLabel;
@@ -260,7 +296,7 @@ export function createNotesPanelController({
 
   async function toggleNotePinned(noteId) {
     const note = getNoteMetaById(noteId);
-    if (!note) return false;
+    if (!note || note.archived) return false;
     const result = await electronAPI.updateNoteMeta({ noteId, pinned: !note.pinned });
     if (!result?.success) return false;
     const cached = getNoteMetaById(noteId);
@@ -271,6 +307,24 @@ export function createNotesPanelController({
     await renderNotesList();
     await populateRecentMenu();
     updateNoteContextPinButtonState();
+    return true;
+  }
+
+  async function toggleNoteArchived(noteId) {
+    const note = getNoteMetaById(noteId);
+    if (!note) return false;
+    const result = await electronAPI.updateNoteMeta({ noteId, archived: !note.archived });
+    if (!result?.success) return false;
+    const cached = getNoteMetaById(noteId);
+    if (cached) {
+      cached.archived = Boolean(result.note?.archived);
+      cached.pinned = Boolean(result.note?.pinned);
+      if (Number.isFinite(result.note?.order)) cached.order = result.note.order;
+    }
+    await renderNotesList();
+    await populateRecentMenu();
+    updateNoteContextPinButtonState();
+    updateNoteContextArchiveButtonState();
     return true;
   }
 
@@ -315,6 +369,10 @@ export function createNotesPanelController({
     switch (action) {
       case "togglePin":
         await toggleNotePinned(noteId);
+        break;
+
+      case "toggleArchive":
+        await toggleNoteArchived(noteId);
         break;
 
       case "copyText": {
@@ -379,7 +437,9 @@ export function createNotesPanelController({
     ensureNoteBadgeContextButtons,
     updateNoteBadgeContextButtonsState,
     getCurrentNoteCreationBadgeMask() {
-      return noteBadgeFilter === NOTE_BADGE_ALL_FILTER ? 0 : normalizeNoteBadgeMask(noteBadgeFilter);
+      return noteBadgeFilter === NOTE_BADGE_ALL_FILTER || noteBadgeFilter === NOTE_ARCHIVE_FILTER
+        ? 0
+        : normalizeNoteBadgeMask(noteBadgeFilter);
     },
     getNoteBadgeFilter() {
       return noteBadgeFilter;

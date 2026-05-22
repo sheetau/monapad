@@ -6,6 +6,7 @@ export const NOTE_BADGE_EDGES = [
   { key: "left", bit: 8 },
 ];
 export const NOTE_BADGE_ALL_FILTER = "all";
+export const NOTE_ARCHIVE_FILTER = "archive";
 export const NOTE_TITLE_MAX_LENGTH = 100;
 export const GLOBAL_SEARCH_PREVIEW_MAX = 1000;
 

@@ -143,6 +143,7 @@ export function updateStaticUiText({
     ['#note-context-menu button[data-action="duplicate"]', "sidePanel.duplicate"],
     ['#note-context-menu button[data-action="convertToUntitled"]', "sidePanel.convertToUntitled"],
     ['#note-context-menu button[data-action="convertToFile"]', "sidePanel.convertToFile"],
+    ['#note-context-menu button[data-action="toggleArchive"]', "sidePanel.archive"],
     ['#note-context-menu button[data-action="delete"]', "sidePanel.delete"],
     ["#settings-menu .font .h1", "settings.font"],
     ["#settings-menu .size", "settings.size"],

@@ -133,6 +133,8 @@
     "delete": "Delete",
     "pinNote": "Pin Note",
     "unpinNote": "Unpin Note",
+    "archive": "Archive",
+    "unarchive": "Unarchive",
     "showNoteMarks": "Show Note Marks",
     "hideNoteMarks": "Hide Note Marks",
     "noteMark": "Mark",

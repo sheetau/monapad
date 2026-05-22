@@ -170,6 +170,8 @@
     "delete": "删除",
     "pinNote": "置顶笔记",
     "unpinNote": "取消置顶",
+    "archive": "归档",
+    "unarchive": "取消归档",
     "showNoteMarks": "显示笔记标记",
     "hideNoteMarks": "隐藏笔记标记",
     "noteMark": "标记",

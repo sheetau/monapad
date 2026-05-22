@@ -133,6 +133,8 @@
     "delete": "Excluir",
     "pinNote": "Fixar nota",
     "unpinNote": "Desafixar nota",
+    "archive": "Arquivar",
+    "unarchive": "Desarquivar",
     "showNoteMarks": "Mostrar marcações de notas",
     "hideNoteMarks": "Ocultar marcações de notas",
     "noteMark": "Marca",

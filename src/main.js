@@ -907,12 +907,15 @@ async function writeNotesIndex(index) {
 
 function normalizeNotesOrder(notes) {
   const pinned = notes
-    .filter((note) => note.pinned)
+    .filter((note) => note.pinned && !note.archived)
     .sort((a, b) => (Number.isFinite(a.order) ? a.order : 0) - (Number.isFinite(b.order) ? b.order : 0));
   const unpinned = notes
-    .filter((note) => !note.pinned)
+    .filter((note) => !note.pinned && !note.archived)
     .sort((a, b) => (Number.isFinite(a.order) ? a.order : 0) - (Number.isFinite(b.order) ? b.order : 0));
-  [...pinned, ...unpinned].forEach((note, index) => {
+  const archived = notes
+    .filter((note) => note.archived)
+    .sort((a, b) => (Number.isFinite(a.order) ? a.order : 0) - (Number.isFinite(b.order) ? b.order : 0));
+  [...pinned, ...unpinned, ...archived].forEach((note, index) => {
     note.order = index;
   });
   return notes;
@@ -948,7 +951,7 @@ async function upsertNoteIndexEntry(noteId, content, extra = {}) {
   const existing = index.notes.find((note) => note.id === noteId);
   const maxOrder = index.notes.reduce((max, note) => Math.max(max, Number.isFinite(note.order) ? note.order : -1), -1);
   const minUnpinnedOrder = index.notes
-    .filter((note) => !note.pinned)
+    .filter((note) => !note.pinned && !note.archived)
     .reduce((min, note) => Math.min(min, Number.isFinite(note.order) ? note.order : 0), 0);
   const nextEntry = {
     id: noteId,
@@ -956,7 +959,8 @@ async function upsertNoteIndexEntry(noteId, content, extra = {}) {
     title,
     createdAt: existing?.createdAt || extra.createdAt || now,
     updatedAt: now,
-    pinned: existing?.pinned || false,
+    archived: Boolean(existing?.archived),
+    pinned: Boolean(existing?.pinned) && !existing?.archived,
     order: Number.isFinite(existing?.order) ? existing.order : extra.insertAtTop ? minUnpinnedOrder - 1 : maxOrder + 1,
     contentBytes,
     badgeMask: normalizeNoteBadgeMask(extra.badgeMask ?? existing?.badgeMask),
@@ -1091,10 +1095,23 @@ ipcMain.handle("notes:update-meta", async (event, payload = {}) => {
     const note = index.notes.find((item) => item.id === payload.noteId);
     if (!note) return { success: false, error: "Note not found." };
     if (typeof payload.pinned === "boolean") {
-      note.pinned = payload.pinned;
+      note.pinned = note.archived ? false : payload.pinned;
       if (payload.pinned) {
-        note.order = Math.min(-1, ...index.notes.filter((item) => item.pinned && item.id !== note.id).map((item) => item.order || 0)) - 1;
+        note.order =
+          Math.min(-1, ...index.notes.filter((item) => item.pinned && !item.archived && item.id !== note.id).map((item) => item.order || 0)) -
+          1;
       }
+    }
+    if (typeof payload.archived === "boolean") {
+      note.archived = payload.archived;
+      if (note.archived) note.pinned = false;
+      const group = index.notes.filter(
+        (item) =>
+          item.id !== note.id &&
+          Boolean(item.archived) === note.archived &&
+          (note.archived || !item.pinned),
+      );
+      note.order = Math.min(-1, ...group.map((item) => (Number.isFinite(item.order) ? item.order : 0))) - 1;
     }
     if (Object.prototype.hasOwnProperty.call(payload, "badgeMask")) {
       note.badgeMask = normalizeNoteBadgeMask(payload.badgeMask);
@@ -1157,7 +1174,8 @@ ipcMain.handle("notes:refresh-index", async () => {
         title: getNoteTitleFromContent(content),
         createdAt: existing?.createdAt || stat.birthtimeMs || stat.ctimeMs || Date.now(),
         updatedAt: Math.max(existing?.updatedAt || 0, stat.mtimeMs || 0) || Date.now(),
-        pinned: Boolean(existing?.pinned),
+        pinned: Boolean(existing?.pinned) && !existing?.archived,
+        archived: Boolean(existing?.archived),
         order: Number.isFinite(existing?.order) ? existing.order : Number.MAX_SAFE_INTEGER,
         contentBytes: Buffer.byteLength(content, "utf8"),
         badgeMask: normalizeNoteBadgeMask(existing?.badgeMask),

@@ -1212,6 +1212,7 @@
         padding: 10px 20px;
         font-size: 14px;
         border: solid 1px var(--color3);
+        border-radius: 5px;
         z-index: 9997;
         opacity: 0;
         pointer-events: none;
@@ -2033,6 +2034,21 @@
       .note-badge.is-all .note-badge-edge {
         height: 100%;
         width: 100%;
+      }
+      .note-badge.is-archive .note-badge-archive-fill {
+        position: absolute;
+        left: 2px;
+        top: 2px;
+        width: 4px;
+        height: 4px;
+        background: var(--editorText);
+        pointer-events: none;
+      }
+      .note-badge-filter-button:not(:hover):not(.is-active) .note-badge.is-archive .note-badge-archive-fill {
+        background: var(--grayOut);
+      }
+      .note-badge-filter-button.is-active .note-badge.is-archive .note-badge-archive-fill {
+        background: var(--highlight);
       }
       .note-badge-edge {
         position: absolute;
@@ -3071,6 +3087,7 @@
         <button data-action="duplicate">Duplicate</button>
         <button data-action="convertToUntitled">Convert to Untitled</button>
         <button data-action="convertToFile">Convert to File</button>
+        <button data-action="toggleArchive">Archive</button>
         <div class="hr"></div>
         <button data-action="delete">Delete</button>
       </div>
