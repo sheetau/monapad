@@ -248,9 +248,6 @@
         --color-theme-border-02: color-mix(in oklab, var(--color-theme-fg) 7%, transparent);
         /* cursor variables end */
 
-        --p-max-width: 40%;
-        --flex-direction: row;
-
         --font-sans: Inter, system-ui, Helvetica Neue, Helvetica, Arial, sans-serif;
         --font-mono: Iosevka Web, monospace;
         --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
@@ -294,14 +291,6 @@
         padding-block-end: var(--spacing-v6);
       }
 
-      .mobile-br {
-        display: none;
-      }
-
-      .desktop-br {
-        display: inline;
-      }
-
       a {
         text-decoration: none;
         color: var(--color-theme-fg-02);
@@ -328,6 +317,65 @@
         line-height: var(--leading-snug);
       }
 
+      /* utilities */
+      .absolute {
+        position: absolute;
+      }
+      .relative {
+        position: relative;
+      }
+      .flex {
+        display: flex;
+      }
+      .inline-flex {
+        display: inline-flex;
+      }
+      .flex-col {
+        flex-direction: column;
+      }
+      .flex-row {
+        flex-direction: row;
+      }
+      .items-start {
+        align-items: flex-start;
+      }
+      .items-center {
+        align-items: center;
+      }
+      .items-end {
+        align-items: flex-end;
+      }
+      .items-stretch {
+        align-items: stretch;
+      }
+      .justify-center {
+        justify-content: center;
+      }
+      .w-full {
+        width: 100%;
+      }
+      .h-full {
+        height: 100%;
+      }
+      .max-w-full {
+        max-width: 100%;
+      }
+      .overflow-hidden {
+        overflow: hidden;
+      }
+      .overflow-visible {
+        overflow: visible;
+      }
+      .text-left {
+        text-align: left;
+      }
+      .text-center {
+        text-align: center;
+      }
+      .select-none {
+        user-select: none;
+      }
+
       /* header */
       header {
         position: fixed;
@@ -335,28 +383,21 @@
         left: 0;
         right: 0;
         z-index: 100;
-        display: flex;
         margin: 0 auto;
         height: var(--site-header-height);
         pointer-events: none;
         background: linear-gradient(to bottom, var(--color-theme-01-hex), transparent);
-        width: min(100vw, 100%);
+        width: 100%;
         padding-inline: var(--spacing-g2);
       }
       .header-wrapper {
-        width: 100%;
         max-width: min(var(--max-width-container), 100%);
-        display: flex;
         justify-content: space-between;
-        align-items: center;
         margin: 0 auto;
       }
       .logo {
-        display: flex;
-        align-items: center;
         gap: 0.3rem;
         cursor: pointer;
-        user-select: none;
         pointer-events: auto;
       }
       .logo img {
@@ -381,12 +422,7 @@
 
       /* hero */
       .hero {
-        position: relative;
-        display: flex;
-        flex-direction: column;
-        align-items: left;
         width: var(--max-width-container);
-        max-width: 100%;
         padding-top: var(--spacing-v5);
         margin: 0 auto;
       }
@@ -409,18 +445,13 @@
         z-index: 1;
       }
       .hero-text {
-        text-align: left;
         max-width: 65ch;
         margin-bottom: var(--spacing-v2\.5);
       }
       .hero-buttons {
-        display: flex;
         gap: var(--spacing-g1);
       }
       .btn {
-        display: flex;
-        align-items: center;
-        justify-content: center;
         border-radius: calc(3.4e38 * 1px);
         padding: var(--button-padding-default);
         font-weight: 400;
@@ -488,51 +519,21 @@
       }
 
       .screenshot {
-        position: relative;
-        width: 100%;
-        display: flex;
-        align-items: center;
-        justify-content: center;
         background-color: var(--color-theme-01-hex);
         border: 1px solid var(--color-theme-border-02);
         border-radius: var(--radius-lg);
-        overflow: hidden;
       }
-      /* .screenshot::before {
-        content: "";
-        position: absolute;
-        height: 175%;
-        width: min(100vw, 175%);
-        left: 50%;
-        transform: translateX(-50%);
-        background: radial-gradient(
-          ellipse closest-side at 50% 50%,
-          rgba(255, 255, 255, 0.2) 0%,
-          rgba(255, 255, 255, 0.05) 50%,
-          rgba(255, 255, 255, 0.01) 75%,
-          transparent 100%
-        );
-        pointer-events: none;
-      } */
-
       .screenshot img {
         width: 100%;
         height: 100%;
         object-fit: cover;
-        /* box-shadow: 0 0 10px rgba(0, 0, 0, 0.75); */
         z-index: 1;
         mix-blend-mode: screen;
       }
 
       /* feature blocks */
       .feature-block {
-        position: relative;
-        display: flex;
-        flex-direction: column;
-        align-items: flex-start;
-        text-align: left;
         width: var(--max-width-container);
-        max-width: 100%;
         margin: 0 auto;
       }
       .feature-block h2 {
@@ -545,21 +546,6 @@
         font-size: var(--text-md);
         line-height: var(--leading-snug-plus);
         font-weight: 500;
-      }
-      .feature-block .feature-row {
-        display: flex;
-        flex-direction: var(--flex-direction);
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 3rem;
-      }
-      .feature-block .feature-row h2 {
-        width: fit-content;
-        margin: 0;
-      }
-      .feature-block .feature-row p {
-        max-width: 50%;
-        margin: 0;
       }
       .feature-block:not(.prefooter) a svg {
         margin: 0 0 0 var(--g);
@@ -592,8 +578,6 @@
         grid-template-columns: repeat(12, minmax(0, 1fr));
         column-gap: var(--spacing-g2);
         row-gap: var(--spacing-v2);
-        align-items: center;
-        overflow: hidden;
         padding: var(--spacing-g1\.75);
         background: var(--color-theme-02-hex);
         border: 1px solid var(--color-theme-border-01);
@@ -614,7 +598,6 @@
       }
       .feature-media {
         grid-column: 6 / -1;
-        position: relative;
         align-self: stretch;
         min-width: 0;
       }
@@ -622,7 +605,6 @@
         box-sizing: border-box;
         width: calc(100% + var(--spacing-g1\.75) + var(--radius-lg));
         height: 32rem;
-        overflow: hidden;
         line-height: 0;
       }
       .feature-media:not(.custom-theme-image) img,
@@ -667,33 +649,22 @@
 
       /* shortcuts */
       .shortcuts-demo {
-        display: flex;
-        flex-direction: row;
-        align-items: center;
         gap: var(--spacing-g2);
-        width: 100%;
         margin-bottom: var(--spacing-v2);
+      }
+      .shortcuts-copy {
+        width: 50%;
       }
       .shortcuts-demo p {
         max-width: none;
         width: 90%;
       }
-      .shortcuts-copy {
-        width: 50%;
-      }
-      .shortcuts-copy p {
-        max-width: none;
-      }
       .command-list {
         width: 50%;
         font-size: var(--text-sm);
-        position: relative;
-        user-select: none;
         height: 15rem;
-        overflow: hidden;
       }
       .command-list-overlay {
-        position: absolute;
         inset: 0;
         background: linear-gradient(to bottom, transparent 75%, var(--color-theme-01-hex) 100%);
         pointer-events: none;
@@ -750,15 +721,8 @@
         font-weight: 700;
       }
 
-      .shortcuts-images-wrapper {
-        width: 100%;
-        overflow: visible;
-      }
       .shortcuts-images {
-        display: flex;
         gap: 0.6rem;
-        width: 100%;
-        flex-direction: row;
         overflow-x: scroll;
         scrollbar-width: none;
         -ms-overflow-style: none;
@@ -772,12 +736,7 @@
       .shortcut-img {
         flex: 1;
         min-width: 14rem;
-        display: flex;
-        flex-direction: column;
-        align-items: flex-start;
         padding: var(--spacing-g1\.75);
-        overflow: hidden;
-        position: relative;
       }
       .shortcut-img:before {
         content: "";
@@ -791,10 +750,8 @@
       }
 
       .shortcut-img-container {
-        position: relative;
         width: calc(100% - 0.5rem);
         aspect-ratio: 7/6;
-        overflow: hidden;
         border-radius: var(--radius-lg);
         background: var(--color-theme-02-hex);
         isolation: isolate; /* for blend-mode containment */
@@ -837,8 +794,6 @@
 
       /* card slider */
       .card-slider-shell {
-        position: relative;
-        width: 100%;
         --slider-card-width: min(44rem, calc(100vw - var(--spacing-g2) * 4));
       }
       .card-slider-viewport {
@@ -855,8 +810,6 @@
         display: none;
       }
       .card-slider-track {
-        display: flex;
-        align-items: stretch;
         gap: var(--spacing-g1);
         width: max-content;
       }
@@ -865,21 +818,16 @@
         flex: 0 0 max(0px, calc(var(--max-width-container) - var(--slider-card-width)));
       }
       .slider-card {
-        position: relative;
-        display: flex;
-        flex-direction: column;
         flex: 0 0 auto;
         width: var(--slider-card-width);
         height: 32rem;
         padding: var(--spacing-g1\.75);
-        overflow: hidden;
         scroll-snap-align: start;
         background: var(--color-theme-02-hex);
         border: 1px solid var(--color-theme-border-01);
         border-radius: var(--radius-sm);
       }
       .slider-card-copy {
-        position: relative;
         z-index: 1;
         max-width: 35rem;
         padding-left: var(--spacing-g0\.25);
@@ -889,13 +837,11 @@
         margin-bottom: 0;
       }
       .slider-card-media {
-        position: relative;
         flex: 1;
         min-height: 16rem;
         margin-top: var(--spacing-v2);
         margin-right: calc(var(--spacing-g1\.75) * -1);
         margin-bottom: calc((var(--spacing-g1\.75) + var(--spacing-g2)) * -1);
-        overflow: visible;
         line-height: 0;
       }
       .slider-card-media img,
@@ -913,11 +859,6 @@
         border: 0;
         border-radius: 0;
       }
-      .qr-card .slider-card-media {
-        display: flex;
-        align-items: flex-end;
-        justify-content: center;
-      }
       .qr-card .slider-card-media img {
         width: auto;
         max-width: calc(100% + var(--radius-lg));
@@ -926,18 +867,12 @@
         object-position: center bottom;
       }
       .card-slider-controls {
-        display: flex;
-        align-items: center;
-        justify-content: center;
         gap: var(--spacing-g0\.75);
         margin-top: var(--spacing-g1);
       }
       .card-slider-dot,
       .card-slider-toggle {
         position: relative;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
         border: 0;
         cursor: pointer;
       }
@@ -996,26 +931,9 @@
         border: 0;
       }
 
-      .tabs-video {
-        width: 100%;
-        height: 100%;
-        position: relative;
-        overflow: hidden;
-        display: flex;
-        justify-content: center;
-        align-items: flex-start;
-      }
       .video-wrapper {
-        position: absolute;
-        width: 100%;
-        height: 100%;
         object-fit: cover;
         object-position: top;
-        overflow: hidden;
-        /* perspective: 900px; */
-        text-align: center;
-        /* -webkit-mask-image: linear-gradient(to bottom, black 50%, transparent 100%); */
-        /* mask-image: linear-gradient(to bottom, black 50%, transparent 100%); */
         mix-blend-mode: screen;
       }
       .video-wrapper video {
@@ -1025,19 +943,12 @@
         object-position: top left;
         border: 1px solid var(--color-theme-border-02);
         border-radius: var(--radius-lg);
-        /* transform: rotateX(30deg); */
-        /* transform-style: preserve-3d; */
-      }
-      /* default themes */
-      .default-themes {
-        width: 100%;
-        display: flex;
-        flex-direction: var(--flex-direction);
-        align-items: flex-start;
-        margin-bottom: 2rem;
-        align-items: center;
       }
 
+      /* default themes */
+      .default-themes {
+        margin-bottom: 2rem;
+      }
       .default-themes p {
         max-width: none;
         width: 70%;
@@ -1047,8 +958,6 @@
       }
 
       .theme-buttons {
-        display: flex;
-        flex-direction: row;
         color: var(--color-theme-fg-04);
         font-weight: 500;
         user-select: none;
@@ -1057,9 +966,6 @@
         margin-top: var(--spacing-v1);
       }
       .theme-button {
-        display: flex;
-        flex-direction: row;
-        align-items: center;
         transition: color 0.3s ease;
       }
       .theme-button.hover,
@@ -1086,15 +992,10 @@
       .themes-group {
         width: 50%;
         height: 30rem;
-        position: relative;
-        display: flex;
-        flex-direction: column;
-        overflow: hidden;
         font-family: var(--font-mono);
         font-size: 0.8rem;
         line-height: var(--leading-snug-plus);
         color: var(--color-theme-fg-02);
-        user-select: none;
         -webkit-mask-image:
           linear-gradient(to right, black 50%, transparent 100%), linear-gradient(to top, black 70%, transparent 100%);
         -webkit-mask-composite: destination-in;
@@ -1136,10 +1037,7 @@
         transform: skewY(-10deg) translate(var(--theme-x), calc(var(--theme-y) - var(--theme-hover-lift)));
       }
       .themes-wrapper {
-        display: flex;
-        flex-direction: row;
         padding: var(--spacing-g2) var(--spacing-g1\.75);
-        overflow: hidden;
         border-radius: inherit;
         background: var(--theme-bg);
       }
@@ -1174,24 +1072,11 @@
       }
 
       /* custom theme */
-      .custom-themes {
-        align-items: center;
-      }
-      .custom-theme-text {
-        display: flex;
-        flex-direction: column;
-        align-items: flex-start;
-      }
-      .custom-theme-links a {
-        justify-content: flex-start;
-        width: fit-content;
-      }
       .custom-theme-image {
         align-self: stretch;
         height: 25rem;
         margin-right: calc(var(--spacing-g1\.75) * -1);
         margin-bottom: calc(var(--spacing-g1\.75) * -1);
-        overflow: visible;
         line-height: 0;
       }
       .custom-theme-image::after {
@@ -1218,18 +1103,12 @@
 
       /* prefooter */
       .prefooter {
-        display: flex;
-        flex-direction: column;
         gap: var(--spacing-v1);
-        align-items: center;
         width: var(--max-width-container);
-        max-width: 100%;
         margin: 0 auto;
       }
       .prefooter h2 {
         font-size: var(--text-2xl);
-        width: 100%;
-        text-align: center;
         margin-bottom: 0;
       }
       .prefooter-buttons {
@@ -1240,22 +1119,17 @@
       footer {
         color: var(--color-theme-fg-04);
         font-size: var(--text-sm);
-        width: 100%;
         background: var(--color-theme-02-hex);
         padding-bottom: var(--spacing-g3);
         padding-top: var(--spacing-v3);
         padding-inline: var(--spacing-g2);
       }
       .footer-content {
-        width: 100%;
         max-width: min(var(--max-width-container), 100%);
-        display: flex;
         flex-wrap: wrap;
         justify-content: space-between;
-        align-items: center;
         margin: 0 auto;
         gap: var(--spacing-v2);
-        margin-inline: auto;
         margin-top: var(--spacing-v4\.5);
       }
       footer a {
@@ -1265,10 +1139,7 @@
       }
       .footer-icons,
       .footer-links {
-        display: flex;
         gap: var(--spacing-g1\.5);
-        align-items: center;
-        justify-content: center;
       }
       footer a svg {
         margin: 0;
@@ -1288,12 +1159,7 @@
 
       @media (max-width: 768px) {
         :root {
-          --p-max-width: 100%;
-          --flex-direction: column;
           --text-sm: 0.9rem;
-        }
-        .desktop-br {
-          display: none;
         }
         .command-list {
           width: 100%;
@@ -1335,15 +1201,6 @@
           width: 95vw;
           padding-right: 5vw;
         }
-        .feature-block .feature-row {
-          align-items: flex-start;
-        }
-        .feature-block .feature-row h3 {
-          margin-bottom: 2rem;
-        }
-        .feature-block .feature-row p {
-          max-width: var(--p-max-width);
-        }
         .slider-card {
           width: var(--slider-card-width);
           height: 27rem;
@@ -1362,6 +1219,9 @@
         .themes-group {
           width: 100%;
         }
+        .default-themes {
+          flex-direction: column;
+        }
         .themes-group {
           margin-top: -1rem;
         }
@@ -1376,7 +1236,7 @@
         .footer-content {
           justify-content: center;
           gap: var(--spacing-g1\.5);
-          flex-direction: var(--flex-direction);
+          flex-direction: column;
         }
         .footer-icons {
           gap: 1rem;
@@ -1394,35 +1254,34 @@
           height: 1.25rem;
         }
       }
-      @media (max-width: 640px) {
-        .mobile-br {
-          display: inline;
-        }
-      }
     </style>
   </head>
   <body>
-    <header>
-      <div class="header-wrapper">
-        <div class="logo" onclick="location.reload()">
+    <header class="flex">
+      <div class="header-wrapper w-full flex items-center">
+        <div class="logo flex items-center select-none" onclick="location.reload()">
           <img src="media/favicon.ico" />
           <span>Monapad</span>
         </div>
-        <a href="#" class="app-download btn">Download</a>
+        <a href="#" class="app-download btn flex items-center justify-center">Download</a>
       </div>
     </header>
 
     <main>
       <!-- hero -->
-      <section class="hero">
+      <section class="hero relative flex flex-col items-start max-w-full">
         <canvas class="hero-particles" aria-hidden="true"></canvas>
-        <div class="hero-text">
+        <div class="hero-text text-left">
           <h1 class="hero-title">
             Built to give you absolute control over your words, Monapad is the ultimate text editor.
           </h1>
-          <div class="hero-buttons">
-            <a href="#" class="app-download download-main btn">Download for Windows</a>
-            <a href="https://github.com/sheetau/monapad/tree/main" target="_blank" class="hero-link btn">
+          <div class="hero-buttons flex">
+            <a href="#" class="app-download download-main btn flex items-center justify-center">Download for Windows</a>
+            <a
+              href="https://github.com/sheetau/monapad/tree/main"
+              target="_blank"
+              class="hero-link btn flex items-center justify-center"
+            >
               GitHub
               <svg width="8" height="13" viewBox="0 0 8 13" fill="none" xmlns="http://www.w3.org/2000/svg">
                 <path
@@ -1437,14 +1296,14 @@
           </div>
         </div>
 
-        <div class="screenshot">
+        <div class="screenshot relative w-full flex items-center justify-center overflow-hidden">
           <img src="media/ss_onyx_2.png" alt="Monapad Screenshot" />
         </div>
       </section>
 
       <!-- language -->
-      <section class="feature-block language">
-        <div class="feature-showcase media-panel-showcase">
+      <section class="feature-block language relative flex flex-col items-start text-left max-w-full">
+        <div class="feature-showcase media-panel-showcase items-center overflow-hidden">
           <div class="feature-copy">
             <h2>Language designed for text</h2>
             <p>
@@ -1452,18 +1311,18 @@
               documents the way developers manage code.
             </p>
           </div>
-          <figure class="feature-media">
-            <div class="feature-media-inner">
+          <figure class="feature-media relative">
+            <div class="feature-media-inner overflow-hidden">
               <video src="media/language.mp4" muted loop autoplay playsinline preload="metadata"></video>
             </div>
           </figure>
         </div>
       </section>
 
-      <section class="feature-block">
-        <div class="feature-showcase media-panel-showcase media-left">
-          <figure class="feature-media">
-            <div class="feature-media-inner">
+      <section class="feature-block relative flex flex-col items-start text-left max-w-full">
+        <div class="feature-showcase media-panel-showcase media-left items-center overflow-hidden">
+          <figure class="feature-media relative">
+            <div class="feature-media-inner overflow-hidden">
               <img src="media/note.png" alt="" />
             </div>
           </figure>
@@ -1478,8 +1337,8 @@
       </section>
 
       <!-- shortcuts -->
-      <section class="feature-block shortcuts">
-        <div class="shortcuts-demo">
+      <section class="feature-block shortcuts relative flex flex-col items-start text-left max-w-full">
+        <div class="shortcuts-demo flex flex-row items-center w-full">
           <div class="shortcuts-copy">
             <h3>Every shortcut developers use</h3>
             <p>
@@ -1499,30 +1358,30 @@
               </a>
             </p>
           </div>
-          <div class="command-list">
+          <div class="command-list relative select-none overflow-hidden">
             <div class="command-input" id="commandSearchInput"></div>
             <div class="command-results" id="commandSearchResults" aria-hidden="true"></div>
-            <div class="command-list-overlay"></div>
+            <div class="command-list-overlay absolute"></div>
           </div>
         </div>
-        <div class="shortcuts-images-wrapper">
-          <div class="shortcuts-images">
-            <div class="shortcut-img">
-              <div class="shortcut-img-container">
+        <div class="shortcuts-images-wrapper w-full overflow-visible">
+          <div class="shortcuts-images flex flex-row w-full">
+            <div class="shortcut-img relative flex flex-col items-start overflow-hidden">
+              <div class="shortcut-img-container relative overflow-hidden">
                 <img src="media/shortcuts_1.png" alt="Find and Replace" />
               </div>
               <div class="shortcut-label">Find and Replace</div>
               <div class="shortcut-key">Ctrl + F/H</div>
             </div>
-            <div class="shortcut-img">
-              <div class="shortcut-img-container">
+            <div class="shortcut-img relative flex flex-col items-start overflow-hidden">
+              <div class="shortcut-img-container relative overflow-hidden">
                 <img src="media/shortcuts_2.png" alt="Multi Cursor" />
               </div>
               <div class="shortcut-label">Multi Cursor</div>
               <div class="shortcut-key">Alt + Click</div>
             </div>
-            <div class="shortcut-img">
-              <div class="shortcut-img-container">
+            <div class="shortcut-img relative flex flex-col items-start overflow-hidden">
+              <div class="shortcut-img-container relative overflow-hidden">
                 <img src="media/shortcuts_3.png" alt="Go to Heading" />
               </div>
               <div class="shortcut-label">Go to Heading</div>
@@ -1533,62 +1392,82 @@
       </section>
 
       <!-- workflow cards -->
-      <section class="feature-block card-slider">
-        <div class="card-slider-shell">
+      <section class="feature-block card-slider relative flex flex-col items-start text-left max-w-full">
+        <div class="card-slider-shell relative w-full">
           <div class="card-slider-viewport" id="workflowSlider">
-            <div class="card-slider-track">
-              <article class="slider-card tabs-card">
-                <div class="slider-card-copy">
+            <div class="card-slider-track flex items-stretch">
+              <article class="slider-card tabs-card relative flex flex-col overflow-hidden">
+                <div class="slider-card-copy relative">
                   <h3>Tabs that flow</h3>
                   <p>
                     Monapad's tabs are smooth and fully fluid. Close, rearrange, reopen, pin, pop out, or merge across
                     windows without missing a beat.
                   </p>
                 </div>
-                <div class="slider-card-media">
-                  <div class="tabs-video">
-                    <div class="video-wrapper">
+                <div class="slider-card-media relative overflow-visible">
+                  <div class="tabs-video relative flex items-start justify-center w-full h-full overflow-hidden">
+                    <div class="video-wrapper absolute w-full h-full overflow-hidden text-center">
                       <video id="tabsVideo" src="media/tabs.mp4" muted loop playsinline preload="auto"></video>
                     </div>
                   </div>
                 </div>
               </article>
 
-              <article class="slider-card search-card">
-                <div class="slider-card-copy">
+              <article class="slider-card search-card relative flex flex-col overflow-hidden">
+                <div class="slider-card-copy relative">
                   <h3>Search everything, instantly</h3>
                   <p>Find any word across all open tabs and notes at once. Jump to any file by name, instantly.</p>
                 </div>
-                <figure class="slider-card-media">
+                <figure class="slider-card-media relative overflow-visible">
                   <img src="media/search.png" alt="" />
                 </figure>
               </article>
 
-              <article class="slider-card qr-card">
-                <div class="slider-card-copy">
+              <article class="slider-card qr-card relative flex flex-col overflow-hidden">
+                <div class="slider-card-copy relative">
                   <h3>One click to your phone</h3>
                   <p>
                     Generate a QR code over your local network and scan to send any text to your phone instantly. No
                     cloud account required.
                   </p>
                 </div>
-                <figure class="slider-card-media">
+                <figure class="slider-card-media relative flex items-end justify-center overflow-visible">
                   <img src="media/qr.png" alt="" />
                 </figure>
               </article>
             </div>
           </div>
-          <div class="card-slider-controls" aria-label="Workflow cards">
-            <button class="card-slider-dot is-active" type="button" data-slider-index="0" aria-label="Show tabs card">
+          <div class="card-slider-controls flex items-center justify-center" aria-label="Workflow cards">
+            <button
+              class="card-slider-dot is-active inline-flex items-center justify-center"
+              type="button"
+              data-slider-index="0"
+              aria-label="Show tabs card"
+            >
               <span class="sr-only">Tabs</span>
             </button>
-            <button class="card-slider-dot" type="button" data-slider-index="1" aria-label="Show search card">
+            <button
+              class="card-slider-dot inline-flex items-center justify-center"
+              type="button"
+              data-slider-index="1"
+              aria-label="Show search card"
+            >
               <span class="sr-only">Search</span>
             </button>
-            <button class="card-slider-dot" type="button" data-slider-index="2" aria-label="Show QR card">
+            <button
+              class="card-slider-dot inline-flex items-center justify-center"
+              type="button"
+              data-slider-index="2"
+              aria-label="Show QR card"
+            >
               <span class="sr-only">QR</span>
             </button>
-            <button class="card-slider-toggle" type="button" aria-label="Pause slider" aria-pressed="false">
+            <button
+              class="card-slider-toggle inline-flex items-center justify-center"
+              type="button"
+              aria-label="Pause slider"
+              aria-pressed="false"
+            >
               <svg
                 class="pause-icon"
                 xmlns="http://www.w3.org/2000/svg"
@@ -1620,29 +1499,29 @@
       </section>
 
       <!-- dark themes -->
-      <section class="feature-block themes">
-        <div class="default-themes">
+      <section class="feature-block themes relative flex flex-col items-start text-left max-w-full">
+        <div class="default-themes flex flex-row items-center w-full">
           <div class="themes-text">
             <h3>Focus in the dark</h3>
             <p>Three dark themes ship by default. Clarity and comfort, from the first word to the last.</p>
-            <div class="theme-buttons">
-              <div class="theme-button ash">
+            <div class="theme-buttons flex flex-row">
+              <div class="theme-button ash flex flex-row items-center">
                 <div></div>
                 <span class="onyx">Ash</span>
               </div>
-              <div class="theme-button dark">
+              <div class="theme-button dark flex flex-row items-center">
                 <div></div>
                 <span class="onyx">Dark</span>
               </div>
-              <div class="theme-button onyx">
+              <div class="theme-button onyx flex flex-row items-center">
                 <div></div>
                 <span class="onyx">Onyx</span>
               </div>
             </div>
           </div>
-          <div class="themes-group">
+          <div class="themes-group relative flex flex-col overflow-hidden select-none">
             <div class="themes-shadow">
-              <div class="themes-wrapper">
+              <div class="themes-wrapper flex flex-row overflow-hidden">
                 <div class="line-number">
                   1<br />2<br />3<br /><br /><br />4<br />5<br />6<br />7<br />8<br />9<br />10<br />11
                 </div>
@@ -1663,7 +1542,7 @@
             </div>
 
             <div class="themes-shadow">
-              <div class="themes-wrapper">
+              <div class="themes-wrapper flex flex-row overflow-hidden">
                 <div class="line-number">
                   1<br />2<br />3<br /><br /><br />4<br />5<br />6<br />7<br />8<br />9<br />10<br />11
                 </div>
@@ -1684,7 +1563,7 @@
             </div>
 
             <div class="themes-shadow">
-              <div class="themes-wrapper">
+              <div class="themes-wrapper flex flex-row overflow-hidden">
                 <div class="line-number">
                   1<br />2<br />3<br /><br /><br />4<br />5<br />6<br />7<br />8<br />9<br />10<br />11
                 </div>
@@ -1706,8 +1585,8 @@
           </div>
         </div>
 
-        <div class="feature-showcase custom-themes">
-          <div class="feature-copy custom-theme-text">
+        <div class="feature-showcase custom-themes items-center overflow-hidden">
+          <div class="feature-copy custom-theme-text flex flex-col items-start">
             <h3>Make it yours</h3>
             <p>Bring your own theme via CSS, or build one from scratch. Monapad looks the way you want it to.</p>
             <a
@@ -1726,17 +1605,21 @@
               </svg>
             </a>
           </div>
-          <figure class="feature-media custom-theme-image">
+          <figure class="feature-media custom-theme-image relative overflow-visible">
             <img src="media/ss_ayu.png" alt="ayu theme" />
           </figure>
         </div>
       </section>
 
-      <section class="feature-block prefooter">
-        <h2>Try Monapad now.</h2>
-        <div class="hero-buttons prefooter-buttons">
-          <a href="#" class="app-download download-main btn">Download for Windows</a>
-          <a href="https://github.com/sheetau/monapad/tree/main" target="_blank" class="hero-link btn">
+      <section class="feature-block prefooter relative flex flex-col items-center text-left max-w-full">
+        <h2 class="w-full text-center">Try Monapad now.</h2>
+        <div class="hero-buttons prefooter-buttons flex">
+          <a href="#" class="app-download download-main btn flex items-center justify-center">Download for Windows</a>
+          <a
+            href="https://github.com/sheetau/monapad/tree/main"
+            target="_blank"
+            class="hero-link btn flex items-center justify-center"
+          >
             GitHub
             <svg width="8" height="13" viewBox="0 0 8 13" fill="none" xmlns="http://www.w3.org/2000/svg">
               <path
@@ -1752,9 +1635,9 @@
       </section>
     </main>
 
-    <footer class="footer">
-      <div class="footer-content">
-        <div class="footer-links">
+    <footer class="footer w-full">
+      <div class="footer-content w-full flex items-center">
+        <div class="footer-links flex items-center justify-center">
           <span>© 2025 Sheeta.</span>
           <a href="https://github.com/sheetau/monapad/releases" target="_blank">Releases</a>
           <a href="https://github.com/sheetau/monapad/blob/main/CONTRIBUTING.md" target="_blank">Contributing</a>
@@ -1762,7 +1645,7 @@
           <a href="https://github.com/sheetau/monapad/blob/main/CODE_OF_CONDUCT.md" target="_blank">Code of Conduct</a>
           <a href="https://github.com/sheetau/monapad/blob/main/PRIVACY.md" target="_blank">Privacy</a>
         </div>
-        <div class="footer-icons">
+        <div class="footer-icons flex items-center justify-center">
           <a href="https://github.com/sheetau/monapad" target="_blank" aria-label="GitHub">
             <svg height="32" width="32" viewBox="0 0 24 24" fill="none">
               <path
@@ -2489,16 +2372,9 @@
           "column",
           "toggle",
           "replace",
-          "delete",
           "change",
-          "undo",
           "copy",
-          "expand",
-          "shrink",
-          "outdent",
           "unfold",
-          "word",
-          "indent",
         ];
         const typeDelay = 70;
         const deleteDelay = 45;
@@ -2507,11 +2383,12 @@
 
         const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
         const normalize = (value) => value.toLowerCase();
+        const sortedCommands = [...commands].sort((a, b) => a.name.localeCompare(b.name));
         const getMatches = (query) => {
           const normalizedQuery = normalize(query);
-          return commands
-            .filter((command) => !normalizedQuery || normalize(command.name).includes(normalizedQuery))
-            .sort((a, b) => a.name.localeCompare(b.name));
+          return sortedCommands.filter(
+            (command) => !normalizedQuery || normalize(command.name).includes(normalizedQuery),
+          );
         };
 
         const appendHighlightedText = (parent, text, query) => {
