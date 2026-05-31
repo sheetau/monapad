@@ -2387,15 +2387,65 @@
         const deleteDelay = 45;
         const holdDelay = 1400;
         let queryIndex = 0;
+        let isCommandListVisible = false;
+        let isDocumentVisible = !document.hidden;
+        let lastRenderedQuery = null;
+        const activeResolvers = new Set();
 
-        const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+        const isActive = () => isCommandListVisible && isDocumentVisible;
+        const notifyActivityChange = () => {
+          activeResolvers.forEach((resolve) => resolve());
+          activeResolvers.clear();
+        };
+        const waitForActivityChange = () => new Promise((resolve) => activeResolvers.add(resolve));
+        const waitForActive = async () => {
+          while (!isActive()) await waitForActivityChange();
+        };
+        const wait = async (ms) => {
+          let remaining = ms;
+
+          while (remaining > 0) {
+            await waitForActive();
+            const startedAt = performance.now();
+            let timedOut = false;
+            let timeoutId = 0;
+
+            await Promise.race([
+              new Promise((resolve) =>
+                (timeoutId = setTimeout(() => {
+                  timedOut = true;
+                  resolve();
+                }, remaining)),
+              ),
+              waitForActivityChange(),
+            ]);
+            if (!timedOut) clearTimeout(timeoutId);
+
+            if (timedOut) {
+              remaining = 0;
+            } else {
+              remaining -= performance.now() - startedAt;
+            }
+          }
+        };
         const normalize = (value) => value.toLowerCase();
-        const sortedCommands = [...commands].sort((a, b) => a.name.localeCompare(b.name));
+        const sortedCommands = [...commands]
+          .map((command) => ({ ...command, normalizedName: normalize(command.name) }))
+          .sort((a, b) => a.name.localeCompare(b.name));
+        const matchCache = new Map();
+        const resultCache = new Map();
         const getMatches = (query) => {
           const normalizedQuery = normalize(query);
-          return sortedCommands.filter(
-            (command) => !normalizedQuery || normalize(command.name).includes(normalizedQuery),
-          );
+          if (!matchCache.has(normalizedQuery)) {
+            matchCache.set(
+              normalizedQuery,
+              sortedCommands.filter(
+                (command) => !normalizedQuery || command.normalizedName.includes(normalizedQuery),
+              ),
+            );
+          }
+
+          return matchCache.get(normalizedQuery);
         };
 
         const appendHighlightedText = (parent, text, query) => {
@@ -2415,43 +2465,51 @@
         };
 
         const renderResults = (query) => {
-          const fragment = document.createDocumentFragment();
-          const matches = getMatches(query);
+          if (!resultCache.has(query)) {
+            const fragment = document.createDocumentFragment();
+            const matches = getMatches(query);
 
-          matches.forEach((match, index) => {
-            const row = document.createElement("div");
-            row.className = `command-label${index === 0 ? " active" : ""}`;
+            matches.forEach((match, index) => {
+              const row = document.createElement("div");
+              row.className = `command-label${index === 0 ? " active" : ""}`;
 
-            const name = document.createElement("span");
-            name.className = "command-name";
-            const key = document.createElement("span");
-            key.className = "command-key";
+              const name = document.createElement("span");
+              name.className = "command-name";
+              const key = document.createElement("span");
+              key.className = "command-key";
 
-            appendHighlightedText(name, match.name, query);
-            key.textContent = match.key;
-            row.append(name, key);
-            fragment.append(row);
-          });
+              appendHighlightedText(name, match.name, query);
+              key.textContent = match.key;
+              row.append(name, key);
+              fragment.append(row);
+            });
 
-          commandSearchResults.replaceChildren(fragment);
+            resultCache.set(query, fragment);
+          }
+
+          commandSearchResults.replaceChildren(resultCache.get(query).cloneNode(true));
         };
 
+        const prompt = document.createElement("span");
+        const queryText = document.createElement("span");
+        const caret = document.createElement("span");
+        prompt.className = "command-input-mark";
+        queryText.className = "command-query";
+        caret.className = "command-input-mark";
+        prompt.textContent = ">";
+        caret.textContent = "|";
+        commandSearchInput.replaceChildren(prompt, queryText, caret);
+
         const renderInput = (query) => {
-          const prompt = document.createElement("span");
-          const queryText = document.createElement("span");
-          const caret = document.createElement("span");
-          prompt.className = "command-input-mark";
-          queryText.className = "command-query";
-          caret.className = "command-input-mark";
-          prompt.textContent = ">";
+          if (query === lastRenderedQuery) return;
+          lastRenderedQuery = query;
           queryText.textContent = query;
-          caret.textContent = "|";
-          commandSearchInput.replaceChildren(prompt, queryText, caret);
           renderResults(query);
         };
 
         async function typeQuery(query) {
           for (let length = 1; length <= query.length; length += 1) {
+            await waitForActive();
             renderInput(query.slice(0, length));
             await wait(typeDelay);
           }
@@ -2459,6 +2517,7 @@
 
         async function deleteQuery(query) {
           for (let length = query.length - 1; length >= 0; length -= 1) {
+            await waitForActive();
             renderInput(query.slice(0, length));
             await wait(deleteDelay);
           }
@@ -2474,6 +2533,20 @@
             await wait(260);
           }
         }
+
+        const commandList = commandSearchInput.closest(".command-list");
+        const commandListObserver = new IntersectionObserver(
+          ([entry]) => {
+            isCommandListVisible = entry.isIntersecting;
+            notifyActivityChange();
+          },
+          { threshold: 0 },
+        );
+        if (commandList) commandListObserver.observe(commandList);
+        document.addEventListener("visibilitychange", () => {
+          isDocumentVisible = !document.hidden;
+          notifyActivityChange();
+        });
 
         renderInput("");
         run();
