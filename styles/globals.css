@@ -660,9 +660,14 @@ header .app-download:hover {
   user-select: none;
 }
 .editor-fold-slot {
+  position: relative;
   width: var(--editor-fold-width);
+  height: 100%;
 }
 .editor-fold-button {
+  position: absolute;
+  top: 0;
+  left: 0;
   display: grid;
   place-items: center;
   width: 100%;
@@ -718,6 +723,7 @@ header .app-download:hover {
 .editor-link {
   color: #569cd6;
   text-decoration: underline;
+  cursor: pointer;
 }
 .editor-selection-char.is-selected {
   background: color-mix(in oklab, #569cd6 46%, transparent);
@@ -1563,6 +1569,9 @@ footer a:hover {
     --editor-line-height: calc(var(--text-sm) * var(--leading-cozy));
     font-size: var(--text-sm);
     line-height: var(--editor-line-height);
+  }
+  .editor-fold-button svg {
+    width: calc(var(--spacing) * 1.9);
   }
   .editor-status-right {
     gap: 0.75rem;
