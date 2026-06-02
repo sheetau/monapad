@@ -254,6 +254,14 @@
         --theme-hover-lift: 2rem;
       }
 
+      @font-face {
+        font-family: "Figtree";
+        src: url("fonts/Figtree-Regular.ttf") format("truetype");
+        font-weight: 400;
+        font-style: normal;
+        font-display: swap;
+      }
+
       * {
         margin: 0;
         padding: 0;
@@ -281,6 +289,9 @@
         width: 100%;
         margin: 0;
         padding: var(--spacing-v3) var(--spacing-g2);
+      }
+      main > section:first-child {
+        padding-block-start: var(--spacing-v5);
       }
       section:nth-child(1 of :has(.feature-showcase)) {
         padding-top: var(--spacing-v3);
@@ -427,9 +438,6 @@
       }
 
       /* hero */
-      .hero {
-        padding-top: var(--spacing-v5);
-      }
       .hero-particles {
         position: absolute;
         top: 0;
@@ -509,7 +517,7 @@
       }
       .hero-link {
         background: color-mix(in srgb, var(--color-theme-fg-03), transparent 90%);
-        backdrop-filter: blur(0.3rem);
+        /* backdrop-filter: blur(0.3rem); */
         color: var(--color-theme-fg);
         border: solid 1px var(--color-theme-border-02);
         transition: background 0.3s ease;
@@ -533,6 +541,317 @@
         object-fit: cover;
         z-index: 1;
         mix-blend-mode: screen;
+      }
+
+      /* editor mockup */
+      .editor-mockup {
+        --mockup-ui: #565b66;
+        --mockup-status: #b6b9bf;
+        width: 100%;
+        aspect-ratio: 1125 / 672;
+        background: #000;
+        border: 1px solid var(--color-theme-border-02);
+        border-radius: var(--radius-lg);
+        color: var(--mockup-ui);
+        font-family: Figtree, var(--font-sans);
+        mix-blend-mode: screen;
+      }
+      .editor-mockup svg {
+        display: block;
+        overflow: visible;
+      }
+      .editor-titlebar {
+        position: absolute;
+        inset: 0 0 auto;
+        height: calc(var(--spacing) * 9);
+        z-index: 2;
+      }
+      .editor-menu-button {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: calc(var(--spacing) * 10);
+        height: 100%;
+        display: grid;
+        place-items: center;
+        cursor: pointer;
+      }
+      .editor-menu-button:hover {
+        color: #569cd6;
+      }
+      .editor-menu-button svg {
+        width: calc(var(--spacing) * 4.5);
+      }
+      .editor-tab {
+        position: absolute;
+        left: calc(var(--spacing) * 10);
+        width: calc(var(--spacing) * 55);
+        height: calc(100% + 1px);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 var(--spacing-g1\.25) 0 var(--spacing-g1);
+        color: #b6b9bf;
+        background: var(--color-black);
+        border-top: 1px solid #569cd6;
+        border-left: 1px solid #17191c;
+        border-right: 1px solid #17191c;
+        font-size: var(--text-sm);
+        line-height: 1;
+      }
+      .editor-tab-dot {
+        width: auto;
+        height: calc(var(--spacing) * 2);
+        aspect-ratio: 1;
+        border-radius: 50%;
+        background: #b6b9bf;
+      }
+      .editor-add-tab {
+        position: absolute;
+        top: 0;
+        left: calc(var(--spacing) * 65);
+        width: calc(var(--spacing) * 9);
+        height: 100%;
+        display: grid;
+        place-items: center;
+      }
+      .editor-add-tab svg {
+        width: calc(var(--spacing) * 3.25);
+      }
+      .editor-window-controls {
+        position: absolute;
+        top: 0;
+        right: 0;
+        padding: 0 var(--spacing-g1\.5);
+        height: 100%;
+        width: calc(var(--spacing) * 30);
+        display: grid;
+        place-items: center;
+      }
+      .editor-window-controls svg {
+        width: 100%;
+      }
+      .editor-canvas {
+        --editor-minimap-width: calc(var(--spacing) * 27);
+        position: absolute;
+        inset: calc(var(--spacing) * 9) 0 var(--spacing-g2\.5);
+        background: #000;
+        font-family: var(--font-mono);
+        border-top: 1px solid #18191d;
+        z-index: 1;
+        overflow: hidden;
+      }
+      .editor-canvas-scroller {
+        position: absolute;
+        inset: 0;
+        overflow: auto;
+      }
+      .editor-canvas-scroller::-webkit-scrollbar {
+        width: var(--spacing-g1\.25);
+      }
+      .editor-canvas-scroller::-webkit-scrollbar-track {
+        background: transparent;
+        border-left: 1px solid #18191d;
+      }
+      .editor-canvas-scroller::-webkit-scrollbar-thumb {
+        background: color-mix(in oklab, var(--color-white) 15%, transparent);
+        border-radius: 0;
+      }
+      .editor-canvas-scroller::-webkit-scrollbar-thumb:hover {
+        background: color-mix(in oklab, var(--color-white) 30%, transparent);
+      }
+      .editor-code {
+        --editor-fold-width: calc(var(--spacing) * 6);
+        --editor-caret-height: 1em;
+        --editor-line-height: calc(1rem * var(--leading-cozy));
+        position: relative;
+        display: grid;
+        grid-template-columns: calc(3ch + var(--editor-fold-width)) minmax(0, 1fr);
+        padding: var(--spacing-g1) calc(var(--spacing-g1) + var(--editor-minimap-width)) var(--spacing-g1)
+          var(--spacing-g2);
+        font-size: 1rem;
+        line-height: var(--leading-cozy);
+        color: var(--color-theme-fg-02);
+      }
+      .editor-gutter-line {
+        display: grid;
+        grid-template-columns: 3ch var(--editor-fold-width);
+        align-items: baseline;
+        min-height: var(--editor-line-height);
+      }
+      .editor-content-line {
+        min-height: var(--editor-line-height);
+      }
+      .editor-line-number {
+        text-align: right;
+        color: #565b6680;
+        user-select: none;
+      }
+      .editor-fold-slot {
+        width: var(--editor-fold-width);
+      }
+      .editor-fold-button {
+        display: grid;
+        place-items: center;
+        width: 100%;
+        height: var(--editor-line-height);
+        padding: 0;
+        border: 0;
+        background: transparent;
+        color: #565b66;
+        cursor: pointer;
+        opacity: 0;
+        transition: opacity var(--duration) ease;
+      }
+      .editor-gutter:hover .editor-fold-button,
+      .editor-gutter.is-fold-hover .editor-fold-button,
+      .editor-gutter-line.is-folded .editor-fold-button {
+        opacity: 1;
+      }
+      .editor-fold-button svg {
+        width: calc(var(--spacing) * 2);
+        transform: translateX(calc(var(--spacing) * 0.5)) rotate(90deg);
+        transition: transform var(--duration) ease;
+      }
+      .editor-gutter-line.is-folded .editor-fold-button svg {
+        transform: translateX(calc(var(--spacing) * 0.5)) rotate(0deg);
+      }
+      .editor-text {
+        display: block;
+        min-height: var(--editor-line-height);
+        padding-left: var(--spacing-g0\.25);
+        white-space: normal;
+      }
+      .editor-content-line.is-folded {
+        background: color-mix(in oklab, #569cd6 10%, transparent);
+      }
+      .editor-content-line.is-folded::after {
+        content: "•••";
+        color: var(--color-theme-fg-04);
+        padding-left: var(--spacing-g0\.25);
+      }
+      .editor-gutter-line.is-hidden,
+      .editor-content-line.is-hidden {
+        display: none;
+      }
+      .editor-h1 {
+        color: #569cd6;
+      }
+      .editor-h2 {
+        color: #a0bfd9;
+      }
+      .editor-link {
+        color: #569cd6;
+        text-decoration: underline;
+      }
+      .editor-selection-char.is-selected {
+        background: color-mix(in oklab, #569cd6 46%, transparent);
+        color: var(--color-white);
+      }
+      .editor-caret {
+        position: absolute;
+        z-index: 3;
+        width: 2px;
+        height: var(--editor-caret-height);
+        visibility: hidden;
+        pointer-events: none;
+        background: var(--color-theme-fg-02);
+      }
+      .editor-caret.is-visible {
+        visibility: visible;
+        opacity: 1;
+      }
+      .editor-code.is-caret-blinking .editor-caret {
+        animation: editor-caret-blink 1s steps(1, end) infinite;
+      }
+      @keyframes editor-caret-blink {
+        50% {
+          opacity: 0;
+        }
+      }
+      .editor-list-marker {
+        color: #569cd6;
+      }
+      .editor-muted {
+        color: #565b66;
+      }
+      .editor-quote {
+        font-style: italic;
+        color: var(--color-theme-fg-02);
+      }
+      .editor-minimap {
+        position: absolute;
+        right: var(--spacing-g1\.25);
+        top: 0;
+        z-index: 2;
+        width: var(--editor-minimap-width);
+        height: 100%;
+        overflow: hidden;
+        pointer-events: none;
+        opacity: 0.72;
+      }
+      .editor-minimap-line {
+        height: 2px;
+        margin-bottom: 1px;
+        background: color-mix(in oklab, var(--color-theme-fg-02) 44%, transparent);
+      }
+      .editor-minimap-line.is-empty {
+        opacity: 0;
+      }
+      .editor-minimap-line.is-h1 {
+        background: #569cd6;
+      }
+      .editor-minimap-line.is-h2 {
+        background: #a0bfd9;
+      }
+      .editor-minimap-line.is-muted {
+        background: #565b66;
+      }
+      .editor-statusbar {
+        position: absolute;
+        inset: auto 0 0;
+        height: var(--spacing-g2\.5);
+        min-height: 20px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: var(--spacing-g2);
+        padding: 0 var(--spacing-g1) 0 var(--spacing-g1\.25);
+        background: #101012;
+        border-top: 1px solid #18191d;
+        color: var(--mockup-ui);
+        font-size: clamp(9px, 1.07vw, 12px);
+        line-height: 1;
+        white-space: nowrap;
+      }
+      .editor-status-left,
+      .editor-status-right,
+      .editor-status-item {
+        display: flex;
+        align-items: center;
+      }
+      .editor-status-left {
+        gap: var(--spacing-g1\.75);
+        min-width: 0;
+        flex: 1;
+      }
+      .editor-status-left svg {
+        height: calc(var(--spacing) * 3);
+      }
+      .editor-status-file {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .editor-status-right {
+        justify-content: flex-end;
+        gap: var(--spacing-g2);
+      }
+      .editor-status-item {
+        gap: var(--spacing-g0\.42);
+      }
+      .editor-backup-icon {
+        height: calc(var(--spacing) * 3);
       }
 
       /* feature blocks */
@@ -1061,7 +1380,7 @@
 
       .line-number {
         text-align: right;
-        margin-right: 1rem;
+        margin-right: var(--spacing-g1\.75);
         color: #565b6680;
       }
       .themes-h1 {
@@ -1169,6 +1488,17 @@
         .screenshot img {
           width: auto;
           height: 32rem;
+        }
+        .editor-mockup {
+          width: auto;
+          height: 32rem;
+          flex: 0 0 auto;
+        }
+        .editor-statusbar {
+          font-size: 10px;
+        }
+        .editor-status-right {
+          gap: 0.75rem;
         }
         .shortcuts-demo {
           flex-direction: column;
@@ -1304,8 +1634,65 @@
             </div>
           </div>
 
-          <div class="screenshot relative flex items-center justify-center overflow-hidden">
-            <img src="media/ss_onyx_2.png" alt="Monapad Screenshot" />
+          <div class="editor-mockup relative overflow-hidden" aria-label="Monapad editor mockup">
+            <div class="editor-titlebar">
+              <div class="editor-menu-button" aria-hidden="true">
+                <svg viewBox="0 0 14 7.16" fill="none">
+                  <path d="M1 1h12M1 6.16h6" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+                </svg>
+              </div>
+              <div class="editor-tab">
+                <span>Untitled.txt</span>
+                <span class="editor-tab-dot" aria-hidden="true"></span>
+              </div>
+              <div class="editor-add-tab" aria-hidden="true">
+                <svg viewBox="0 0 10.27 10.27" fill="none">
+                  <path d="M.5 5.14h9.27M5.14.5v9.27" stroke="currentColor" stroke-linecap="round" />
+                </svg>
+              </div>
+              <div class="editor-window-controls" aria-hidden="true">
+                <svg viewBox="0 0 67.22 7.5" fill="none">
+                  <path d="M66.72.5 60.22 7M66.72 7 60.22.5M.5 3.75H7" stroke="currentColor" stroke-linecap="round" />
+                  <rect x="30.36" y=".5" width="6.5" height="6.5" rx=".76" stroke="currentColor" />
+                </svg>
+              </div>
+            </div>
+            <div class="editor-canvas" aria-label="Monapad editor content">
+              <div class="editor-canvas-scroller">
+                <div class="editor-code" data-editor-code></div>
+              </div>
+            </div>
+            <div class="editor-statusbar">
+              <div class="editor-status-left">
+                <svg viewBox="0 0 9.24 9.24" fill="none" aria-hidden="true">
+                  <path
+                    d="M.5 2.04v-.51C.5.96.96.5 1.53.5h1.03M.5 7.19v.51c0 .57.46 1.03 1.03 1.03h1.03M6.68.5h1.03c.57 0 1.03.46 1.03 1.03v.51M6.68 8.74h1.03c.57 0 1.03-.46 1.03-1.03v-.51M1.01 4.62h7.21"
+                    stroke="currentColor"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  />
+                </svg>
+                <span class="editor-status-file">Untitled.txt</span>
+              </div>
+              <div class="editor-status-right">
+                <span>Modified</span>
+                <span class="editor-status-item">
+                  <svg class="editor-backup-icon" viewBox="0 0 18.89 9.13" fill="none" aria-hidden="true">
+                    <ellipse cx="3.25" cy="1.82" rx="2.75" ry="1.32" stroke="currentColor" />
+                    <path
+                      d="M5.99 1.82V7.3c0 .73-1.23 1.32-2.75 1.32S.49 8.03.49 7.3V1.82M11.45 4.52l2.15 2.15 4.79-4.79"
+                      stroke="currentColor"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    />
+                  </svg>
+                </span>
+                <span data-editor-position-status>Ln 2, Col 17</span>
+                <span>100%</span>
+                <span>CRLF</span>
+                <span>UTF-8</span>
+              </div>
+            </div>
           </div>
         </div>
       </section>
@@ -1341,8 +1728,8 @@
             <div class="feature-copy">
               <h3>Your notes, always there</h3>
               <p>
-                Zero-file management. Pure writing. Everything saves itself, stays organized, and is ready the moment you
-                need it.
+                Zero-file management. Pure writing. Everything saves itself, stays organized, and is ready the moment
+                you need it.
               </p>
             </div>
           </div>
@@ -2425,11 +2812,12 @@
             let timeoutId = 0;
 
             await Promise.race([
-              new Promise((resolve) =>
-                (timeoutId = setTimeout(() => {
-                  timedOut = true;
-                  resolve();
-                }, remaining)),
+              new Promise(
+                (resolve) =>
+                  (timeoutId = setTimeout(() => {
+                    timedOut = true;
+                    resolve();
+                  }, remaining)),
               ),
               waitForActivityChange(),
             ]);
@@ -2453,9 +2841,7 @@
           if (!matchCache.has(normalizedQuery)) {
             matchCache.set(
               normalizedQuery,
-              sortedCommands.filter(
-                (command) => !normalizedQuery || command.normalizedName.includes(normalizedQuery),
-              ),
+              sortedCommands.filter((command) => !normalizedQuery || command.normalizedName.includes(normalizedQuery)),
             );
           }
 
@@ -2566,6 +2952,621 @@
         run();
       }
       cycleCommandSearch(shortcutCommands);
+
+      const heroEditorSource = `# Studio Journal
+
+## Recording Session
+
+The piano in the north room had drifted slightly out of tune during the winter, creating a faint resonance that lingered beneath every chord. While reviewing older compositions, several arrangements unexpectedly aligned with notes preserved in https://en.wikipedia.org/wiki/Fugue, despite having been written years apart under entirely different circumstances.
+
+1. Archive unused takes separately.
+2. Label revisions immediately after recording.
+3. Export backups before closing the session.
+
+-# Reminder: unfinished versions often contain the strongest ideas.
+
+> “Music expresses that which cannot be put into words.”
+
+## Composition Notes
+
+Most revisions involved removing unnecessary layers rather than adding new material. As the arrangement became simpler, smaller imperfections became easier to notice, particularly the subtle timing inconsistencies between repeated phrases near the ending section.
+
+## Session Archive
+
+      One discarded recording captured several minutes of room ambience after the performance had supposedly ended. In the background, faint page-turning sounds could be heard at irregular intervals, despite the studio being completely empty at the time of recording.`;
+      const heroEditorPaddingLines = { before: 1, after: 3 };
+      const heroEditorSelectionTargets = [
+        "drifted slightly out of tune",
+        "Export backups before closing the session",
+        "subtle timing inconsistencies",
+      ];
+
+      function createEditorFoldIcon() {
+        const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+        const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+
+        svg.setAttribute("viewBox", "0 0 8 13");
+        svg.setAttribute("fill", "none");
+        svg.setAttribute("aria-hidden", "true");
+        path.setAttribute("d", "M1 12 7 6.5 1 1");
+        path.setAttribute("stroke", "currentColor");
+        path.setAttribute("stroke-width", "1.5");
+        path.setAttribute("stroke-linecap", "round");
+        path.setAttribute("stroke-linejoin", "round");
+        svg.append(path);
+
+        return svg;
+      }
+
+      function appendEditorSegment(target, text, className = "") {
+        if (!text) return;
+        if (!className) {
+          target.append(text);
+          return;
+        }
+
+        const span = document.createElement("span");
+        span.className = className;
+        span.textContent = text;
+        target.append(span);
+      }
+
+      function appendEditorSelectionTarget(target, text, lineNumber, column) {
+        const selection = document.createElement("span");
+        selection.className = "editor-selection-target";
+        selection.dataset.selectionText = text;
+        selection.dataset.editorLine = String(lineNumber);
+        selection.dataset.editorColumn = String(column);
+
+        [...text].forEach((char) => {
+          const charSpan = document.createElement("span");
+          charSpan.className = "editor-selection-char";
+          charSpan.textContent = char;
+          selection.append(charSpan);
+        });
+        target.append(selection);
+      }
+
+      function appendEditorText(target, text, lineNumber, columnOffset = 0) {
+        const listMatch = text.match(/^(\d+\.)\s(.+)/);
+        const linkPattern = /(https?:\/\/[^\s,]+)/g;
+        let cursor = 0;
+
+        if (listMatch) {
+          const marker = document.createElement("span");
+          marker.className = "editor-list-marker";
+          marker.textContent = listMatch[1];
+          target.append(marker, " ");
+          appendEditorText(target, listMatch[2], lineNumber, listMatch[1].length + 1);
+          return;
+        }
+
+        const selectionPattern = new RegExp(heroEditorSelectionTargets.map(escapeRegExp).join("|"), "g");
+        const tokenPattern = new RegExp(`${linkPattern.source}|${selectionPattern.source}`, "g");
+
+        text.replace(tokenPattern, (match, _link, offset) => {
+          appendEditorSegment(target, text.slice(cursor, offset));
+          if (heroEditorSelectionTargets.includes(match)) {
+            appendEditorSelectionTarget(target, match, lineNumber, columnOffset + offset + 1);
+          } else {
+            const linkSpan = document.createElement("span");
+            linkSpan.className = "editor-link";
+            linkSpan.textContent = match;
+            target.append(linkSpan);
+          }
+          cursor = offset + match.length;
+          return match;
+        });
+        appendEditorSegment(target, text.slice(cursor));
+      }
+
+      function escapeRegExp(value) {
+        return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      }
+
+      function createEditorCaret(editorCode) {
+        const caret = document.createElement("span");
+        caret.className = "editor-caret";
+        caret.setAttribute("aria-hidden", "true");
+        editorCode.append(caret);
+
+        return caret;
+      }
+
+      function syncEditorCaretMetrics(editorCode) {
+        const sample = editorCode.querySelector(".editor-selection-char");
+        if (!sample) return;
+
+        const sampleRect = sample.getBoundingClientRect();
+        editorCode.style.setProperty("--editor-caret-height", `${sampleRect.height}px`);
+      }
+
+      function moveEditorCaretToRect(caret, editorCode, rect) {
+        const editorRect = editorCode.getBoundingClientRect();
+
+        caret.style.left = `${rect.right - editorRect.left}px`;
+        caret.style.top = `${rect.top - editorRect.top}px`;
+        caret.classList.add("is-visible");
+      }
+
+      function moveEditorCaretToRectStart(caret, editorCode, rect) {
+        const editorRect = editorCode.getBoundingClientRect();
+
+        caret.style.left = `${rect.left - editorRect.left}px`;
+        caret.style.top = `${rect.top - editorRect.top}px`;
+        caret.classList.add("is-visible");
+      }
+
+      function getEditorTextEndRect(line) {
+        const textNode = [...line.contentRow.childNodes].find((node) => node.nodeType === Node.TEXT_NODE);
+        if (!textNode) return line.contentRow.getBoundingClientRect();
+
+        const range = document.createRange();
+        range.setStart(textNode, textNode.textContent.length);
+        range.setEnd(textNode, textNode.textContent.length);
+        let rect = range.getClientRects()[0] ?? range.getBoundingClientRect();
+        range.detach();
+
+        if (!rect.width && !rect.height) {
+          const fallbackRange = document.createRange();
+          fallbackRange.setStart(textNode, Math.max(0, textNode.textContent.length - 1));
+          fallbackRange.setEnd(textNode, textNode.textContent.length);
+          rect = fallbackRange.getBoundingClientRect();
+          fallbackRange.detach();
+        }
+
+        return rect.width || rect.height ? rect : line.contentRow.getBoundingClientRect();
+      }
+
+      function moveEditorCaretToTextEnd(caret, editorCode, line) {
+        moveEditorCaretToRect(caret, editorCode, getEditorTextEndRect(line));
+      }
+
+      function setEditorStatusSelection(selectionState = null, caretLine = null) {
+        const status = document.querySelector("[data-editor-position-status]");
+        if (!status) return;
+
+        if (selectionState?.count > 1) {
+          status.textContent = `${selectionState.count} selections (${selectionState.selected} selected)`;
+          return;
+        }
+        if (selectionState?.count === 1) {
+          status.textContent = `Ln ${selectionState.line}, Col ${selectionState.column} (${selectionState.selected} selected)`;
+          return;
+        }
+
+        status.textContent = `Ln ${caretLine?.number ?? 2}, Col ${(caretLine?.text.length ?? 16) + 1}`;
+      }
+
+      function getEditorLineMeta(text) {
+        const headingMatch = text.match(/^(#{1,6})\s/);
+
+        if (headingMatch) {
+          return {
+            headingLevel: headingMatch[1].length,
+            textClass: headingMatch[1].length === 1 ? "editor-h1" : "editor-h2",
+          };
+        }
+        if (text.startsWith("-# ")) return { textClass: "editor-muted" };
+        if (text.startsWith("> ")) return { textClass: "editor-quote" };
+
+        return {};
+      }
+
+      function assignEditorFoldRanges(lines) {
+        lines.forEach((line, index) => {
+          if (!line.headingLevel) return;
+
+          const nextHeadingIndex = lines.findIndex(
+            (candidate, candidateIndex) =>
+              candidateIndex > index && candidate.headingLevel && candidate.headingLevel <= line.headingLevel,
+          );
+          let endIndex = nextHeadingIndex === -1 ? lines.length - 1 : nextHeadingIndex - 1;
+
+          while (endIndex > index && !lines[endIndex].text.trim()) endIndex -= 1;
+          line.foldRange = { start: index + 1, end: endIndex };
+        });
+
+        return lines;
+      }
+
+      function renderEditorMinimap(lines) {
+        const minimap = document.createElement("div");
+        minimap.className = "editor-minimap";
+        minimap.setAttribute("aria-hidden", "true");
+
+        lines.forEach((line) => {
+          const previewLine = document.createElement("div");
+          const textLength = line.text.trim().length;
+          const width = textLength ? Math.min(100, Math.max(14, textLength * 1.2)) : 0;
+
+          previewLine.className = "editor-minimap-line";
+          if (!textLength) previewLine.classList.add("is-empty");
+          if (line.headingLevel === 1) previewLine.classList.add("is-h1");
+          if (line.headingLevel && line.headingLevel > 1) previewLine.classList.add("is-h2");
+          if (line.textClass === "editor-muted") previewLine.classList.add("is-muted");
+          previewLine.style.width = `${width}%`;
+          minimap.append(previewLine);
+        });
+
+        return minimap;
+      }
+
+      function renderEditorMockup() {
+        const container = document.querySelector("[data-editor-code]");
+        if (!container) return null;
+
+        const rawLines = [
+          ...Array.from({ length: heroEditorPaddingLines.before }, () => ({ text: "", padding: "before" })),
+          ...heroEditorSource.split("\n").map((text) => ({ text })),
+          ...Array.from({ length: heroEditorPaddingLines.after }, () => ({ text: "", padding: "after" })),
+        ];
+        const lines = assignEditorFoldRanges(
+          rawLines.map((line, index) => ({
+            index,
+            number: index + 1,
+            ...line,
+            ...getEditorLineMeta(line.text),
+          })),
+        );
+        const gutterColumn = document.createElement("div");
+        const contentColumn = document.createElement("div");
+        gutterColumn.className = "editor-gutter";
+        contentColumn.className = "editor-content";
+
+        lines.forEach((line) => {
+          const gutterRow = document.createElement("div");
+          const contentRow = document.createElement("div");
+          const lineNumber = document.createElement("span");
+          const foldSlot = document.createElement("span");
+
+          gutterRow.className = "editor-gutter-line";
+          contentRow.className = `editor-content-line editor-text${line.textClass ? ` ${line.textClass}` : ""}`;
+          gutterRow.dataset.editorLine = String(line.number);
+          contentRow.dataset.editorLine = String(line.number);
+          contentRow.dataset.editorText = line.text;
+          if (line.padding) {
+            gutterRow.dataset.editorPadding = line.padding;
+            contentRow.dataset.editorPadding = line.padding;
+          }
+          if (!line.text.trim()) {
+            gutterRow.dataset.editorEmpty = "true";
+            contentRow.dataset.editorEmpty = "true";
+          }
+          lineNumber.className = "editor-line-number";
+          lineNumber.textContent = String(line.number);
+          foldSlot.className = "editor-fold-slot";
+
+          if (line.headingLevel) {
+            const button = document.createElement("button");
+            gutterRow.dataset.editorHeading = String(line.headingLevel);
+            contentRow.dataset.editorHeading = String(line.headingLevel);
+            button.className = "editor-fold-button";
+            button.type = "button";
+            button.setAttribute("aria-label", `Fold ${line.text.replace(/^#+\s*/, "")}`);
+            button.setAttribute("aria-expanded", "true");
+            button.append(createEditorFoldIcon());
+            foldSlot.append(button);
+          }
+
+          appendEditorText(contentRow, line.text, line.number);
+          gutterRow.append(lineNumber, foldSlot);
+          gutterColumn.append(gutterRow);
+          contentColumn.append(contentRow);
+        });
+
+        container.replaceChildren(gutterColumn, contentColumn);
+        container.closest(".editor-canvas")?.querySelector(".editor-minimap")?.remove();
+        container.closest(".editor-canvas")?.append(renderEditorMinimap(lines));
+        const renderedLines = lines.map((line) => ({
+          ...line,
+          gutterRow: gutterColumn.querySelectorAll(".editor-gutter-line")[line.index],
+          contentRow: contentColumn.querySelectorAll(".editor-content-line")[line.index],
+        }));
+        window.monapadHeroEditor = {
+          source: heroEditorSource,
+          lines: renderedLines,
+          gutterRows: [...gutterColumn.querySelectorAll(".editor-gutter-line")],
+          contentRows: [...contentColumn.querySelectorAll(".editor-content-line")],
+          selectionTargets: [...contentColumn.querySelectorAll(".editor-selection-target")],
+        };
+
+        return renderedLines;
+      }
+
+      function initEditorMockup() {
+        const lines = renderEditorMockup();
+        if (!lines) return;
+
+        const syncGutterHeights = () => {
+          lines.forEach((line) => {
+            line.gutterRow.style.minHeight = `${line.contentRow.getBoundingClientRect().height}px`;
+          });
+        };
+        const updateFoldVisibility = () => {
+          const hiddenLineIndexes = new Set();
+
+          lines.forEach((line) => {
+            if (!line.foldRange || !line.contentRow.classList.contains("is-folded")) return;
+
+            for (let index = line.foldRange.start; index <= line.foldRange.end; index += 1) {
+              hiddenLineIndexes.add(index);
+            }
+          });
+
+          lines.forEach((line) => {
+            const shouldHide = hiddenLineIndexes.has(line.index);
+            line.gutterRow.classList.toggle("is-hidden", shouldHide);
+            line.contentRow.classList.toggle("is-hidden", shouldHide);
+          });
+        };
+        const toggleFoldLine = (line, shouldFold) => {
+          const button = line.gutterRow.querySelector(".editor-fold-button");
+
+          line.gutterRow.classList.toggle("is-folded", shouldFold);
+          line.contentRow.classList.toggle("is-folded", shouldFold);
+          button?.setAttribute("aria-expanded", String(!shouldFold));
+          updateFoldVisibility();
+          window.monapadHeroEditor.syncCaretFoldVisibility?.();
+          requestAnimationFrame(() => {
+            syncGutterHeights();
+            window.monapadHeroEditor.syncCaretFoldVisibility?.();
+          });
+        };
+
+        document.querySelectorAll("[data-editor-code] .editor-fold-button").forEach((button) => {
+          button.addEventListener("click", () => {
+            const headingLine = button.closest(".editor-gutter-line");
+            const line = lines.find((item) => item.gutterRow === headingLine);
+            if (!line) return;
+
+            const shouldFold = !line.contentRow.classList.contains("is-folded");
+            window.monapadHeroEditor.foldAnimationStopped = true;
+            window.monapadHeroEditor.manualFoldLineIndexes ??= new Set();
+            window.monapadHeroEditor.manualFoldLineIndexes.add(line.index);
+            toggleFoldLine(line, shouldFold);
+          });
+        });
+        window.monapadHeroEditor.toggleFoldLine = toggleFoldLine;
+        window.monapadHeroEditor.updateFoldVisibility = updateFoldVisibility;
+        window.monapadHeroEditor.syncGutterHeights = syncGutterHeights;
+        requestAnimationFrame(syncGutterHeights);
+        if (window.ResizeObserver) {
+          const resizeObserver = new ResizeObserver(syncGutterHeights);
+          lines.forEach((line) => resizeObserver.observe(line.contentRow));
+          window.monapadHeroEditor.resizeObserver = resizeObserver;
+        }
+      }
+      initEditorMockup();
+
+      function initEditorSelectionAnimation() {
+        const editor = window.monapadHeroEditor;
+        if (!editor?.selectionTargets?.length) return;
+
+        const editorCode = document.querySelector("[data-editor-code]");
+        if (!editorCode) return;
+
+        const carets = editor.selectionTargets.map(() => createEditorCaret(editorCode));
+        const headingLine = editor.lines.find((line) => line.headingLevel === 1);
+        const caretAnchors = new Map();
+        const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+        const foldStepDelay = 720;
+        const longSelectionDelay = 2500;
+        const selectionCharDelay = 24;
+        const selectionGapDelay = 420;
+        const finalSelectionDelay = 240;
+        const setCaretsBlinking = (shouldBlink, shouldReset = false) => {
+          if (!shouldBlink) {
+            editorCode.classList.remove("is-caret-blinking");
+            return;
+          }
+
+          if (shouldReset) {
+            editorCode.classList.remove("is-caret-blinking");
+            editorCode.offsetHeight;
+          }
+          editorCode.classList.add("is-caret-blinking");
+        };
+        const clearSelections = () =>
+          editor.selectionTargets.forEach((target) =>
+            target.querySelectorAll(".editor-selection-char").forEach((char) => char.classList.remove("is-selected")),
+          );
+        const resetSelectionAnimation = () => {
+          clearSelections();
+          setEditorStatusSelection(null, headingLine);
+          resetEditorCaretsToHeading();
+          setCaretsBlinking(true);
+        };
+        const isAllFoldsOpen = () => editor.lines.every((line) => !line.contentRow.classList.contains("is-folded"));
+        const hideCaret = (caret) => {
+          caret.classList.remove("is-visible");
+        };
+        const hideUnusedCarets = (startIndex = 1) => {
+          carets.slice(startIndex).forEach((caret) => {
+            hideCaret(caret);
+            caretAnchors.delete(caret);
+          });
+        };
+        const moveAnchoredCaret = (caret, anchor) => {
+          if (anchor.line?.contentRow.classList.contains("is-hidden")) {
+            hideCaret(caret);
+            return;
+          }
+
+          const rect = anchor.getRect();
+          if (anchor.align === "start") {
+            moveEditorCaretToRectStart(caret, editorCode, rect);
+          } else {
+            moveEditorCaretToRect(caret, editorCode, rect);
+          }
+        };
+        const setCaretAnchor = (index, anchor) => {
+          const caret = carets[index];
+          if (!caret) return;
+
+          caretAnchors.set(caret, anchor);
+          moveAnchoredCaret(caret, anchor);
+        };
+        const setCaretToTarget = (index, target, line, align = "end") => {
+          const chars = [...target.querySelectorAll(".editor-selection-char")];
+          const getChar = () => (align === "start" ? chars[0] : chars[chars.length - 1]);
+
+          setCaretAnchor(index, {
+            align,
+            line,
+            getRect: () => getChar().getBoundingClientRect(),
+          });
+        };
+        const resetEditorCaretsToHeading = () => {
+          hideUnusedCarets(1);
+          setCaretAnchor(0, {
+            align: "end",
+            line: headingLine,
+            getRect: () => getEditorTextEndRect(headingLine),
+          });
+        };
+        const syncEditorCarets = () => {
+          caretAnchors.forEach((anchor, caret) => moveAnchoredCaret(caret, anchor));
+        };
+        const getSelectionState = (activeTarget = null) => {
+          const selectedTargets = editor.selectionTargets.filter((target) =>
+            target.querySelector(".editor-selection-char.is-selected"),
+          );
+
+          if (selectedTargets.length === 1) {
+            const target = activeTarget ?? selectedTargets[0];
+            const selectedChars = target.querySelectorAll(".editor-selection-char.is-selected").length;
+
+            return {
+              count: 1,
+              selected: selectedChars,
+              line: Number(target.dataset.editorLine),
+              column: Number(target.dataset.editorColumn) + selectedChars,
+            };
+          }
+
+          return {
+            count: selectedTargets.length,
+            selected: selectedTargets.reduce(
+              (total, target) => total + target.querySelectorAll(".editor-selection-char.is-selected").length,
+              0,
+            ),
+          };
+        };
+        const syncCaretFoldVisibility = () => {
+          syncEditorCarets();
+        };
+        editor.syncCaretFoldVisibility = syncCaretFoldVisibility;
+        const runFoldAnimation = async () => {
+          if (editor.foldAnimationStopped) return false;
+
+          const h2Lines = editor.lines.filter((line) => line.headingLevel === 2);
+          const [firstLine, secondLine] = h2Lines.slice(-2);
+          const gutter = editor.gutterRows[0]?.parentElement;
+          const canContinue = () => !editor.foldAnimationStopped;
+
+          if (!firstLine || !secondLine || !gutter || !editor.toggleFoldLine) return false;
+
+          editor.manualFoldLineIndexes = new Set();
+          const animatedFoldLines = [];
+          const foldAnimatedLine = (line) => {
+            animatedFoldLines.push(line);
+            editor.toggleFoldLine(line, true);
+          };
+          const cleanupAnimatedFolds = () => {
+            animatedFoldLines.forEach((line) => {
+              if (!editor.manualFoldLineIndexes?.has(line.index)) {
+                editor.toggleFoldLine(line, false);
+              }
+            });
+            syncCaretFoldVisibility();
+          };
+          const stopFoldAnimation = () => {
+            cleanupAnimatedFolds();
+            gutter.classList.remove("is-fold-hover");
+            return false;
+          };
+
+          gutter.classList.add("is-fold-hover");
+          await wait(foldStepDelay);
+          if (!canContinue()) return stopFoldAnimation();
+
+          foldAnimatedLine(firstLine);
+          syncCaretFoldVisibility();
+          await wait(foldStepDelay);
+          if (!canContinue()) return stopFoldAnimation();
+
+          foldAnimatedLine(secondLine);
+          syncCaretFoldVisibility();
+          await wait(longSelectionDelay);
+          if (!canContinue()) return stopFoldAnimation();
+
+          cleanupAnimatedFolds();
+          gutter.classList.remove("is-fold-hover");
+          resetSelectionAnimation();
+          return true;
+        };
+
+        async function run() {
+          await (document.fonts?.ready ?? Promise.resolve());
+          await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+          syncEditorCaretMetrics(editorCode);
+
+          clearSelections();
+          setEditorStatusSelection(null, headingLine);
+          resetEditorCaretsToHeading();
+          setCaretsBlinking(true, true);
+          await wait(1600);
+
+          while (true) {
+            for (const [targetIndex, target] of editor.selectionTargets.entries()) {
+              const chars = [...target.querySelectorAll(".editor-selection-char")];
+              const targetLine =
+                editor.lines.find((line) => line.contentRow === target.closest(".editor-content-line")) ?? headingLine;
+              hideUnusedCarets(targetIndex + 1);
+              setCaretsBlinking(false);
+              setCaretToTarget(targetIndex, target, targetLine, "start");
+
+              for (const char of chars) {
+                char.classList.add("is-selected");
+                setCaretAnchor(targetIndex, {
+                  align: "end",
+                  line: targetLine,
+                  getRect: () => char.getBoundingClientRect(),
+                });
+                setEditorStatusSelection(getSelectionState(target), headingLine);
+                await wait(selectionCharDelay);
+              }
+
+              setCaretsBlinking(true, true);
+              const isLastTarget = target === editor.selectionTargets[editor.selectionTargets.length - 1];
+              await wait(
+                isLastTarget
+                  ? editor.foldAnimationStopped
+                    ? longSelectionDelay
+                    : finalSelectionDelay
+                  : selectionGapDelay,
+              );
+            }
+
+            if (editor.foldAnimationStopped) {
+              resetSelectionAnimation();
+              if (isAllFoldsOpen()) editor.foldAnimationStopped = false;
+            } else {
+              const foldCompleted = await runFoldAnimation();
+              if (!foldCompleted) {
+                await wait(longSelectionDelay);
+                resetSelectionAnimation();
+                if (isAllFoldsOpen()) editor.foldAnimationStopped = false;
+              }
+            }
+            await wait(1700);
+          }
+        }
+
+        run();
+      }
+      initEditorSelectionAnimation();
 
       // themes
       const syncHover = (buttonClass, shadowIndex) => {
