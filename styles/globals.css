@@ -636,13 +636,13 @@ header .app-download:hover {
 .editor-code {
   --editor-fold-width: calc(var(--spacing) * 6);
   --editor-caret-height: 1em;
-  --editor-line-height: calc(1rem * var(--leading-cozy));
+  --editor-line-height: calc(var(--text-base) * var(--leading-cozy));
   position: relative;
   display: grid;
   grid-template-columns: calc(3ch + var(--editor-fold-width)) minmax(0, 1fr);
   padding: var(--spacing-g1) calc(var(--spacing-g1) + var(--editor-minimap-width)) var(--spacing-g1) var(--spacing-g2);
-  font-size: 1rem;
-  line-height: var(--leading-cozy);
+  font-size: var(--text-base);
+  line-height: var(--editor-line-height);
   color: var(--color-theme-fg-02);
 }
 .editor-gutter-line {
@@ -795,7 +795,7 @@ header .app-download:hover {
   background: #101012;
   border-top: 1px solid #18191d;
   color: var(--mockup-ui);
-  font-size: clamp(9px, 1.07vw, 12px);
+  font-size: var(--text-xs);
   line-height: 1;
   white-space: nowrap;
 }
@@ -882,10 +882,6 @@ header .app-download:hover {
   min-width: 0;
   padding-left: var(--spacing-g0\.25);
   padding-right: var(--spacing-g3);
-}
-.feature-copy h2,
-.feature-copy h3 {
-  margin-bottom: 0;
 }
 .feature-copy p {
   max-width: 32rem;
@@ -1134,7 +1130,6 @@ header .app-download:hover {
   flex: 1;
   min-height: 16rem;
   margin-top: var(--spacing-v2);
-  margin-right: calc(var(--spacing-g1\.75) * -1);
   margin-bottom: calc((var(--spacing-g1\.75) + var(--spacing-g2)) * -1);
   line-height: 0;
 }
@@ -1550,24 +1545,24 @@ footer a:hover {
   :root {
     --text-sm: 0.9rem;
   }
-  .command-list {
-    width: 100%;
-    margin: var(--spacing-v8\/12) 0;
+  h1 {
+    font-size: var(--text-md-lg);
+    letter-spacing: var(--tracking-md-lg);
   }
-  .screenshot {
-    justify-content: flex-start;
-  }
-  .screenshot img {
-    width: auto;
-    height: 32rem;
+  .feature-block h3,
+  p {
+    font-size: var(--text-base);
+    line-height: var(--leading-normal);
   }
   .editor-mockup {
     width: auto;
-    height: 32rem;
+    height: 35rem;
     flex: 0 0 auto;
   }
-  .editor-statusbar {
-    font-size: 10px;
+  .editor-code {
+    --editor-line-height: calc(var(--text-sm) * var(--leading-cozy));
+    font-size: var(--text-sm);
+    line-height: var(--editor-line-height);
   }
   .editor-status-right {
     gap: 0.75rem;
@@ -1578,6 +1573,10 @@ footer a:hover {
   }
   .shortcuts-copy {
     width: 100%;
+  }
+  .command-list {
+    width: 100%;
+    margin: var(--spacing-v8\/12) 0;
   }
   .feature-showcase {
     grid-template-columns: 1fr;
@@ -1642,20 +1641,19 @@ footer a:hover {
   }
   .footer-content {
     justify-content: center;
-    gap: var(--spacing-g1\.5);
+    align-items: flex-start;
+    gap: var(--spacing-v2);
     flex-direction: column;
+    margin-top: 0;
   }
   .footer-icons {
-    gap: 1rem;
+    gap: var(--spacing-g2);
     flex-wrap: wrap;
   }
   .footer-links {
-    flex-wrap: wrap;
-    gap: 0.5rem 1rem;
-  }
-  footer,
-  footer a {
-    font-size: 0.8rem;
+    align-items: flex-start;
+    flex-direction: column;
+    line-height: var(--leading-snug-plus);
   }
   footer a svg {
     width: 1.25rem;
