@@ -57,7 +57,6 @@
 
       gtag("config", "G-F2LNNGM5B3");
     </script>
-
     <link rel="icon" href="media/favicon.ico?v=5" sizes="any" />
     <link rel="shortcut icon" href="media/favicon.ico?v=5" />
     <link rel="icon" type="image/png" sizes="48x48" href="media/favicon-48.png?v=5" />
@@ -590,7 +589,7 @@
         display: flex;
         align-items: center;
         justify-content: space-between;
-        padding: 0 var(--spacing-g1\.25) 0 var(--spacing-g1);
+        padding: 0 var(--spacing-g0\.75) 0 var(--spacing-g1);
         color: #b6b9bf;
         background: var(--color-black);
         border-top: 1px solid #569cd6;
@@ -600,20 +599,57 @@
         line-height: 1;
       }
       .editor-tab-dot {
-        width: auto;
-        height: calc(var(--spacing) * 2);
+        display: block;
+        width: calc(var(--spacing) * 2);
+        height: auto;
         aspect-ratio: 1;
         border-radius: 50%;
         background: #b6b9bf;
       }
-      .editor-add-tab {
-        position: absolute;
-        top: 0;
-        left: calc(var(--spacing) * 65);
-        width: calc(var(--spacing) * 9);
-        height: 100%;
+      .editor-tab-close {
+        width: calc(var(--spacing) * 5.75);
+        height: auto;
+        aspect-ratio: 1;
         display: grid;
         place-items: center;
+        padding: 0;
+        border: 0;
+        border-radius: calc(var(--radius-md) * 0.75);
+        color: inherit;
+        background: transparent;
+        cursor: pointer;
+      }
+      .editor-tab-close svg {
+        display: none;
+        width: calc(var(--spacing) * 2.75);
+      }
+      .editor-tab:hover .editor-tab-dot {
+        display: none;
+      }
+      .editor-tab:hover .editor-tab-close svg {
+        display: block;
+      }
+      .editor-tab-close:hover {
+        color: #b6b9bf;
+        background: #18181a;
+      }
+      .editor-add-tab {
+        position: absolute;
+        top: 50%;
+        transform: translateY(-50%);
+        left: calc((var(--spacing) * 65) + var(--spacing-g0\.5));
+        width: calc(var(--spacing) * 6.25);
+        height: auto;
+        aspect-ratio: 1;
+        display: grid;
+        place-items: center;
+
+        border-radius: calc(var(--radius-md) * 0.75);
+        cursor: pointer;
+      }
+      .editor-add-tab:hover {
+        color: #b6b9bf;
+        background: #18181a;
       }
       .editor-add-tab svg {
         width: calc(var(--spacing) * 3.25);
@@ -702,6 +738,9 @@
         cursor: pointer;
         opacity: 0;
         transition: opacity var(--duration) ease;
+      }
+      .editor-gutter-line.is-fold-disabled .editor-fold-button {
+        display: none;
       }
       .editor-gutter:hover .editor-fold-button,
       .editor-gutter.is-fold-hover .editor-fold-button,
@@ -1643,7 +1682,12 @@
               </div>
               <div class="editor-tab">
                 <span>Untitled.txt</span>
-                <span class="editor-tab-dot" aria-hidden="true"></span>
+                <button class="editor-tab-close" type="button" aria-label="Close tab">
+                  <span class="editor-tab-dot" aria-hidden="true"></span>
+                  <svg viewBox="60 0 7.5 7.5" fill="none" aria-hidden="true">
+                    <path d="M66.72.5 60.22 7M66.72 7 60.22.5" stroke="currentColor" stroke-linecap="round" />
+                  </svg>
+                </button>
               </div>
               <div class="editor-add-tab" aria-hidden="true">
                 <svg viewBox="0 0 10.27 10.27" fill="none">
@@ -2337,432 +2381,6 @@
         ["Ctrl + G", "Go to Line/Column"],
         ["Ctrl + Shift + O", "Go to Symbol in Editor"],
       ].map(([key, name]) => ({ key, name }));
-
-      // hero particles
-      const heroParticlesEnabled = false;
-
-      function initHeroParticles() {
-        const canvas = document.querySelector(".hero-particles");
-        const hero = document.querySelector(".hero");
-        const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
-        const isCoarsePointer = window.matchMedia("(hover: none), (pointer: coarse)").matches;
-
-        if (!canvas || !hero || prefersReducedMotion.matches) return;
-
-        const ctx = canvas.getContext("2d", { alpha: true });
-        const particles = [];
-        const getDefaultPointer = () => ({
-          x: width > 0 ? width * 0.5 : window.innerWidth * 0.5,
-          y: height > 0 ? Math.min(window.innerHeight, height) * 0.75 : window.innerHeight * 0.75,
-        });
-        const pointer = {
-          x: window.innerWidth * 0.5,
-          y: window.innerHeight * 0.75,
-          targetX: window.innerWidth * 0.5,
-          targetY: window.innerHeight * 0.75,
-          clientX: null,
-          clientY: null,
-          lastTargetX: window.innerWidth * 0.5,
-          lastTargetY: window.innerHeight * 0.75,
-          wakeX: 0,
-          wakeY: 0,
-          active: isCoarsePointer,
-        };
-        let width = 0;
-        let height = 0;
-        let dpr = 1;
-        let animationFrame = null;
-        let isVisible = true;
-        let isPageVisible = !document.hidden;
-        let resizeTimer = null;
-        let hoverInfluence = isCoarsePointer ? 1 : 0;
-        let sceneVisibility = 1;
-        const gridKeyScale = 4096;
-        const repelGrid = new Map();
-        const usePillParticles = false;
-        const dotSprite = document.createElement("canvas");
-        const dotSpriteSize = 48;
-        dotSprite.width = dotSpriteSize;
-        dotSprite.height = dotSpriteSize;
-        const dotSpriteCtx = dotSprite.getContext("2d");
-        const dotGradient = dotSpriteCtx.createRadialGradient(
-          dotSpriteSize * 0.5,
-          dotSpriteSize * 0.5,
-          0,
-          dotSpriteSize * 0.5,
-          dotSpriteSize * 0.5,
-          dotSpriteSize * 0.5,
-        );
-        dotGradient.addColorStop(0, "rgba(255, 255, 255, 1)");
-        dotGradient.addColorStop(0.58, "rgba(255, 255, 255, 1)");
-        dotGradient.addColorStop(1, "rgba(255, 255, 255, 0)");
-        dotSpriteCtx.fillStyle = dotGradient;
-        dotSpriteCtx.fillRect(0, 0, dotSpriteSize, dotSpriteSize);
-        const pillSprite = document.createElement("canvas");
-        const pillSpriteWidth = 72;
-        const pillSpriteHeight = 32;
-        pillSprite.width = pillSpriteWidth;
-        pillSprite.height = pillSpriteHeight;
-        const pillSpriteCtx = pillSprite.getContext("2d");
-        pillSpriteCtx.fillStyle = "rgba(255, 255, 255, 1)";
-        pillSpriteCtx.beginPath();
-        pillSpriteCtx.roundRect(10, 8, pillSpriteWidth - 20, pillSpriteHeight - 16, 8);
-        pillSpriteCtx.fill();
-
-        function seededNoise(x, y) {
-          return (Math.sin(x * 12.9898 + y * 78.233) * 43758.5453) % 1;
-        }
-
-        function smoothstep(t) {
-          return t * t * (3 - 2 * t);
-        }
-
-        function buildParticles() {
-          particles.length = 0;
-          const density = width < 720 ? 62 : 53;
-          const cols = Math.ceil(width / density) + 2;
-          const rows = Math.ceil(height / density) + 2;
-
-          for (let y = -1; y < rows; y++) {
-            for (let x = -1; x < cols; x++) {
-              const n = seededNoise(x + 17.3, y + 91.7);
-              const n2 = seededNoise(x + 43.1, y + 11.9);
-              const offsetX = y % 2 === 0 ? 0 : density * 0.5;
-              const baseX = x * density + offsetX + (n - 0.5) * density * 0.1;
-              const baseY = y * density * 0.86 + (n2 - 0.5) * density * 0.1;
-              const edgeFade = Math.max(0, 1 - Math.abs(baseX - width * 0.5) / (width * 0.62));
-              const seed = Math.abs(n);
-
-              particles.push({
-                x: baseX,
-                y: baseY,
-                baseX,
-                baseY,
-                seed,
-                driftX1: seed * 12 + baseY * 0.012,
-                driftX2: baseX * 0.012,
-                driftY1: seed * 14 + baseX * 0.011,
-                driftY2: baseY * 0.014,
-                alpha: 0.08 + edgeFade * 0.17,
-              });
-            }
-          }
-        }
-
-        function resize() {
-          const rect = canvas.getBoundingClientRect();
-          const nextDpr = Math.min(window.devicePixelRatio || 1, 2);
-          const nextWidth = Math.max(1, Math.floor(rect.width));
-          const nextHeight = Math.max(1, Math.floor(rect.height));
-          if (nextWidth === width && nextHeight === height && nextDpr === dpr) return;
-
-          dpr = nextDpr;
-          width = nextWidth;
-          height = nextHeight;
-          canvas.width = Math.floor(width * dpr);
-          canvas.height = Math.floor(height * dpr);
-          ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-          if (isCoarsePointer) {
-            const defaultPointer = getDefaultPointer();
-            pointer.x = defaultPointer.x;
-            pointer.y = defaultPointer.y;
-            pointer.targetX = pointer.x;
-            pointer.targetY = pointer.y;
-            pointer.lastTargetX = pointer.x;
-            pointer.lastTargetY = pointer.y;
-            pointer.active = true;
-            hoverInfluence = 1;
-          }
-          buildParticles();
-          if (!isCoarsePointer) updatePointerFromClient();
-        }
-
-        function scheduleResize() {
-          clearTimeout(resizeTimer);
-          resizeTimer = setTimeout(resize, 120);
-        }
-
-        function setPointer(event) {
-          pointer.clientX = event.clientX;
-          pointer.clientY = event.clientY;
-          updatePointerFromClient();
-          startAnimation();
-        }
-
-        function clearPointer() {
-          pointer.clientX = null;
-          pointer.clientY = null;
-          updatePointerFromClient();
-          startAnimation();
-        }
-
-        function updatePointerFromClient() {
-          const defaultPointer = getDefaultPointer();
-          if (pointer.clientX === null || pointer.clientY === null) {
-            pointer.targetX = defaultPointer.x;
-            pointer.targetY = defaultPointer.y;
-            pointer.active = false;
-            return;
-          }
-
-          const rect = canvas.getBoundingClientRect();
-          const nextX = pointer.clientX - rect.left;
-          const nextY = pointer.clientY - rect.top;
-          pointer.active = nextX >= 0 && nextX <= rect.width && nextY >= 0 && nextY <= rect.height;
-          pointer.targetX = pointer.active ? nextX : defaultPointer.x;
-          pointer.targetY = pointer.active ? nextY : defaultPointer.y;
-        }
-
-        function shouldRender() {
-          return isPageVisible && (isVisible || sceneVisibility > 0.01);
-        }
-
-        function startAnimation() {
-          if (animationFrame === null && shouldRender()) {
-            animationFrame = requestAnimationFrame(draw);
-          }
-        }
-
-        function stopAnimation() {
-          if (animationFrame !== null) {
-            cancelAnimationFrame(animationFrame);
-            animationFrame = null;
-          }
-        }
-
-        function draw(time = 0) {
-          animationFrame = null;
-          if (!shouldRender()) return;
-
-          if (!isCoarsePointer) updatePointerFromClient();
-          const targetDeltaX = pointer.targetX - pointer.lastTargetX;
-          const targetDeltaY = pointer.targetY - pointer.lastTargetY;
-          pointer.lastTargetX = pointer.targetX;
-          pointer.lastTargetY = pointer.targetY;
-          pointer.wakeX = pointer.wakeX * 0.9 + targetDeltaX * 0.2;
-          pointer.wakeY = pointer.wakeY * 0.9 + targetDeltaY * 0.2;
-          const easedTargetX = pointer.targetX + pointer.wakeX * 0.42;
-          const easedTargetY = pointer.targetY + pointer.wakeY * 0.42;
-          pointer.x += (easedTargetX - pointer.x) * 0.022;
-          pointer.y += (easedTargetY - pointer.y) * 0.022;
-          hoverInfluence += ((pointer.active ? 1 : 0) - hoverInfluence) * 0.045;
-          sceneVisibility += ((isVisible ? 1 : 0) - sceneVisibility) * 0.06;
-
-          ctx.clearRect(0, 0, width, height);
-
-          if (sceneVisibility <= 0.01 && !isVisible) {
-            stopAnimation();
-            return;
-          }
-
-          const minRadius = height * 0.38;
-          const radiusNoise =
-            (0.5 - Math.cos(time * 0.00145) * 0.5) * height * 0.15 +
-            (0.5 - Math.cos(time * 0.00225 + 1.8) * 0.5) * height * 0.06;
-          const radius = minRadius + radiusNoise;
-          const breathProgress = Math.min(1, radiusNoise / Math.max(height * 0.21, 1));
-          const breathDistanceScale = 1 + breathProgress * 0.16;
-          const ringWidth = Math.max(150, height * 0.27);
-          const pulse = Math.sin(time * 0.0024) * 34;
-
-          repelGrid.clear();
-          const repelDistance = width < 720 ? 18 : 22;
-          const repelDistanceSq = repelDistance * repelDistance;
-          const repelStrength = 0.16;
-
-          for (const p of particles) {
-            const dx = p.baseX - pointer.x;
-            const dy = p.baseY - pointer.y;
-            const distance = Math.hypot(dx, dy);
-            const adjustedDistance = distance * breathDistanceScale;
-            const angleNoise = Math.atan2(dy || 0.001, dx || 0.001);
-            const contourWarp =
-              Math.sin(angleNoise * 3 + time * 0.0011) * height * 0.035 +
-              Math.sin(angleNoise * 5 - time * 0.00082 + 1.7) * height * 0.022 +
-              Math.sin(angleNoise * 8 + time * 0.00057 + p.seed * 3) * height * 0.012;
-            const localRadius = radius + contourWarp;
-            const ringDistance = Math.abs(adjustedDistance - localRadius - pulse);
-            const ring = Math.max(0, 1 - ringDistance / ringWidth);
-            if (ring > 0.22) p.trailUntil = time + 760;
-            const trailLife = p.trailUntil ? Math.max(0, Math.min(1, (p.trailUntil - time) / 760)) : 0;
-            const core = Math.max(0, 1 - adjustedDistance / (localRadius * 0.8));
-            const inside = adjustedDistance < localRadius ? 1 : 0;
-            const warpX =
-              Math.sin(time * 0.00038 + p.baseY * 0.018 + Math.sin(p.baseX * 0.008 + time * 0.00022) * 2.2) * 17;
-            const warpY =
-              Math.cos(time * 0.00034 + p.baseX * 0.016 + Math.cos(p.baseY * 0.009 + time * 0.0002) * 2.1) * 17;
-            p.warpAngle =
-              Math.sin(time * 0.00034 + p.baseX * 0.006 + p.baseY * 0.004) * 0.3 +
-              Math.cos(time * 0.00029 + p.baseX * 0.003 - p.baseY * 0.006) * 0.24 +
-              Math.sin(time * 0.00021 + p.baseX * 0.014 + p.seed * 4) * 0.12;
-            const driftX = warpX + Math.sin(time * 0.00052 + p.driftX1) * 6 + Math.sin(time * 0.0009 + p.driftX2) * 2.5;
-            const driftY =
-              warpY + Math.cos(time * 0.00048 + p.driftY1) * 6 + Math.cos(time * 0.00082 + p.driftY2) * 2.5;
-            const ringSq = ring * ring;
-            const force = hoverInfluence * (ringSq * Math.sqrt(ring) * 52 - core * 14);
-            const breathSpread = ring * breathProgress * 18;
-            const directionScale = distance > 0.001 ? (force + breathSpread) / distance : 0;
-
-            p.x += (p.baseX + driftX + dx * directionScale - p.x) * 0.12;
-            p.y += (p.baseY + driftY + dy * directionScale - p.y) * 0.12;
-
-            const glow = ring * (0.34 + hoverInfluence * 0.44) + core * 0.1 * hoverInfluence;
-            const ringSize = ring * Math.sqrt(ring);
-            const innerProgress = inside ? Math.min(1, adjustedDistance / Math.max(localRadius, 1)) : 0;
-            const nearRingLift = inside ? Math.sqrt(innerProgress) * 0.58 : 0;
-            const centerFloor = inside * (0.18 + nearRingLift);
-            const visibilitySize = Math.max(ringSize, centerFloor);
-            const sideBandProgress = Math.min(
-              1,
-              Math.max(0, (adjustedDistance - (localRadius - ringWidth * 0.42)) / Math.max(ringWidth * 0.34, 1)),
-            );
-            const outerSideDensity = smoothstep(sideBandProgress);
-            const skipThreshold = 0.42 - outerSideDensity * 0.41;
-            const skipOutsideFade = trailLife <= 0.01 && p.seed < skipThreshold;
-            p.size = (0.3 + p.seed * 0.58 + glow * 1.9 + nearRingLift * 0.58) * visibilitySize * sceneVisibility;
-            p.alpha = Math.min(0.84, 0.36 + nearRingLift * 0.56 + glow * 0.46) * sceneVisibility;
-            if (trailLife > 0 && p.size < 0.7 * sceneVisibility) {
-              p.size = (0.35 + p.seed * 0.35) * trailLife * sceneVisibility;
-              p.alpha = Math.max(p.alpha, trailLife * 0.24 * sceneVisibility);
-            }
-            p.distance = adjustedDistance;
-
-            if (p.size < 0.08 || skipOutsideFade) continue;
-
-            const cellX = Math.floor(p.x / repelDistance);
-            const cellY = Math.floor(p.y / repelDistance);
-            const outerFade =
-              adjustedDistance > radius ? Math.max(0, 1 - (adjustedDistance - radius) / Math.max(ringWidth, 1)) : 1;
-            for (let oy = -1; oy <= 1; oy++) {
-              for (let ox = -1; ox <= 1; ox++) {
-                const neighbors = repelGrid.get(cellX + ox + (cellY + oy) * gridKeyScale);
-                if (!neighbors) continue;
-                for (const other of neighbors) {
-                  const sx = p.x - other.x;
-                  const sy = p.y - other.y;
-                  const spacingSq = sx * sx + sy * sy;
-                  if (spacingSq <= 0.000001 || spacingSq >= repelDistanceSq) continue;
-                  const spacing = Math.sqrt(spacingSq);
-                  const neighborOuterFade =
-                    other.distance > radius ? Math.max(0, 1 - (other.distance - radius) / Math.max(ringWidth, 1)) : 1;
-                  const localRepelStrength = repelStrength * Math.max(0.18, Math.min(outerFade, neighborOuterFade));
-                  const push = ((repelDistance - spacing) / repelDistance) * localRepelStrength;
-                  const nx = sx / spacing;
-                  const ny = sy / spacing;
-                  p.x += nx * push;
-                  p.y += ny * push;
-                  other.x -= nx * push;
-                  other.y -= ny * push;
-                }
-              }
-            }
-            const key = cellX + cellY * gridKeyScale;
-            if (!repelGrid.has(key)) repelGrid.set(key, []);
-            repelGrid.get(key).push(p);
-          }
-
-          for (const p of particles) {
-            if (p.size < 0.08) continue;
-
-            ctx.globalAlpha = p.alpha;
-            if (usePillParticles) {
-              const pillHeight = Math.max(1.35, p.size * 2.7);
-              const pillLength = p.size * 4.5;
-              const baseAngle = Math.atan2(pointer.y - p.baseY, pointer.x - p.baseX);
-              const angle = baseAngle + p.warpAngle;
-              ctx.translate(p.x, p.y);
-              ctx.rotate(angle);
-              ctx.drawImage(pillSprite, -pillLength * 0.5, -pillHeight * 0.5, pillLength, pillHeight);
-              ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-            } else {
-              const spriteSize = p.size * 2.25;
-              ctx.drawImage(dotSprite, p.x - spriteSize * 0.5, p.y - spriteSize * 0.5, spriteSize, spriteSize);
-            }
-          }
-          ctx.globalAlpha = 1;
-
-          const gradient = ctx.createRadialGradient(pointer.x, pointer.y, 0, pointer.x, pointer.y, radius + ringWidth);
-          gradient.addColorStop(0, "rgba(255, 255, 255, 0.055)");
-          gradient.addColorStop(0.45, "rgba(255, 255, 255, 0.026)");
-          gradient.addColorStop(1, "rgba(10, 10, 10, 0)");
-          ctx.fillStyle = gradient;
-          ctx.globalAlpha = sceneVisibility;
-          ctx.fillRect(0, 0, width, height);
-          ctx.globalAlpha = 1;
-
-          startAnimation();
-        }
-
-        const observer = new IntersectionObserver(
-          ([entry]) => {
-            isVisible = entry.isIntersecting;
-            if (shouldRender()) {
-              startAnimation();
-            } else {
-              stopAnimation();
-            }
-          },
-          { threshold: 0 },
-        );
-
-        resize();
-        observer.observe(hero);
-        window.addEventListener("resize", scheduleResize, { passive: true });
-        document.addEventListener("visibilitychange", () => {
-          isPageVisible = !document.hidden;
-          if (shouldRender()) {
-            startAnimation();
-          } else {
-            stopAnimation();
-          }
-        });
-        if (!isCoarsePointer) {
-          window.addEventListener("mousemove", setPointer, { passive: true });
-          window.addEventListener("mouseleave", clearPointer, { passive: true });
-          window.addEventListener("blur", clearPointer, { passive: true });
-        }
-        startAnimation();
-
-        prefersReducedMotion.addEventListener("change", () => {
-          if (prefersReducedMotion.matches && animationFrame) cancelAnimationFrame(animationFrame);
-        });
-      }
-
-      // get latest exe file to download
-      function trackClickEvent() {
-        gtag("event", "download_click", {
-          event_category: "Download",
-          event_label: "Windows Setup",
-        });
-      }
-      async function handleWindowsDownload(e) {
-        e.preventDefault();
-        trackClickEvent();
-
-        try {
-          const response = await fetch("https://api.github.com/repos/sheetau/monapad/releases/latest");
-          const data = await response.json();
-
-          const asset = data.assets.find((a) => a.name.match(/^Monapad-Setup-.*\.exe$/));
-
-          if (asset) {
-            // Wait 200ms to allow GA event to fire
-            setTimeout(() => {
-              window.location.href = asset.browser_download_url;
-            }, 200);
-          } else {
-            alert("Windows installer not found.");
-          }
-        } catch (err) {
-          console.error("Download error:", err);
-          alert("Failed to fetch the latest release information.");
-        }
-      }
-
-      downloadButtons.forEach((el) => {
-        el.addEventListener("click", handleWindowsDownload);
-      });
-
       function cycleCommandSearch(commands) {
         if (!commandSearchInput || !commandSearchResults) return;
 
@@ -2952,622 +2570,6 @@
         run();
       }
       cycleCommandSearch(shortcutCommands);
-
-      const heroEditorSource = `# Studio Journal
-
-## Recording Session
-
-The piano in the north room had drifted slightly out of tune during the winter, creating a faint resonance that lingered beneath every chord. While reviewing older compositions, several arrangements unexpectedly aligned with notes preserved in https://en.wikipedia.org/wiki/Fugue, despite having been written years apart under entirely different circumstances.
-
-1. Archive unused takes separately.
-2. Label revisions immediately after recording.
-3. Export backups before closing the session.
-
--# Reminder: unfinished versions often contain the strongest ideas.
-
-> “Music expresses that which cannot be put into words.”
-
-## Composition Notes
-
-Most revisions involved removing unnecessary layers rather than adding new material. As the arrangement became simpler, smaller imperfections became easier to notice, particularly the subtle timing inconsistencies between repeated phrases near the ending section.
-
-## Session Archive
-
-      One discarded recording captured several minutes of room ambience after the performance had supposedly ended. In the background, faint page-turning sounds could be heard at irregular intervals, despite the studio being completely empty at the time of recording.`;
-      const heroEditorPaddingLines = { before: 1, after: 3 };
-      const heroEditorSelectionTargets = [
-        "drifted slightly out of tune",
-        "Export backups before closing the session",
-        "subtle timing inconsistencies",
-      ];
-
-      function createEditorFoldIcon() {
-        const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-        const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-
-        svg.setAttribute("viewBox", "0 0 8 13");
-        svg.setAttribute("fill", "none");
-        svg.setAttribute("aria-hidden", "true");
-        path.setAttribute("d", "M1 12 7 6.5 1 1");
-        path.setAttribute("stroke", "currentColor");
-        path.setAttribute("stroke-width", "1.5");
-        path.setAttribute("stroke-linecap", "round");
-        path.setAttribute("stroke-linejoin", "round");
-        svg.append(path);
-
-        return svg;
-      }
-
-      function appendEditorSegment(target, text, className = "") {
-        if (!text) return;
-        if (!className) {
-          target.append(text);
-          return;
-        }
-
-        const span = document.createElement("span");
-        span.className = className;
-        span.textContent = text;
-        target.append(span);
-      }
-
-      function appendEditorSelectionTarget(target, text, lineNumber, column) {
-        const selection = document.createElement("span");
-        selection.className = "editor-selection-target";
-        selection.dataset.selectionText = text;
-        selection.dataset.editorLine = String(lineNumber);
-        selection.dataset.editorColumn = String(column);
-
-        [...text].forEach((char) => {
-          const charSpan = document.createElement("span");
-          charSpan.className = "editor-selection-char";
-          charSpan.textContent = char;
-          selection.append(charSpan);
-        });
-        target.append(selection);
-      }
-
-      function appendEditorText(target, text, lineNumber, columnOffset = 0) {
-        const listMatch = text.match(/^(\d+\.)\s(.+)/);
-        const linkPattern = /(https?:\/\/[^\s,]+)/g;
-        let cursor = 0;
-
-        if (listMatch) {
-          const marker = document.createElement("span");
-          marker.className = "editor-list-marker";
-          marker.textContent = listMatch[1];
-          target.append(marker, " ");
-          appendEditorText(target, listMatch[2], lineNumber, listMatch[1].length + 1);
-          return;
-        }
-
-        const selectionPattern = new RegExp(heroEditorSelectionTargets.map(escapeRegExp).join("|"), "g");
-        const tokenPattern = new RegExp(`${linkPattern.source}|${selectionPattern.source}`, "g");
-
-        text.replace(tokenPattern, (match, _link, offset) => {
-          appendEditorSegment(target, text.slice(cursor, offset));
-          if (heroEditorSelectionTargets.includes(match)) {
-            appendEditorSelectionTarget(target, match, lineNumber, columnOffset + offset + 1);
-          } else {
-            const linkSpan = document.createElement("span");
-            linkSpan.className = "editor-link";
-            linkSpan.textContent = match;
-            target.append(linkSpan);
-          }
-          cursor = offset + match.length;
-          return match;
-        });
-        appendEditorSegment(target, text.slice(cursor));
-      }
-
-      function escapeRegExp(value) {
-        return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      }
-
-      function createEditorCaret(editorCode) {
-        const caret = document.createElement("span");
-        caret.className = "editor-caret";
-        caret.setAttribute("aria-hidden", "true");
-        editorCode.append(caret);
-
-        return caret;
-      }
-
-      function syncEditorCaretMetrics(editorCode) {
-        const sample = editorCode.querySelector(".editor-selection-char");
-        if (!sample) return;
-
-        const sampleRect = sample.getBoundingClientRect();
-        editorCode.style.setProperty("--editor-caret-height", `${sampleRect.height}px`);
-      }
-
-      function moveEditorCaretToRect(caret, editorCode, rect) {
-        const editorRect = editorCode.getBoundingClientRect();
-
-        caret.style.left = `${rect.right - editorRect.left}px`;
-        caret.style.top = `${rect.top - editorRect.top}px`;
-        caret.classList.add("is-visible");
-      }
-
-      function moveEditorCaretToRectStart(caret, editorCode, rect) {
-        const editorRect = editorCode.getBoundingClientRect();
-
-        caret.style.left = `${rect.left - editorRect.left}px`;
-        caret.style.top = `${rect.top - editorRect.top}px`;
-        caret.classList.add("is-visible");
-      }
-
-      function getEditorTextEndRect(line) {
-        const textNode = [...line.contentRow.childNodes].find((node) => node.nodeType === Node.TEXT_NODE);
-        if (!textNode) return line.contentRow.getBoundingClientRect();
-
-        const range = document.createRange();
-        range.setStart(textNode, textNode.textContent.length);
-        range.setEnd(textNode, textNode.textContent.length);
-        let rect = range.getClientRects()[0] ?? range.getBoundingClientRect();
-        range.detach();
-
-        if (!rect.width && !rect.height) {
-          const fallbackRange = document.createRange();
-          fallbackRange.setStart(textNode, Math.max(0, textNode.textContent.length - 1));
-          fallbackRange.setEnd(textNode, textNode.textContent.length);
-          rect = fallbackRange.getBoundingClientRect();
-          fallbackRange.detach();
-        }
-
-        return rect.width || rect.height ? rect : line.contentRow.getBoundingClientRect();
-      }
-
-      function moveEditorCaretToTextEnd(caret, editorCode, line) {
-        moveEditorCaretToRect(caret, editorCode, getEditorTextEndRect(line));
-      }
-
-      function setEditorStatusSelection(selectionState = null, caretLine = null) {
-        const status = document.querySelector("[data-editor-position-status]");
-        if (!status) return;
-
-        if (selectionState?.count > 1) {
-          status.textContent = `${selectionState.count} selections (${selectionState.selected} selected)`;
-          return;
-        }
-        if (selectionState?.count === 1) {
-          status.textContent = `Ln ${selectionState.line}, Col ${selectionState.column} (${selectionState.selected} selected)`;
-          return;
-        }
-
-        status.textContent = `Ln ${caretLine?.number ?? 2}, Col ${(caretLine?.text.length ?? 16) + 1}`;
-      }
-
-      function getEditorLineMeta(text) {
-        const headingMatch = text.match(/^(#{1,6})\s/);
-
-        if (headingMatch) {
-          return {
-            headingLevel: headingMatch[1].length,
-            textClass: headingMatch[1].length === 1 ? "editor-h1" : "editor-h2",
-          };
-        }
-        if (text.startsWith("-# ")) return { textClass: "editor-muted" };
-        if (text.startsWith("> ")) return { textClass: "editor-quote" };
-
-        return {};
-      }
-
-      function assignEditorFoldRanges(lines) {
-        lines.forEach((line, index) => {
-          if (!line.headingLevel) return;
-
-          const nextHeadingIndex = lines.findIndex(
-            (candidate, candidateIndex) =>
-              candidateIndex > index && candidate.headingLevel && candidate.headingLevel <= line.headingLevel,
-          );
-          let endIndex = nextHeadingIndex === -1 ? lines.length - 1 : nextHeadingIndex - 1;
-
-          while (endIndex > index && !lines[endIndex].text.trim()) endIndex -= 1;
-          line.foldRange = { start: index + 1, end: endIndex };
-        });
-
-        return lines;
-      }
-
-      function renderEditorMinimap(lines) {
-        const minimap = document.createElement("div");
-        minimap.className = "editor-minimap";
-        minimap.setAttribute("aria-hidden", "true");
-
-        lines.forEach((line) => {
-          const previewLine = document.createElement("div");
-          const textLength = line.text.trim().length;
-          const width = textLength ? Math.min(100, Math.max(14, textLength * 1.2)) : 0;
-
-          previewLine.className = "editor-minimap-line";
-          if (!textLength) previewLine.classList.add("is-empty");
-          if (line.headingLevel === 1) previewLine.classList.add("is-h1");
-          if (line.headingLevel && line.headingLevel > 1) previewLine.classList.add("is-h2");
-          if (line.textClass === "editor-muted") previewLine.classList.add("is-muted");
-          previewLine.style.width = `${width}%`;
-          minimap.append(previewLine);
-        });
-
-        return minimap;
-      }
-
-      function renderEditorMockup() {
-        const container = document.querySelector("[data-editor-code]");
-        if (!container) return null;
-
-        const rawLines = [
-          ...Array.from({ length: heroEditorPaddingLines.before }, () => ({ text: "", padding: "before" })),
-          ...heroEditorSource.split("\n").map((text) => ({ text })),
-          ...Array.from({ length: heroEditorPaddingLines.after }, () => ({ text: "", padding: "after" })),
-        ];
-        const lines = assignEditorFoldRanges(
-          rawLines.map((line, index) => ({
-            index,
-            number: index + 1,
-            ...line,
-            ...getEditorLineMeta(line.text),
-          })),
-        );
-        const gutterColumn = document.createElement("div");
-        const contentColumn = document.createElement("div");
-        gutterColumn.className = "editor-gutter";
-        contentColumn.className = "editor-content";
-
-        lines.forEach((line) => {
-          const gutterRow = document.createElement("div");
-          const contentRow = document.createElement("div");
-          const lineNumber = document.createElement("span");
-          const foldSlot = document.createElement("span");
-
-          gutterRow.className = "editor-gutter-line";
-          contentRow.className = `editor-content-line editor-text${line.textClass ? ` ${line.textClass}` : ""}`;
-          gutterRow.dataset.editorLine = String(line.number);
-          contentRow.dataset.editorLine = String(line.number);
-          contentRow.dataset.editorText = line.text;
-          if (line.padding) {
-            gutterRow.dataset.editorPadding = line.padding;
-            contentRow.dataset.editorPadding = line.padding;
-          }
-          if (!line.text.trim()) {
-            gutterRow.dataset.editorEmpty = "true";
-            contentRow.dataset.editorEmpty = "true";
-          }
-          lineNumber.className = "editor-line-number";
-          lineNumber.textContent = String(line.number);
-          foldSlot.className = "editor-fold-slot";
-
-          if (line.headingLevel) {
-            const button = document.createElement("button");
-            gutterRow.dataset.editorHeading = String(line.headingLevel);
-            contentRow.dataset.editorHeading = String(line.headingLevel);
-            button.className = "editor-fold-button";
-            button.type = "button";
-            button.setAttribute("aria-label", `Fold ${line.text.replace(/^#+\s*/, "")}`);
-            button.setAttribute("aria-expanded", "true");
-            button.append(createEditorFoldIcon());
-            foldSlot.append(button);
-          }
-
-          appendEditorText(contentRow, line.text, line.number);
-          gutterRow.append(lineNumber, foldSlot);
-          gutterColumn.append(gutterRow);
-          contentColumn.append(contentRow);
-        });
-
-        container.replaceChildren(gutterColumn, contentColumn);
-        container.closest(".editor-canvas")?.querySelector(".editor-minimap")?.remove();
-        container.closest(".editor-canvas")?.append(renderEditorMinimap(lines));
-        const renderedLines = lines.map((line) => ({
-          ...line,
-          gutterRow: gutterColumn.querySelectorAll(".editor-gutter-line")[line.index],
-          contentRow: contentColumn.querySelectorAll(".editor-content-line")[line.index],
-        }));
-        window.monapadHeroEditor = {
-          source: heroEditorSource,
-          lines: renderedLines,
-          gutterRows: [...gutterColumn.querySelectorAll(".editor-gutter-line")],
-          contentRows: [...contentColumn.querySelectorAll(".editor-content-line")],
-          selectionTargets: [...contentColumn.querySelectorAll(".editor-selection-target")],
-        };
-
-        return renderedLines;
-      }
-
-      function initEditorMockup() {
-        const lines = renderEditorMockup();
-        if (!lines) return;
-
-        const syncGutterHeights = () => {
-          lines.forEach((line) => {
-            line.gutterRow.style.minHeight = `${line.contentRow.getBoundingClientRect().height}px`;
-          });
-        };
-        const updateFoldVisibility = () => {
-          const hiddenLineIndexes = new Set();
-
-          lines.forEach((line) => {
-            if (!line.foldRange || !line.contentRow.classList.contains("is-folded")) return;
-
-            for (let index = line.foldRange.start; index <= line.foldRange.end; index += 1) {
-              hiddenLineIndexes.add(index);
-            }
-          });
-
-          lines.forEach((line) => {
-            const shouldHide = hiddenLineIndexes.has(line.index);
-            line.gutterRow.classList.toggle("is-hidden", shouldHide);
-            line.contentRow.classList.toggle("is-hidden", shouldHide);
-          });
-        };
-        const toggleFoldLine = (line, shouldFold) => {
-          const button = line.gutterRow.querySelector(".editor-fold-button");
-
-          line.gutterRow.classList.toggle("is-folded", shouldFold);
-          line.contentRow.classList.toggle("is-folded", shouldFold);
-          button?.setAttribute("aria-expanded", String(!shouldFold));
-          updateFoldVisibility();
-          window.monapadHeroEditor.syncCaretFoldVisibility?.();
-          requestAnimationFrame(() => {
-            syncGutterHeights();
-            window.monapadHeroEditor.syncCaretFoldVisibility?.();
-          });
-        };
-
-        document.querySelectorAll("[data-editor-code] .editor-fold-button").forEach((button) => {
-          button.addEventListener("click", () => {
-            const headingLine = button.closest(".editor-gutter-line");
-            const line = lines.find((item) => item.gutterRow === headingLine);
-            if (!line) return;
-
-            const shouldFold = !line.contentRow.classList.contains("is-folded");
-            window.monapadHeroEditor.foldAnimationStopped = true;
-            window.monapadHeroEditor.manualFoldLineIndexes ??= new Set();
-            window.monapadHeroEditor.manualFoldLineIndexes.add(line.index);
-            toggleFoldLine(line, shouldFold);
-          });
-        });
-        window.monapadHeroEditor.toggleFoldLine = toggleFoldLine;
-        window.monapadHeroEditor.updateFoldVisibility = updateFoldVisibility;
-        window.monapadHeroEditor.syncGutterHeights = syncGutterHeights;
-        requestAnimationFrame(syncGutterHeights);
-        if (window.ResizeObserver) {
-          const resizeObserver = new ResizeObserver(syncGutterHeights);
-          lines.forEach((line) => resizeObserver.observe(line.contentRow));
-          window.monapadHeroEditor.resizeObserver = resizeObserver;
-        }
-      }
-      initEditorMockup();
-
-      function initEditorSelectionAnimation() {
-        const editor = window.monapadHeroEditor;
-        if (!editor?.selectionTargets?.length) return;
-
-        const editorCode = document.querySelector("[data-editor-code]");
-        if (!editorCode) return;
-
-        const carets = editor.selectionTargets.map(() => createEditorCaret(editorCode));
-        const headingLine = editor.lines.find((line) => line.headingLevel === 1);
-        const caretAnchors = new Map();
-        const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-        const foldStepDelay = 720;
-        const longSelectionDelay = 2500;
-        const selectionCharDelay = 24;
-        const selectionGapDelay = 420;
-        const finalSelectionDelay = 240;
-        const setCaretsBlinking = (shouldBlink, shouldReset = false) => {
-          if (!shouldBlink) {
-            editorCode.classList.remove("is-caret-blinking");
-            return;
-          }
-
-          if (shouldReset) {
-            editorCode.classList.remove("is-caret-blinking");
-            editorCode.offsetHeight;
-          }
-          editorCode.classList.add("is-caret-blinking");
-        };
-        const clearSelections = () =>
-          editor.selectionTargets.forEach((target) =>
-            target.querySelectorAll(".editor-selection-char").forEach((char) => char.classList.remove("is-selected")),
-          );
-        const resetSelectionAnimation = () => {
-          clearSelections();
-          setEditorStatusSelection(null, headingLine);
-          resetEditorCaretsToHeading();
-          setCaretsBlinking(true);
-        };
-        const isAllFoldsOpen = () => editor.lines.every((line) => !line.contentRow.classList.contains("is-folded"));
-        const hideCaret = (caret) => {
-          caret.classList.remove("is-visible");
-        };
-        const hideUnusedCarets = (startIndex = 1) => {
-          carets.slice(startIndex).forEach((caret) => {
-            hideCaret(caret);
-            caretAnchors.delete(caret);
-          });
-        };
-        const moveAnchoredCaret = (caret, anchor) => {
-          if (anchor.line?.contentRow.classList.contains("is-hidden")) {
-            hideCaret(caret);
-            return;
-          }
-
-          const rect = anchor.getRect();
-          if (anchor.align === "start") {
-            moveEditorCaretToRectStart(caret, editorCode, rect);
-          } else {
-            moveEditorCaretToRect(caret, editorCode, rect);
-          }
-        };
-        const setCaretAnchor = (index, anchor) => {
-          const caret = carets[index];
-          if (!caret) return;
-
-          caretAnchors.set(caret, anchor);
-          moveAnchoredCaret(caret, anchor);
-        };
-        const setCaretToTarget = (index, target, line, align = "end") => {
-          const chars = [...target.querySelectorAll(".editor-selection-char")];
-          const getChar = () => (align === "start" ? chars[0] : chars[chars.length - 1]);
-
-          setCaretAnchor(index, {
-            align,
-            line,
-            getRect: () => getChar().getBoundingClientRect(),
-          });
-        };
-        const resetEditorCaretsToHeading = () => {
-          hideUnusedCarets(1);
-          setCaretAnchor(0, {
-            align: "end",
-            line: headingLine,
-            getRect: () => getEditorTextEndRect(headingLine),
-          });
-        };
-        const syncEditorCarets = () => {
-          caretAnchors.forEach((anchor, caret) => moveAnchoredCaret(caret, anchor));
-        };
-        const getSelectionState = (activeTarget = null) => {
-          const selectedTargets = editor.selectionTargets.filter((target) =>
-            target.querySelector(".editor-selection-char.is-selected"),
-          );
-
-          if (selectedTargets.length === 1) {
-            const target = activeTarget ?? selectedTargets[0];
-            const selectedChars = target.querySelectorAll(".editor-selection-char.is-selected").length;
-
-            return {
-              count: 1,
-              selected: selectedChars,
-              line: Number(target.dataset.editorLine),
-              column: Number(target.dataset.editorColumn) + selectedChars,
-            };
-          }
-
-          return {
-            count: selectedTargets.length,
-            selected: selectedTargets.reduce(
-              (total, target) => total + target.querySelectorAll(".editor-selection-char.is-selected").length,
-              0,
-            ),
-          };
-        };
-        const syncCaretFoldVisibility = () => {
-          syncEditorCarets();
-        };
-        editor.syncCaretFoldVisibility = syncCaretFoldVisibility;
-        const runFoldAnimation = async () => {
-          if (editor.foldAnimationStopped) return false;
-
-          const h2Lines = editor.lines.filter((line) => line.headingLevel === 2);
-          const [firstLine, secondLine] = h2Lines.slice(-2);
-          const gutter = editor.gutterRows[0]?.parentElement;
-          const canContinue = () => !editor.foldAnimationStopped;
-
-          if (!firstLine || !secondLine || !gutter || !editor.toggleFoldLine) return false;
-
-          editor.manualFoldLineIndexes = new Set();
-          const animatedFoldLines = [];
-          const foldAnimatedLine = (line) => {
-            animatedFoldLines.push(line);
-            editor.toggleFoldLine(line, true);
-          };
-          const cleanupAnimatedFolds = () => {
-            animatedFoldLines.forEach((line) => {
-              if (!editor.manualFoldLineIndexes?.has(line.index)) {
-                editor.toggleFoldLine(line, false);
-              }
-            });
-            syncCaretFoldVisibility();
-          };
-          const stopFoldAnimation = () => {
-            cleanupAnimatedFolds();
-            gutter.classList.remove("is-fold-hover");
-            return false;
-          };
-
-          gutter.classList.add("is-fold-hover");
-          await wait(foldStepDelay);
-          if (!canContinue()) return stopFoldAnimation();
-
-          foldAnimatedLine(firstLine);
-          syncCaretFoldVisibility();
-          await wait(foldStepDelay);
-          if (!canContinue()) return stopFoldAnimation();
-
-          foldAnimatedLine(secondLine);
-          syncCaretFoldVisibility();
-          await wait(longSelectionDelay);
-          if (!canContinue()) return stopFoldAnimation();
-
-          cleanupAnimatedFolds();
-          gutter.classList.remove("is-fold-hover");
-          resetSelectionAnimation();
-          return true;
-        };
-
-        async function run() {
-          await (document.fonts?.ready ?? Promise.resolve());
-          await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-          syncEditorCaretMetrics(editorCode);
-
-          clearSelections();
-          setEditorStatusSelection(null, headingLine);
-          resetEditorCaretsToHeading();
-          setCaretsBlinking(true, true);
-          await wait(1600);
-
-          while (true) {
-            for (const [targetIndex, target] of editor.selectionTargets.entries()) {
-              const chars = [...target.querySelectorAll(".editor-selection-char")];
-              const targetLine =
-                editor.lines.find((line) => line.contentRow === target.closest(".editor-content-line")) ?? headingLine;
-              hideUnusedCarets(targetIndex + 1);
-              setCaretsBlinking(false);
-              setCaretToTarget(targetIndex, target, targetLine, "start");
-
-              for (const char of chars) {
-                char.classList.add("is-selected");
-                setCaretAnchor(targetIndex, {
-                  align: "end",
-                  line: targetLine,
-                  getRect: () => char.getBoundingClientRect(),
-                });
-                setEditorStatusSelection(getSelectionState(target), headingLine);
-                await wait(selectionCharDelay);
-              }
-
-              setCaretsBlinking(true, true);
-              const isLastTarget = target === editor.selectionTargets[editor.selectionTargets.length - 1];
-              await wait(
-                isLastTarget
-                  ? editor.foldAnimationStopped
-                    ? longSelectionDelay
-                    : finalSelectionDelay
-                  : selectionGapDelay,
-              );
-            }
-
-            if (editor.foldAnimationStopped) {
-              resetSelectionAnimation();
-              if (isAllFoldsOpen()) editor.foldAnimationStopped = false;
-            } else {
-              const foldCompleted = await runFoldAnimation();
-              if (!foldCompleted) {
-                await wait(longSelectionDelay);
-                resetSelectionAnimation();
-                if (isAllFoldsOpen()) editor.foldAnimationStopped = false;
-              }
-            }
-            await wait(1700);
-          }
-        }
-
-        run();
-      }
-      initEditorSelectionAnimation();
-
       // themes
       const syncHover = (buttonClass, shadowIndex) => {
         const button = document.querySelector(`.theme-button.${buttonClass}`);
@@ -3596,9 +2598,10 @@ Most revisions involved removing unnecessary layers rather than adding new mater
       );
 
       window.addEventListener("load", () => {
-        if (heroParticlesEnabled) initHeroParticles();
         if (workflowSlider) workflowObserver.observe(workflowSlider);
       });
     </script>
+    <script src="scripts/hero-particles.js"></script>
+    <script src="scripts/hero-mockup.js"></script>
   </body>
 </html>
