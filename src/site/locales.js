@@ -9,6 +9,8 @@ export const locales = {
     shortTitle: "Monapad - The Text Editor That Thinks Like a Code Editor",
     description:
       "Monapad brings code editor-level efficiency to everyday writing, powered by the same engine as VS Code and a language designed for structured text.",
+    keywords: ["Monapad", "text editor", "code editor", "notes app"],
+    alternateName: [],
     replacements: [],
   },
   ja: {
@@ -19,6 +21,8 @@ export const locales = {
     shortTitle: "Monapad - コードエディタのように思考するテキストエディタ",
     description:
       "Monapadは、VS Codeと同じエディタエンジンと、構造化された文章のための記法で、日常の執筆にコードエディタ級の操作性をもたらします。",
+    keywords: ["Monapad", "モナパッド", "テキストエディタ", "コードエディタ", "ノートアプリ"],
+    alternateName: ["モナパッド"],
     replacements: [
       ["Download", "ダウンロード"],
       [

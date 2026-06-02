@@ -8,12 +8,23 @@ export function LandingPage({ locale }) {
   const content = locales[locale] ?? locales.en;
   const assetBase = process.env.NEXT_PUBLIC_BASE_PATH ?? "/monapad";
   const html = localizeHtml(bodyTemplate, content);
+  const structuredData = {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    name: "Monapad",
+    ...(content.alternateName?.length ? { alternateName: content.alternateName } : {}),
+    applicationCategory: "TextEditor",
+    operatingSystem: "Windows",
+    url: content.canonical,
+    description: content.description,
+  };
 
   return (
     <>
       <Head>
         <title>{content.title}</title>
         <meta name="description" content={content.description} />
+        {content.keywords?.length && <meta name="keywords" content={content.keywords.join(", ")} />}
         <link rel="canonical" href={content.canonical} />
         {Object.entries(alternates).map(([hrefLang, href]) => (
           <link key={hrefLang} rel="alternate" hrefLang={hrefLang} href={href} />
@@ -38,6 +49,7 @@ export function LandingPage({ locale }) {
         <link rel="icon" href={`${assetBase}/media/favicon.ico?v=5`} sizes="any" />
         <link rel="shortcut icon" href={`${assetBase}/media/favicon.ico?v=5`} />
         <link rel="icon" type="image/png" sizes="48x48" href={`${assetBase}/media/favicon-48.png?v=5`} />
+        <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }} />
       </Head>
       {locale === "en" && (
         <Script id="locale-redirect" strategy="beforeInteractive">
