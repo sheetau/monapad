@@ -6,7 +6,6 @@ const nextConfig = {
   ...(basePath
     ? {
         basePath,
-        assetPrefix: basePath,
       }
     : {}),
   images: {
