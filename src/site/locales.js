@@ -42,6 +42,9 @@ export const locales = {
         "VS Codeでも使われているMonaco Editorを搭載。強力なショートカット体系と精密な編集機能を、文章作成のワークフローへそのまま届けます。",
       ],
       ["See all shortcuts", "すべてのショートカットを見る"],
+      ["Find and Replace", "検索と置換"],
+      ["Multi Cursor", "マルチカーソル"],
+      ["Go to Heading", "見出しに移動"],
       ["Tabs that flow", "なめらかに流れるタブ"],
       [
         "Monapad's tabs are smooth and fully fluid. Close, rearrange, reopen, pin, pop out, or merge across windows without missing a beat.",

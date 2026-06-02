@@ -675,7 +675,12 @@ Most revisions involved removing unnecessary layers rather than adding new mater
     runSelectionAnimation();
   }
 
-  window.addEventListener("load", () => {
+  const initWhenReady = () => {
     initEditorMockup();
-  });
+  };
+  if (document.readyState === "complete") {
+    initWhenReady();
+  } else {
+    window.addEventListener("load", initWhenReady, { once: true });
+  }
 })();
