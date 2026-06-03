@@ -167,7 +167,7 @@
   --color-theme-fg-03: color-mix(in oklab, var(--color-theme-fg) 60%, transparent);
   --color-theme-fg-04: #62666d;
   --color-theme-01-hex: #0a0a0a;
-  --color-theme-02-hex: #0f0f0f;
+  --color-theme-02-hex: #121212;
   --color-theme-card-hex: #1b1913;
   --color-theme-card-rgb: 27 29 39;
   --color-theme-card-01-hex: #1d1b15;
