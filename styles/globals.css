@@ -190,6 +190,10 @@
   --theme-hover-lift: 2rem;
 }
 
+:root:lang(ja) {
+  --font-sans: Inter, "M PLUS 2", system-ui, Helvetica Neue, Helvetica, Arial, sans-serif;
+}
+
 @font-face {
   font-family: "Figtree";
   src: url("/monapad/fonts/Figtree-Regular.ttf") format("truetype");
@@ -1028,27 +1032,18 @@ header .app-download:hover {
   width: 0;
   height: 0;
 }
-
 .shortcut-img {
   flex: 1;
   min-width: 14rem;
-  padding: var(--spacing-g1\.75);
-}
-.shortcut-img:before {
-  content: "";
-  inset: 0;
+  padding: 0 0 var(--spacing-g1\.75) 0;
   background: var(--color-theme-02-hex);
   border: 1px solid var(--color-theme-border-01);
   border-radius: var(--radius-sm);
   pointer-events: none;
-  z-index: -1;
-  position: absolute;
 }
-
 .shortcut-img-container {
-  width: calc(100% - 0.5rem);
-  aspect-ratio: 7/6;
-  border-radius: var(--radius-lg);
+  width: 100%;
+  aspect-ratio: 8/5.5;
   background: var(--color-theme-02-hex);
   isolation: isolate; /* for blend-mode containment */
 }
@@ -1057,32 +1052,28 @@ header .app-download:hover {
   position: absolute;
   inset: 0;
   background:
-    linear-gradient(to right, transparent 60%, var(--color-theme-02-hex) 100%),
-    linear-gradient(to top, transparent 70%, var(--color-theme-02-hex) 100%);
+    linear-gradient(to bottom, transparent 65%, var(--color-theme-02-hex) 100%),
+    linear-gradient(to right, transparent 70%, var(--color-theme-02-hex) 100%);
   pointer-events: none;
 }
-
 .shortcut-img-container img {
   position: absolute;
   left: 0;
   bottom: 0;
-  width: 120%;
-  height: 120%;
+  width: auto;
+  height: 100%;
   object-fit: cover;
-  object-position: left bottom;
+  object-position: left top;
   mix-blend-mode: screen;
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--color-theme-border-02);
 }
-
 .shortcut-label {
-  padding-top: var(--spacing-v2);
+  padding: var(--spacing-g2) 0 0 var(--spacing-g1\.75);
   font-size: var(--text-base);
   color: var(--color-theme-fg);
   line-height: var(--leading-snug-plus);
 }
-
 .shortcut-key {
+  padding-left: var(--spacing-g1\.75);
   font-size: var(--text-base);
   color: var(--color-theme-fg-04);
   line-height: var(--leading-snug-plus);
@@ -1149,6 +1140,7 @@ header .app-download:hover {
   mix-blend-mode: screen;
   border: 1px solid var(--color-theme-border-02);
   border-radius: var(--radius-lg);
+  overflow: hidden;
 }
 .slider-card-media .video-wrapper video {
   border: 0;
@@ -1193,6 +1185,7 @@ header .app-download:hover {
   position: absolute;
   inset: 0;
   width: calc(var(--slider-progress, 0) * 100%);
+  height: 100%;
   background: var(--color-theme-fg-04);
   border-radius: inherit;
 }
@@ -1579,6 +1572,7 @@ footer a:hover {
   .shortcuts-demo {
     flex-direction: column;
     align-items: flex-start;
+    margin-bottom: var(--spacing-g2);
   }
   .shortcuts-copy {
     width: 100%;
