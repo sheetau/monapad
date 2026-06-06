@@ -8,6 +8,7 @@
   "statusBar": {
     "line": "Ze",
     "col": "Sp",
+    "selectionCount": "{{count}} Auswahlen",
     "selection": "({{count}} ausgewählt)",
     "encodingTooltip": "Dieser Editor unterstützt nur UTF-8.\nWenn du andere Kodierungen verwenden möchtest, konvertiere sie bitte vor dem Öffnen in UTF-8.",
     "bomEncodingTooltip": "Diese Datei wurde als UTF-8 mit BOM geöffnet.\nBeim Überschreiben bleibt die BOM erhalten; Speichern unter schreibt UTF-8 ohne BOM.",
@@ -58,6 +59,9 @@
       "keepOpen": "Geöffnet lassen",
       "toggleTabPin": "Tab anheften/lösen",
       "toggleHeading": "Überschrift {{level}} umschalten",
+      "scrollLineUp": "Zeile nach oben scrollen",
+      "scrollLineDown": "Zeile nach unten scrollen",
+      "toggleWordWrap": "Zeilenumbruch umschalten",
       "quickOpen": "Schnell öffnen",
       "showCommands": "Befehlsliste"
     },

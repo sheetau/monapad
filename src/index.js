@@ -1398,6 +1398,7 @@ function registerMonacoFormattingActions() {
     getCurrentTab: () => currentTab,
     keepOpenNoteTab,
     toggleTabPinned,
+    toggleWordWrap,
   });
 }
 registerMonacoFormattingActions();
@@ -3826,6 +3827,10 @@ function updateStatusBar() {
 
   const selectionText =
     totalSelectedLength > 0 ? ` ${i18next.t("statusBar.selection", { count: totalSelectedLength })}` : "";
+  const positionText =
+    selections?.length > 1
+      ? i18next.t("statusBar.selectionCount", { count: selections.length })
+      : `${i18next.t("statusBar.line")} ${position.lineNumber}, ${i18next.t("statusBar.col")} ${position.column}`;
 
   if (currentTab?.isNote) {
     const updated = formatNoteUpdatedAt(currentTab.noteUpdatedAt);
@@ -3849,9 +3854,7 @@ function updateStatusBar() {
   statusLeft?.classList.toggle("has-external-warning", hasExternalWarning);
   updateSaveStatus();
   updateBackupStatus();
-  lineColEl.textContent = `${i18next.t("statusBar.line")} ${position.lineNumber}, ${i18next.t("statusBar.col")} ${
-    position.column
-  }${selectionText}`;
+  lineColEl.textContent = `${positionText}${selectionText}`;
   zoomLevelEl.textContent = `${Math.round((fontSize / persistentFontSize) * 100)}%`;
   lineEndingEl.textContent = lineEnding;
   encodingEl.textContent = isEncodingValid ? currentEncoding : i18next.t("statusBar.invalidEncodingLabel");
@@ -4031,6 +4034,7 @@ function enableTabDragging(tab, data) {
 
   tab.addEventListener("mousedown", async (e) => {
     if (e.button !== 0 || isTabControlTarget(e.target) || draggingTab) return;
+    e.preventDefault();
     // console.log("📌mousedown: start");
     isHandlingMouseDown = true;
     tabPendingDeferredMouseUp = tab;
@@ -5388,8 +5392,7 @@ function switchTab(data) {
   monaco.editor.setModelLanguage(data.model, isMarkdownOn ? "markdown" : "monapad");
 
   // update WordWrap toggle button UI
-  const wrapBtn = document.querySelector('button[data-action="wordWrap"] .checkmark');
-  if (wrapBtn) wrapBtn.style.display = isWordWrapOn ? "inline-flex" : "none";
+  updateWordWrapMenuState();
 
   // update Markdown toggle button UI
   const mdBtn = document.querySelector('button[data-action="toggleMarkdown"] .checkmark');
@@ -7474,6 +7477,24 @@ tabContextMenu.addEventListener("click", async (e) => {
   }
 });
 
+function updateWordWrapMenuState() {
+  const wrapBtn = document.querySelector('button[data-action="wordWrap"] .checkmark');
+  if (wrapBtn) wrapBtn.style.display = isWordWrapOn ? "inline-flex" : "none";
+}
+
+function toggleWordWrap() {
+  isWordWrapOn = !isWordWrapOn;
+  if (currentTab) currentTab.wordWrap = isWordWrapOn;
+  monacoEditor.updateOptions({
+    wordWrap: isWordWrapOn ? "on" : "off",
+    ...WRAP_MEASURE_OPTIONS,
+    scrollbar: {
+      horizontal: isWordWrapOn ? "hidden" : "auto",
+    },
+  });
+  updateWordWrapMenuState();
+}
+
 // editor context menu display & position handler
 editor.addEventListener("contextmenu", (e) => {
   e.preventDefault();
@@ -7588,22 +7609,7 @@ customContextMenu.addEventListener("click", async (e) => {
       break;
 
     case "wordWrap":
-      isWordWrapOn = !isWordWrapOn;
-      if (currentTab) currentTab.wordWrap = isWordWrapOn;
-      monacoEditor.updateOptions({
-        wordWrap: isWordWrapOn ? "on" : "off",
-        ...WRAP_MEASURE_OPTIONS,
-        scrollbar: {
-          horizontal: isWordWrapOn ? "hidden" : "auto",
-        },
-      });
-      {
-        const btn = e.target.closest('button[data-action="wordWrap"]');
-        if (btn) {
-          const svg = btn.querySelector(".checkmark");
-          if (svg) svg.style.display = isWordWrapOn ? "inline-flex" : "none";
-        }
-      }
+      toggleWordWrap();
       break;
 
     case "toggleMarkdown":

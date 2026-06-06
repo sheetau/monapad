@@ -68,6 +68,7 @@ export function registerMonacoFormattingActions({
   getCurrentTab,
   keepOpenNoteTab,
   toggleTabPinned,
+  toggleWordWrap,
 }) {
   if (!monacoEditor) return;
   disposeMonacoActions(formattingActionDisposables);
@@ -141,6 +142,43 @@ export function registerMonacoFormattingActions({
       keybindingContext: null,
       run: function () {
         toggleTabPinned(getCurrentTab());
+      },
+    }),
+  );
+
+  formattingActionDisposables.push(
+    monacoEditor.addAction({
+      id: "monapad.scrollLineUp",
+      label: t("monaco.actions.scrollLineUp"),
+      precondition: null,
+      keybindingContext: null,
+      run: function (ed) {
+        ed.trigger("keyboard", "scrollLineUp", { source: "keyboard" });
+      },
+    }),
+  );
+
+  formattingActionDisposables.push(
+    monacoEditor.addAction({
+      id: "monapad.scrollLineDown",
+      label: t("monaco.actions.scrollLineDown"),
+      precondition: null,
+      keybindingContext: null,
+      run: function (ed) {
+        ed.trigger("keyboard", "scrollLineDown", { source: "keyboard" });
+      },
+    }),
+  );
+
+  formattingActionDisposables.push(
+    monacoEditor.addAction({
+      id: "monapad.toggleWordWrap",
+      label: t("monaco.actions.toggleWordWrap"),
+      keybindings: [monaco.KeyMod.Alt | monaco.KeyCode.KeyZ],
+      precondition: null,
+      keybindingContext: null,
+      run: function () {
+        toggleWordWrap();
       },
     }),
   );

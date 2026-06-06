@@ -8,6 +8,7 @@
   "statusBar": {
     "line": "行",
     "col": "列",
+    "selectionCount": "{{count}} 个选择区",
     "selection": "(已选择 {{count}} 项)",
     "encodingTooltip": "此编辑器仅支持 UTF-8 编码。\n如需使用其他编码，请在打开前转换为 UTF-8。",
     "bomEncodingTooltip": "此文件以带 BOM 的 UTF-8 打开。\n覆盖保存会保留 BOM；另存为会写入不带 BOM 的 UTF-8。",
@@ -58,6 +59,9 @@
       "keepOpen": "保持打开",
       "toggleTabPin": "固定/取消固定标签页",
       "toggleHeading": "切换标题 {{level}}",
+      "scrollLineUp": "向上滚动一行",
+      "scrollLineDown": "向下滚动一行",
+      "toggleWordWrap": "切换自动换行",
       "quickOpen": "快速打开",
       "showCommands": "显示命令"
     },

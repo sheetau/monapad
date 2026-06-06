@@ -8,6 +8,7 @@
   "statusBar": {
     "line": "Ln",
     "col": "Col",
+    "selectionCount": "{{count}} seleções",
     "selection": "({{count}} selecionado(s))",
     "encodingTooltip": "Este editor oferece suporte apenas a UTF-8.\nSe quiser usar outras codificações, converta o arquivo para UTF-8 antes de abri-lo.",
     "bomEncodingTooltip": "Este arquivo foi aberto como UTF-8 com BOM.\nSalvar por cima preserva o BOM; Salvar como grava em UTF-8 sem BOM.",
@@ -58,6 +59,9 @@
       "keepOpen": "Manter aberta",
       "toggleTabPin": "Fixar/desafixar aba",
       "toggleHeading": "Alternar título {{level}}",
+      "scrollLineUp": "Rolar linha para cima",
+      "scrollLineDown": "Rolar linha para baixo",
+      "toggleWordWrap": "Alternar quebra automática de linha",
       "quickOpen": "Abertura rápida",
       "showCommands": "Lista de comandos"
     },

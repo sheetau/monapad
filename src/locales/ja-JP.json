@@ -8,6 +8,7 @@
   "statusBar": {
     "line": "行",
     "col": "列",
+    "selectionCount": "{{count}} 個の選択範囲",
     "selection": "({{count}} 文字選択済み)",
     "encodingTooltip": "このエディタはUTF-8のみをサポートしています。\n他の文字エンコーディングを使用する場合は、UTF-8に変換してから開いてください。",
     "bomEncodingTooltip": "このファイルはBOM付きUTF-8として開かれています。\n上書き保存ではBOMを維持し、名前を付けて保存ではBOMなしのUTF-8として保存します。",
@@ -58,6 +59,9 @@
       "keepOpen": "開いたままにする",
       "toggleTabPin": "タブのピン留め切り替え",
       "toggleHeading": "見出し {{level}} の切り替え",
+      "scrollLineUp": "行を上へスクロール",
+      "scrollLineDown": "行を下へスクロール",
+      "toggleWordWrap": "右端で折り返しの切り替え",
       "quickOpen": "クイックオープン",
       "showCommands": "コマンド一覧"
     },

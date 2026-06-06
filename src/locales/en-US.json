@@ -8,6 +8,7 @@
   "statusBar": {
     "line": "Ln",
     "col": "Col",
+    "selectionCount": "{{count}} selections",
     "selection": "({{count}} selected)",
     "encodingTooltip": "This editor supports only UTF-8.\nIf you want to use other encodings, please convert them to UTF-8 before opening.",
     "bomEncodingTooltip": "This file was opened as UTF-8 with BOM.\nOverwrite Save preserves the BOM; Save As writes UTF-8 without BOM.",
@@ -58,6 +59,9 @@
       "keepOpen": "Keep Open",
       "toggleTabPin": "Pin/Unpin Tab",
       "toggleHeading": "Toggle Heading {{level}}",
+      "scrollLineUp": "Scroll Line Up",
+      "scrollLineDown": "Scroll Line Down",
+      "toggleWordWrap": "Toggle Word Wrap",
       "quickOpen": "Quick Open",
       "showCommands": "Command List"
     },
