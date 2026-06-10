@@ -64,30 +64,6 @@ export function updateSettingsTooltipsUi({ t, selectedFontFamily }) {
   removeTitle("#settingsLanguage");
 }
 
-export function updateNoteBadgeContextMenuLabelsUi({ t, noteContextMenu, noteBadgeEdges, ensureNoteBadgeContextButtons }) {
-  ensureNoteBadgeContextButtons();
-  const badgeButtonLabel = noteContextMenu?.querySelector(".note-context-badge-row .label");
-  setElementText(badgeButtonLabel, t("sidePanel.noteMark"));
-  noteBadgeEdges.forEach((edge) => {
-    const button = noteContextMenu?.querySelector(`.note-badge-edge-button[data-edge="${edge.key}"]`);
-    if (!button) return;
-    const label = t(`sidePanel.noteMark${edge.key[0].toUpperCase()}${edge.key.slice(1)}`);
-    button.title = label;
-    button.setAttribute("aria-label", label);
-  });
-}
-
-export function updateNoteBadgeToggleButtonUi({ t, notesBadgeFilterBar, notesBadgeToggleButton, areNoteBadgesVisible }) {
-  if (notesBadgeFilterBar) notesBadgeFilterBar.setAttribute("aria-label", t("sidePanel.noteMark"));
-  if (!notesBadgeToggleButton) return;
-  const label = t(areNoteBadgesVisible ? "sidePanel.hideNoteMarks" : "sidePanel.showNoteMarks");
-  setAriaTitle(notesBadgeToggleButton, label);
-  notesBadgeToggleButton.classList.toggle("active", areNoteBadgesVisible);
-  notesBadgeToggleButton.classList.toggle("codicon-filter", !areNoteBadgesVisible);
-  notesBadgeToggleButton.classList.toggle("codicon-filter-filled", areNoteBadgesVisible);
-  document.body.classList.toggle("note-badges-visible", areNoteBadgesVisible);
-}
-
 export function updateStaticUiText({
   t,
   refs,
@@ -138,12 +114,12 @@ export function updateStaticUiText({
     ['button[data-action="reopenClosedTab"] .label', "tabMenu.reopenClosedTab"],
     ['button[data-action="openInNewWindow"] .label', "tabMenu.openInNewWindow"],
     ['button[data-action="keepOpen"] .label', "tabMenu.keepOpen"],
-    ['#note-context-menu button[data-action="togglePin"]', "sidePanel.pinNote"],
+    ['#note-context-menu button[data-action="togglePin"]', "sidePanel.pin"],
     ['#note-context-menu button[data-action="copyText"]', "sidePanel.copyText"],
     ['#note-context-menu button[data-action="duplicate"]', "sidePanel.duplicate"],
     ['#note-context-menu button[data-action="convertToUntitled"]', "sidePanel.convertToUntitled"],
     ['#note-context-menu button[data-action="convertToFile"]', "sidePanel.convertToFile"],
-    ['#note-context-menu button[data-action="toggleArchive"]', "sidePanel.archive"],
+    ['#note-context-menu button[data-action="rename"]', "sidePanel.rename"],
     ['#note-context-menu button[data-action="delete"]', "sidePanel.delete"],
     ["#settings-menu .font .h1", "settings.font"],
     ["#settings-menu .size", "settings.size"],
@@ -193,19 +169,8 @@ export function updateStaticUiText({
     refs.globalSearchHeading.title = `${label} (Ctrl+Shift+F)`;
   }
   setAriaTitle(refs.notesAddButton, t("sidePanel.newNote"));
+  setAriaTitle(refs.foldersAddButton, t("sidePanel.newFolder"));
   setAriaTitle(refs.notesListRefreshButton, t("sidePanel.refresh"));
-  updateNoteBadgeToggleButtonUi({
-    t,
-    notesBadgeFilterBar: refs.notesBadgeFilterBar,
-    notesBadgeToggleButton: refs.notesBadgeToggleButton,
-    areNoteBadgesVisible: state.areNoteBadgesVisible,
-  });
-  updateNoteBadgeContextMenuLabelsUi({
-    t,
-    noteContextMenu: refs.noteContextMenu,
-    noteBadgeEdges: state.noteBadgeEdges,
-    ensureNoteBadgeContextButtons: callbacks.ensureNoteBadgeContextButtons,
-  });
   if (refs.sidePanelClose) refs.sidePanelClose.setAttribute("aria-label", t("sidePanel.closePanel"));
 
   if (refs.monacoNlsRestartWarning) {

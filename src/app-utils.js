@@ -1,12 +1,4 @@
 export const DEFAULT_THEME_NAMES = ["dark", "onyx", "ash"];
-export const NOTE_BADGE_EDGES = [
-  { key: "top", bit: 1 },
-  { key: "right", bit: 2 },
-  { key: "bottom", bit: 4 },
-  { key: "left", bit: 8 },
-];
-export const NOTE_BADGE_ALL_FILTER = "all";
-export const NOTE_ARCHIVE_FILTER = "archive";
 export const NOTE_TITLE_MAX_LENGTH = 100;
 export const GLOBAL_SEARCH_PREVIEW_MAX = 1000;
 
@@ -32,23 +24,6 @@ export function normalizeTextForModelComparison(text) {
 
 export function isDefaultThemeName(theme) {
   return DEFAULT_THEME_NAMES.includes(theme);
-}
-
-export function normalizeNoteBadgeMask(mask) {
-  const value = Number(mask);
-  return Number.isInteger(value) ? value & 15 : 0;
-}
-
-export function getNoteBadgeClass(mask) {
-  const value = normalizeNoteBadgeMask(mask);
-  return [
-    value & 1 ? "has-top" : "",
-    value & 2 ? "has-right" : "",
-    value & 4 ? "has-bottom" : "",
-    value & 8 ? "has-left" : "",
-  ]
-    .filter(Boolean)
-    .join(" ");
 }
 
 export function truncateNoteTitle(title) {
@@ -93,16 +68,6 @@ export function getPathBasename(filePath) {
       .split(/[/\\]/)
       .pop() || String(filePath || "")
   );
-}
-
-export function countNoteBadgeEdges(mask) {
-  let value = normalizeNoteBadgeMask(mask);
-  let count = 0;
-  while (value) {
-    count += value & 1;
-    value >>= 1;
-  }
-  return count;
 }
 
 export function normalizeSearchPreviewText(text) {

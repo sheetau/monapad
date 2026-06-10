@@ -864,15 +864,6 @@
         white-space: nowrap;
         text-decoration: none;
       }
-      .tab-note-badge {
-        flex: 0 0 auto;
-        margin-right: 8px;
-      }
-      .tab:not(.note) .tab-note-badge,
-      body:not(.note-badges-visible) .tab-note-badge,
-      .tab.note .tab-note-badge[data-badge-mask="0"] {
-        display: none;
-      }
       .tab.has-reload-button .name {
         margin-left: -5px;
       }
@@ -891,8 +882,7 @@
       .tab.active .name.warn {
         opacity: 1;
       }
-      .tab.note .name,
-      .tab.note:not(.active) .note-badge {
+      .tab.note .name {
         color: var(--highlight);
         opacity: 0.5;
       }
@@ -900,8 +890,7 @@
         font-style: italic;
       }
       .tab.note:hover .name,
-      .tab.note.active .name,
-      .tab.note:hover .note-badge {
+      .tab.note.active .name {
         opacity: 1;
       }
       /* reload button */
@@ -1560,44 +1549,6 @@
       #note-context-menu button:hover {
         background: var(--color3);
       }
-      .note-context-badge-row {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 12px;
-        min-width: 158px;
-        height: 28px;
-        padding: 0 10px;
-        box-sizing: border-box;
-        color: var(--editorText);
-        font-size: 13px;
-        line-height: 28px;
-      }
-      .note-context-badge-row .label {
-        min-width: 0;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-      }
-      .note-context-badge-buttons {
-        display: flex;
-        align-items: center;
-        gap: 4px;
-        flex: 0 0 auto;
-      }
-      #note-context-menu button.note-badge-edge-button {
-        width: 22px;
-        height: 22px;
-        flex: 0 0 22px;
-        padding: 0;
-        border-radius: 4px;
-        justify-content: center;
-        align-items: center;
-      }
-      #note-context-menu button.note-badge-edge-button:hover,
-      #note-context-menu button.note-badge-edge-button.is-active {
-        background: var(--color3);
-      }
       #note-context-menu button[data-action="delete"] {
         color: var(--warn);
       }
@@ -1693,18 +1644,21 @@
         /* -webkit-app-region: drag; */
         pointer-events: none;
       }
-      body:not(.tab-dragging):not(.note-dragging):not(.note-external-dragging) #side-panel-resize-handle {
+      #side-panel-resize-handle {
         position: absolute;
         top: 0;
         right: -2px;
         width: 3px;
         height: 100%;
-        cursor: w-resize;
         z-index: 3;
-        pointer-events: auto;
+        pointer-events: none;
         -webkit-app-region: no-drag;
       }
-      body:not(.tab-dragging):not(.note-dragging):not(.note-external-dragging) #side-panel-resize-handle::after {
+      body:not(.tab-dragging):not(.note-dragging):not(.note-external-dragging) #side-panel-resize-handle {
+        cursor: w-resize;
+        pointer-events: auto;
+      }
+      #side-panel-resize-handle::after {
         content: "";
         position: absolute;
         top: 0;
@@ -1915,6 +1869,9 @@
         padding: 0 10px 0 20px;
         margin: 10px 0 5px 0;
       }
+      #notes-list-actionbar:has(.folder-heading) {
+        padding-left: 10px;
+      }
       body.global-search-active #notes-list-actionbar {
         display: none;
       }
@@ -1932,6 +1889,40 @@
         letter-spacing: 0;
         text-transform: uppercase;
         user-select: none;
+      }
+      #notes-list-heading.folder-heading {
+        display: flex;
+        align-items: center;
+        gap: 2px;
+        cursor: pointer;
+        overflow: hidden;
+        border-radius: 5px;
+      }
+      #notes-list-heading.folder-heading::before {
+        flex: 0 0 auto;
+        content: "\eab5";
+        font: normal normal normal 14px/1 codicon;
+        text-transform: none;
+      }
+      #notes-list-heading .notes-list-heading-text {
+        min-width: 0;
+        flex: 1 1 auto;
+        overflow: hidden;
+        white-space: nowrap;
+        webkit-mask-image: linear-gradient(to right, black 80%, transparent 100%);
+        mask-image: linear-gradient(to right, black 80%, transparent 100%);
+      }
+      #notes-list-heading.folder-heading:hover,
+      #notes-list-heading.folder-heading.folder-drop-hover {
+        color: var(--editorText);
+      }
+      #notes-list-heading.folder-drop-hover {
+        background: color-mix(in srgb, var(--highlight) 20%, transparent);
+        cursor: default;
+      }
+      #notes-list-heading.folder-drop-flash {
+        animation: folder-drop-flash 280ms steps(1, end);
+        cursor: default;
       }
       .side-panel-action {
         width: 22px;
@@ -1957,145 +1948,6 @@
       .side-panel-action:disabled {
         opacity: 0.45;
         cursor: default;
-      }
-
-      /* note badges */
-      #notes-badge-filter-bar {
-        display: none;
-        flex: 0 0 auto;
-        gap: 5px;
-        height: 22px;
-        margin: 5px 0 10px 0;
-        padding: 0 20px 0 15px;
-        box-sizing: border-box;
-        overflow-x: auto;
-        overflow-y: hidden;
-        scrollbar-width: none;
-        -webkit-mask-image: linear-gradient(
-          to right,
-          transparent 20px,
-          black calc(20px + 18%),
-          black calc(100% - 18% - 20px),
-          transparent calc(100% - 20px)
-        );
-        mask-image: linear-gradient(
-          to right,
-          transparent 10px,
-          black calc(5px + 5%),
-          black calc(100% - 18% - 10px),
-          transparent calc(100% - 10px)
-        );
-      }
-      #notes-badge-filter-bar button:last-child {
-        margin-right: 20px;
-      }
-      #notes-badge-filter-bar::-webkit-scrollbar {
-        display: none;
-      }
-      body.note-badges-visible #notes-badge-filter-bar {
-        display: flex;
-      }
-      body.global-search-active #notes-badge-filter-bar {
-        display: none;
-      }
-      .note-badge-filter-button {
-        flex: 0 0 22px;
-        width: 22px;
-        height: 22px;
-        border: none;
-        border-radius: 5px;
-        padding: 0;
-        background: transparent;
-        color: var(--editorText);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        cursor: pointer;
-      }
-      .note-badge-filter-button:hover,
-      .note-badge-filter-button.is-active {
-        background: var(--color3);
-      }
-      .note-badge-filter-button.is-active .note-badge-edge,
-      .note-badge-edge-button.is-active .note-badge-edge {
-        background: var(--highlight);
-      }
-      .note-badge {
-        position: relative;
-        width: 12px;
-        height: 12px;
-        box-sizing: border-box;
-        background: color-mix(in srgb, var(--grayOut) 30%, transparent);
-        border: 2px solid transparent;
-        border-radius: 4px;
-        display: inline-block;
-        overflow: hidden;
-      }
-      .note-badge.is-all .note-badge-edge {
-        height: 100%;
-        width: 100%;
-      }
-      .note-badge.is-archive .note-badge-archive-fill {
-        position: absolute;
-        left: 2px;
-        top: 2px;
-        width: 4px;
-        height: 4px;
-        background: var(--editorText);
-        pointer-events: none;
-      }
-      .note-badge-filter-button:not(:hover):not(.is-active) .note-badge.is-archive .note-badge-archive-fill {
-        background: var(--grayOut);
-      }
-      .note-badge-filter-button.is-active .note-badge.is-archive .note-badge-archive-fill {
-        background: var(--highlight);
-      }
-      .note-badge-edge {
-        position: absolute;
-        display: none;
-        background: var(--editorText);
-        pointer-events: none;
-      }
-      .tab .note-badge-edge {
-        background: var(--highlight);
-      }
-      .note-badge-filter-button:not(:hover):not(.is-active):not(.note-badge.is-all) .note-badge,
-      .note-badge-edge-button:not(:hover):not(.is-active) .note-badge {
-        background: color-mix(in srgb, var(--grayOut) 15%, transparent);
-      }
-      .note-badge-filter-button:not(:hover):not(.is-active) .note-badge-edge,
-      .note-badge-edge-button:not(:hover):not(.is-active) .note-badge-edge {
-        background: var(--grayOut);
-      }
-      .note-badge.has-top .note-badge-edge.top,
-      .note-badge.has-right .note-badge-edge.right,
-      .note-badge.has-bottom .note-badge-edge.bottom,
-      .note-badge.has-left .note-badge-edge.left {
-        display: block;
-      }
-      .note-badge-edge.top {
-        left: 0;
-        top: 0;
-        width: 100%;
-        height: 2px;
-      }
-      .note-badge-edge.right {
-        right: 0;
-        top: 0;
-        width: 2px;
-        height: 100%;
-      }
-      .note-badge-edge.bottom {
-        left: 0;
-        bottom: 0;
-        width: 100%;
-        height: 2px;
-      }
-      .note-badge-edge.left {
-        left: 0;
-        top: 0;
-        width: 2px;
-        height: 100%;
       }
       #notes-list {
         flex: 1 1 auto;
@@ -2257,7 +2109,6 @@
         flex: 0 0 auto;
         min-width: 18px;
         height: 18px;
-        padding: 0 6px;
         margin-left: 3px;
         border-radius: 9px;
         box-sizing: border-box;
@@ -2266,6 +2117,8 @@
         font-size: 11px;
         line-height: 18px;
         text-align: center;
+        align-items: center;
+        justify-content: center;
       }
       .global-search-match {
         position: relative;
@@ -2364,19 +2217,65 @@
         cursor: default;
         user-select: none;
       }
+      .note-list-item.folder-list-item {
+        padding-right: 8px;
+      }
+      .note-list-item.folder-list-item .file-icon::before {
+        content: "\ea83";
+        font: normal normal normal 16px/1 codicon;
+        color: var(--grayOut);
+      }
+      .note-list-item.folder-list-item .file-icon {
+        display: flex;
+        flex-shrink: 0;
+        width: 22px;
+        height: 22px;
+        align-items: center;
+        justify-content: flex-start;
+      }
       #notes-list:not(:has(.note-list-item.dragging)) .note-list-item:hover,
       .note-list-item.dragging,
       .note-list-item.pinned {
         padding: 0 8px 0 20px;
       }
       #notes-list:not(:has(.note-list-item.dragging)) .note-list-item:hover,
-      .note-list-item.dragging,
-      #notes-list:not(:has(.note-list-item.dragging)) .note-list-item.pinned:hover {
+      #notes-list:not(:has(.note-list-item.dragging)) .note-list-item.pinned:hover,
+      .note-list-item.dragging {
         background: var(--color3);
+      }
+      .note-list-item.dragging {
+        opacity: 0.5;
       }
       .note-list-item.active-note:not(.dragging) {
         background: color-mix(in srgb, var(--color3) 60%, transparent);
         /* color: var(--highlight); */
+      }
+      .note-list-item.folder-drop-hover {
+        background: color-mix(in srgb, var(--highlight) 20%, transparent);
+      }
+      .note-list-item.folder-drop-hover .note-list-count,
+      .note-list-item.folder-drop-flash .note-list-count {
+        background: transparent;
+      }
+      .note-list-item.folder-drop-flash {
+        animation: folder-drop-flash 280ms steps(1, end);
+      }
+      @keyframes folder-drop-flash {
+        0% {
+          background: color-mix(in srgb, var(--highlight) 24%, transparent);
+        }
+        25% {
+          background: transparent;
+        }
+        50% {
+          background: color-mix(in srgb, var(--highlight) 24%, transparent);
+        }
+        75% {
+          background: transparent;
+        }
+        100% {
+          background: color-mix(in srgb, var(--highlight) 24%, transparent);
+        }
       }
       #notes-list:not(:has(.note-list-item.dragging)) .note-list-item.active-note:hover {
         background: var(--color3);
@@ -2390,14 +2289,40 @@
         -webkit-mask-image: linear-gradient(to right, black 82%, transparent 100%);
         mask-image: linear-gradient(to right, black 82%, transparent 100%);
       }
-      .note-list-badge {
+      .note-list-count {
         flex: 0 0 auto;
-        margin-right: 10px;
+        min-width: 18px;
+        height: 18px;
+        padding: 0 6px;
+        margin-left: 3px;
+        border-radius: 9px;
+        box-sizing: border-box;
+        background: var(--vscode-badge-background, var(--color3));
+        color: var(--editorText);
+        font-size: 11px;
+        line-height: 18px;
+        text-align: center;
+        align-items: center;
+        justify-content: center;
       }
-      body:not(.note-badges-visible) .note-list-badge {
+      .note-list-rename-input + .note-list-count {
         display: none;
       }
-      .note-pin-button {
+      .note-list-rename-input {
+        flex: 1 1 auto;
+        min-width: 0;
+        height: 22px;
+        padding: 0 5px;
+        border: 1px solid var(--highlight);
+        border-radius: 3px;
+        box-sizing: border-box;
+        background: var(--color1);
+        color: var(--editorText);
+        font: inherit;
+        font-size: 14px;
+        outline: none;
+      }
+      .note-pin-button.codicon[class*="codicon-"] {
         flex: 0 0 24px;
         width: 24px;
         height: 24px;
@@ -2410,15 +2335,21 @@
         justify-content: center;
         color: var(--grayOut);
       }
-      #notes-list:not(:has(.note-list-item.dragging)) .note-pin-button {
+      #notes-list:not(:has(.note-list-item.dragging))
+        .note-list-item:not(:has(.note-list-rename-input))
+        .note-pin-button {
         cursor: pointer;
       }
-      #notes-list:not(:has(.note-list-item.dragging)) .note-list-item:hover .note-pin-button,
-      .note-list-item.dragging .note-pin-button,
-      .note-list-item.pinned .note-pin-button {
+      #notes-list:not(:has(.note-list-item.dragging))
+        .note-list-item:hover:not(:has(.note-list-rename-input))
+        .note-pin-button,
+      .note-list-item.dragging:not(:has(.note-list-rename-input)) .note-pin-button,
+      .note-list-item.pinned:not(:has(.note-list-rename-input)) .note-pin-button {
         display: flex;
-        align-items: center;
-        justify-content: center;
+      }
+      #notes-list:not(:has(.note-list-item.dragging)) .note-list-item:not(.pinned):hover .note-list-count,
+      .note-list-item.dragging .note-list-count {
+        display: none;
       }
       .note-pin-button:not(.codicon-pinned).codicon[class*="codicon-"] {
         display: none;
@@ -3053,22 +2984,21 @@
           </li>
           <li>
             <button
+              class="side-panel-action codicon codicon-new-folder"
+              id="folders-add"
+              type="button"
+              aria-label="New Folder"
+            ></button>
+          </li>
+          <li>
+            <button
               class="side-panel-action codicon codicon-refresh"
               id="notes-list-refresh"
               type="button"
               aria-label="Refresh"
             ></button>
           </li>
-          <li>
-            <button
-              class="side-panel-action codicon codicon-filter"
-              id="notes-badge-toggle"
-              type="button"
-              aria-label="Show Note Marks"
-            ></button>
-          </li>
         </ul>
-        <div id="notes-badge-filter-bar" aria-label="Note Mark Filter"></div>
         <div id="notes-list" class="scrollable"></div>
         <div id="global-search-results">
           <div id="global-search-results-list" class="scrollable"></div>
@@ -3077,18 +3007,13 @@
 
       <!-- note context menu -->
       <div id="note-context-menu" class="menu scrollable">
-        <div class="note-context-badge-row">
-          <span class="label">Mark</span>
-          <div class="note-context-badge-buttons"></div>
-        </div>
-        <div class="hr"></div>
         <button data-action="togglePin">Pin Note</button>
-        <button data-action="copyText">Copy Text</button>
-        <button data-action="duplicate">Duplicate</button>
-        <button data-action="convertToUntitled">Convert to Untitled</button>
-        <button data-action="convertToFile">Convert to File</button>
-        <button data-action="toggleArchive">Archive</button>
+        <button data-action="copyText" data-note-only>Copy Text</button>
+        <button data-action="duplicate" data-note-only>Duplicate</button>
+        <button data-action="convertToUntitled" data-note-only>Convert to Untitled</button>
+        <button data-action="convertToFile" data-note-only>Convert to File</button>
         <div class="hr"></div>
+        <button data-action="rename" data-folder-only>Rename...</button>
         <button data-action="delete">Delete</button>
       </div>
 

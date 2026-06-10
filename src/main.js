@@ -884,16 +884,132 @@ function isSafeNoteId(id) {
   return typeof id === "string" && /^[a-f0-9-]{36}$/i.test(id);
 }
 
+function normalizeFolderPath(folderPath) {
+  const value = String(folderPath || "").replace(/\\/g, "/").trim();
+  if (!value) return "";
+  const parts = value.split("/").filter(Boolean);
+  if (parts.some((part) => part === "." || part === ".." || !isSafeFolderName(part))) return "";
+  return parts.join("/");
+}
+
+const FOLDER_NAME_MAX_LENGTH = 100;
+
+function isSafeFolderName(name) {
+  const value = String(name || "").trim();
+  return Boolean(value) && value.length <= FOLDER_NAME_MAX_LENGTH && value !== "." && value !== ".." && !/[<>:"/\\|?*\x00-\x1f]/.test(value);
+}
+
+function getFolderParentPath(folderPath) {
+  const value = normalizeFolderPath(folderPath);
+  const index = value.lastIndexOf("/");
+  return index === -1 ? "" : value.slice(0, index);
+}
+
+function getFolderName(folderPath) {
+  const value = normalizeFolderPath(folderPath);
+  return value.split("/").filter(Boolean).pop() || "";
+}
+
+function getFolderDiskPath(notesDir, folderPath) {
+  const normalized = normalizeFolderPath(folderPath);
+  return normalized ? path.join(notesDir, ...normalized.split("/")) : notesDir;
+}
+
+function getNoteDiskPath(notesDir, note) {
+  return path.join(getFolderDiskPath(notesDir, note?.folderPath), `${note.id}.txt`);
+}
+
+function getEntryKey(entry) {
+  return `${entry.type || "note"}:${entry.type === "folder" ? entry.path : entry.id}`;
+}
+
+function getDirectEntries(index, folderPath = "") {
+  const parentPath = normalizeFolderPath(folderPath);
+  return [
+    ...index.folders.filter((folder) => normalizeFolderPath(folder.parentPath) === parentPath),
+    ...index.notes.filter((note) => normalizeFolderPath(note.folderPath) === parentPath),
+  ];
+}
+
+function getFolderNoteCount(index, folderPath = "") {
+  const normalized = normalizeFolderPath(folderPath);
+  return index.notes.filter((note) => normalizeFolderPath(note.folderPath) === normalized).length;
+}
+
+function withFolderNoteCounts(index, entries) {
+  return entries.map((entry) => (entry?.type === "folder" ? { ...entry, noteCount: getFolderNoteCount(index, entry.path) } : entry));
+}
+
+function sortEntriesForFolder(entries) {
+  return [...entries].sort((a, b) => {
+    if (Boolean(a?.pinned) !== Boolean(b?.pinned)) return a?.pinned ? -1 : 1;
+    const aOrder = Number.isFinite(a?.order) ? a.order : Number.MAX_SAFE_INTEGER;
+    const bOrder = Number.isFinite(b?.order) ? b.order : Number.MAX_SAFE_INTEGER;
+    if (aOrder !== bOrder) return aOrder - bOrder;
+    return (a?.createdAt || 0) - (b?.createdAt || 0);
+  });
+}
+
+function normalizeFolderEntryOrder(index, folderPath = "") {
+  sortEntriesForFolder(getDirectEntries(index, folderPath)).forEach((entry, order) => {
+    entry.order = order;
+  });
+}
+
+function normalizeAllEntryOrders(index) {
+  const folderPaths = new Set([""]);
+  for (const folder of index.folders) {
+    folderPaths.add(normalizeFolderPath(folder.parentPath));
+  }
+  for (const note of index.notes) {
+    folderPaths.add(normalizeFolderPath(note.folderPath));
+  }
+  folderPaths.forEach((folderPath) => normalizeFolderEntryOrder(index, folderPath));
+  return index;
+}
+
 async function readNotesIndex() {
   await ensureNotesDir();
   const index = await readJsonFile(getNotesIndexPath());
   if (!index || typeof index !== "object") {
-    return { version: 1, notes: [] };
+    return { version: 2, notes: [], folders: [] };
   }
 
   return {
-    version: 1,
-    notes: Array.isArray(index.notes) ? index.notes.filter((note) => isSafeNoteId(note?.id)) : [],
+    version: 2,
+    notes: Array.isArray(index.notes)
+      ? index.notes
+          .filter((note) => isSafeNoteId(note?.id))
+          .map((note) => {
+            return {
+              type: "note",
+              id: note.id,
+              fileName: typeof note.fileName === "string" ? note.fileName : `${note.id}.txt`,
+              folderPath: normalizeFolderPath(note.folderPath),
+              title: note.title,
+              createdAt: note.createdAt,
+              updatedAt: note.updatedAt,
+              pinned: Boolean(note.pinned),
+              order: Number.isFinite(note.order) ? note.order : Number.MAX_SAFE_INTEGER,
+              contentBytes: note.contentBytes,
+            };
+          })
+      : [],
+    folders: Array.isArray(index.folders)
+      ? index.folders
+          .map((folder) => {
+            const folderPath = normalizeFolderPath(folder?.path);
+            if (!folderPath) return null;
+            return {
+              ...folder,
+              type: "folder",
+              path: folderPath,
+              name: getFolderName(folderPath),
+              parentPath: getFolderParentPath(folderPath),
+            };
+          })
+          .filter(Boolean)
+      : [],
   };
 }
 
@@ -903,22 +1019,6 @@ async function writeNotesIndex(index) {
   const tempPath = `${targetPath}.${process.pid}.tmp`;
   await fs.promises.writeFile(tempPath, JSON.stringify(index, null, 2), "utf8");
   await fs.promises.rename(tempPath, targetPath);
-}
-
-function normalizeNotesOrder(notes) {
-  const pinned = notes
-    .filter((note) => note.pinned && !note.archived)
-    .sort((a, b) => (Number.isFinite(a.order) ? a.order : 0) - (Number.isFinite(b.order) ? b.order : 0));
-  const unpinned = notes
-    .filter((note) => !note.pinned && !note.archived)
-    .sort((a, b) => (Number.isFinite(a.order) ? a.order : 0) - (Number.isFinite(b.order) ? b.order : 0));
-  const archived = notes
-    .filter((note) => note.archived)
-    .sort((a, b) => (Number.isFinite(a.order) ? a.order : 0) - (Number.isFinite(b.order) ? b.order : 0));
-  [...pinned, ...unpinned, ...archived].forEach((note, index) => {
-    note.order = index;
-  });
-  return notes;
 }
 
 const NOTE_TITLE_MAX_LENGTH = 100;
@@ -937,11 +1037,6 @@ function getNoteTitleFromContent(content) {
   return truncateNoteTitle(firstTextLine || "New Note");
 }
 
-function normalizeNoteBadgeMask(mask) {
-  const value = Number(mask);
-  return Number.isInteger(value) ? value & 15 : 0;
-}
-
 async function upsertNoteIndexEntry(noteId, content, extra = {}) {
   const notesDir = await ensureNotesDir();
   const index = await readNotesIndex();
@@ -949,32 +1044,34 @@ async function upsertNoteIndexEntry(noteId, content, extra = {}) {
   const title = truncateNoteTitle(extra.title || getNoteTitleFromContent(content));
   const contentBytes = Buffer.byteLength(typeof content === "string" ? content : "", "utf8");
   const existing = index.notes.find((note) => note.id === noteId);
-  const maxOrder = index.notes.reduce((max, note) => Math.max(max, Number.isFinite(note.order) ? note.order : -1), -1);
-  const minUnpinnedOrder = index.notes
-    .filter((note) => !note.pinned && !note.archived)
+  const folderPath = normalizeFolderPath(extra.folderPath ?? existing?.folderPath);
+  const siblingEntries = getDirectEntries(index, folderPath);
+  const maxOrder = siblingEntries.reduce((max, entry) => Math.max(max, Number.isFinite(entry.order) ? entry.order : -1), -1);
+  const minUnpinnedOrder = siblingEntries
+    .filter((entry) => !entry.pinned)
     .reduce((min, note) => Math.min(min, Number.isFinite(note.order) ? note.order : 0), 0);
   const nextEntry = {
+    type: "note",
     id: noteId,
     fileName: `${noteId}.txt`,
+    folderPath,
     title,
     createdAt: existing?.createdAt || extra.createdAt || now,
     updatedAt: now,
-    archived: Boolean(existing?.archived),
-    pinned: Boolean(existing?.pinned) && !existing?.archived,
+    pinned: Boolean(existing?.pinned),
     order: Number.isFinite(existing?.order) ? existing.order : extra.insertAtTop ? minUnpinnedOrder - 1 : maxOrder + 1,
     contentBytes,
-    badgeMask: normalizeNoteBadgeMask(extra.badgeMask ?? existing?.badgeMask),
   };
 
   if (existing) {
     Object.assign(existing, nextEntry);
   } else {
     index.notes.push(nextEntry);
-    normalizeNotesOrder(index.notes);
+    normalizeFolderEntryOrder(index, folderPath);
   }
 
   await writeNotesIndex(index);
-  return { ...nextEntry, path: path.join(notesDir, nextEntry.fileName) };
+  return { ...nextEntry, path: getNoteDiskPath(notesDir, nextEntry) };
 }
 
 ipcMain.handle("notes:create", async (event, payload = {}) => {
@@ -982,12 +1079,14 @@ ipcMain.handle("notes:create", async (event, payload = {}) => {
     const notesDir = await ensureNotesDir();
     const noteId = crypto.randomUUID();
     const content = typeof payload.content === "string" ? payload.content : "";
-    const notePath = path.join(notesDir, `${noteId}.txt`);
+    const folderPath = normalizeFolderPath(payload.folderPath);
+    const notePath = path.join(getFolderDiskPath(notesDir, folderPath), `${noteId}.txt`);
+    await fs.promises.mkdir(path.dirname(notePath), { recursive: true });
     await fs.promises.writeFile(notePath, content, "utf8");
     const meta = await upsertNoteIndexEntry(noteId, content, {
       title: payload.title,
+      folderPath,
       insertAtTop: true,
-      badgeMask: payload.badgeMask,
     });
     return { success: true, id: noteId, path: notePath, meta };
   } catch (error) {
@@ -999,10 +1098,14 @@ ipcMain.handle("notes:write", async (event, payload = {}) => {
   try {
     if (!isSafeNoteId(payload.noteId)) return { success: false, error: "Invalid note id." };
     const notesDir = await ensureNotesDir();
+    const index = await readNotesIndex();
+    const existing = index.notes.find((note) => note.id === payload.noteId);
+    const folderPath = normalizeFolderPath(existing?.folderPath ?? payload.folderPath);
     const content = typeof payload.content === "string" ? payload.content : "";
-    const notePath = path.join(notesDir, `${payload.noteId}.txt`);
+    const notePath = path.join(getFolderDiskPath(notesDir, folderPath), `${payload.noteId}.txt`);
+    await fs.promises.mkdir(path.dirname(notePath), { recursive: true });
     await fs.promises.writeFile(notePath, content, "utf8");
-    const meta = await upsertNoteIndexEntry(payload.noteId, content, { title: payload.title, badgeMask: payload.badgeMask });
+    const meta = await upsertNoteIndexEntry(payload.noteId, content, { title: payload.title, folderPath });
     return { success: true, id: payload.noteId, path: notePath, meta };
   } catch (error) {
     return { success: false, error: error.message };
@@ -1013,11 +1116,12 @@ ipcMain.handle("notes:read", async (event, noteId) => {
   try {
     if (!isSafeNoteId(noteId)) return { exists: false };
     const notesDir = await ensureNotesDir();
-    const notePath = path.join(notesDir, `${noteId}.txt`);
-    const content = await fs.promises.readFile(notePath, "utf8");
     const index = await readNotesIndex();
-    const meta = index.notes.find((note) => note.id === noteId) || (await upsertNoteIndexEntry(noteId, content));
-    return { exists: true, id: noteId, path: notePath, content, meta };
+    const meta = index.notes.find((note) => note.id === noteId);
+    const notePath = meta ? getNoteDiskPath(notesDir, meta) : path.join(notesDir, `${noteId}.txt`);
+    const content = await fs.promises.readFile(notePath, "utf8");
+    const nextMeta = meta || (await upsertNoteIndexEntry(noteId, content));
+    return { exists: true, id: noteId, path: notePath, content, meta: nextMeta };
   } catch {
     return { exists: false };
   }
@@ -1026,7 +1130,10 @@ ipcMain.handle("notes:read", async (event, noteId) => {
 ipcMain.handle("notes:exists", async (event, noteId) => {
   try {
     if (!isSafeNoteId(noteId)) return false;
-    await fs.promises.access(path.join(await ensureNotesDir(), `${noteId}.txt`), fs.constants.F_OK);
+    const notesDir = await ensureNotesDir();
+    const index = await readNotesIndex();
+    const note = index.notes.find((item) => item.id === noteId) || { id: noteId, folderPath: "" };
+    await fs.promises.access(getNoteDiskPath(notesDir, note), fs.constants.F_OK);
     return true;
   } catch {
     return false;
@@ -1037,10 +1144,11 @@ ipcMain.handle("notes:delete", async (event, noteId) => {
   try {
     if (!isSafeNoteId(noteId)) return { success: false, error: "Invalid note id." };
     const notesDir = await ensureNotesDir();
-    await removeFileIfExists(path.join(notesDir, `${noteId}.txt`));
     const index = await readNotesIndex();
+    const note = index.notes.find((item) => item.id === noteId) || { id: noteId, folderPath: "" };
+    await removeFileIfExists(getNoteDiskPath(notesDir, note));
     index.notes = index.notes.filter((note) => note.id !== noteId);
-    normalizeNotesOrder(index.notes);
+    normalizeAllEntryOrders(index);
     await writeNotesIndex(index);
     return { success: true };
   } catch (error) {
@@ -1052,13 +1160,14 @@ ipcMain.handle("notes:trash", async (event, noteId) => {
   try {
     if (!isSafeNoteId(noteId)) return { success: false, error: "Invalid note id." };
     const notesDir = await ensureNotesDir();
-    const notePath = path.join(notesDir, `${noteId}.txt`);
+    const index = await readNotesIndex();
+    const note = index.notes.find((item) => item.id === noteId) || { id: noteId, folderPath: "" };
+    const notePath = getNoteDiskPath(notesDir, note);
     await shell.trashItem(notePath).catch(async () => {
       await removeFileIfExists(notePath);
     });
-    const index = await readNotesIndex();
     index.notes = index.notes.filter((note) => note.id !== noteId);
-    normalizeNotesOrder(index.notes);
+    normalizeAllEntryOrders(index);
     await writeNotesIndex(index);
     return { success: true };
   } catch (error) {
@@ -1070,17 +1179,18 @@ ipcMain.handle("notes:duplicate", async (event, noteId) => {
   try {
     if (!isSafeNoteId(noteId)) return { success: false, error: "Invalid note id." };
     const notesDir = await ensureNotesDir();
-    const sourcePath = path.join(notesDir, `${noteId}.txt`);
+    const index = await readNotesIndex();
+    const source = index.notes.find((item) => item.id === noteId);
+    const sourcePath = getNoteDiskPath(notesDir, source || { id: noteId, folderPath: "" });
     const content = await fs.promises.readFile(sourcePath, "utf8");
     const newId = crypto.randomUUID();
-    const newPath = path.join(notesDir, `${newId}.txt`);
+    const folderPath = normalizeFolderPath(source?.folderPath);
+    const newPath = path.join(getFolderDiskPath(notesDir, folderPath), `${newId}.txt`);
     await fs.promises.writeFile(newPath, content, "utf8");
-    const index = await readNotesIndex();
-    const source = index.notes.find((note) => note.id === noteId);
     const meta = await upsertNoteIndexEntry(newId, content, {
       title: getNoteTitleFromContent(content),
+      folderPath,
       insertAtTop: true,
-      badgeMask: source?.badgeMask,
     });
     return { success: true, id: newId, path: newPath, meta };
   } catch (error) {
@@ -1095,28 +1205,13 @@ ipcMain.handle("notes:update-meta", async (event, payload = {}) => {
     const note = index.notes.find((item) => item.id === payload.noteId);
     if (!note) return { success: false, error: "Note not found." };
     if (typeof payload.pinned === "boolean") {
-      note.pinned = note.archived ? false : payload.pinned;
+      note.pinned = payload.pinned;
       if (payload.pinned) {
-        note.order =
-          Math.min(-1, ...index.notes.filter((item) => item.pinned && !item.archived && item.id !== note.id).map((item) => item.order || 0)) -
-          1;
+        const siblings = getDirectEntries(index, note.folderPath).filter((item) => getEntryKey(item) !== getEntryKey(note));
+        note.order = Math.min(-1, ...siblings.filter((item) => item.pinned).map((item) => item.order || 0)) - 1;
       }
     }
-    if (typeof payload.archived === "boolean") {
-      note.archived = payload.archived;
-      if (note.archived) note.pinned = false;
-      const group = index.notes.filter(
-        (item) =>
-          item.id !== note.id &&
-          Boolean(item.archived) === note.archived &&
-          (note.archived || !item.pinned),
-      );
-      note.order = Math.min(-1, ...group.map((item) => (Number.isFinite(item.order) ? item.order : 0))) - 1;
-    }
-    if (Object.prototype.hasOwnProperty.call(payload, "badgeMask")) {
-      note.badgeMask = normalizeNoteBadgeMask(payload.badgeMask);
-    }
-    normalizeNotesOrder(index.notes);
+    normalizeFolderEntryOrder(index, note.folderPath);
     await writeNotesIndex(index);
     return { success: true, note };
   } catch (error) {
@@ -1124,24 +1219,235 @@ ipcMain.handle("notes:update-meta", async (event, payload = {}) => {
   }
 });
 
-ipcMain.handle("notes:reorder", async (event, payload = {}) => {
+ipcMain.handle("folders:create", async (event, payload = {}) => {
   try {
-    const orderedIds = Array.isArray(payload.orderedIds) ? payload.orderedIds.filter(isSafeNoteId) : [];
+    const name = String(payload.name || "").trim();
+    if (!isSafeFolderName(name)) return { success: false, error: "Invalid folder name." };
+    const parentPath = normalizeFolderPath(payload.parentPath);
+    const folderPath = normalizeFolderPath(parentPath ? `${parentPath}/${name}` : name);
+    const notesDir = await ensureNotesDir();
     const index = await readNotesIndex();
-    const idToPosition = new Map(orderedIds.map((id, order) => [id, order]));
-    for (const note of index.notes) {
-      if (idToPosition.has(note.id)) note.order = idToPosition.get(note.id);
+    if (index.folders.some((folder) => normalizeFolderPath(folder.path).toLowerCase() === folderPath.toLowerCase())) {
+      return { success: false, error: "Folder already exists." };
     }
-    normalizeNotesOrder(index.notes);
+    if (parentPath && !index.folders.some((folder) => normalizeFolderPath(folder.path) === parentPath)) {
+      return { success: false, error: "Parent folder not found." };
+    }
+    await fs.promises.mkdir(getFolderDiskPath(notesDir, folderPath), { recursive: false });
+    const now = Date.now();
+    const siblings = getDirectEntries(index, parentPath);
+    const minUnpinnedOrder = siblings.filter((entry) => !entry.pinned).reduce((min, entry) => Math.min(min, entry.order || 0), 0);
+    const folder = {
+      type: "folder",
+      path: folderPath,
+      name,
+      parentPath,
+      createdAt: now,
+      updatedAt: now,
+      pinned: false,
+      order: minUnpinnedOrder - 1,
+    };
+    index.folders.push(folder);
+    normalizeFolderEntryOrder(index, parentPath);
     await writeNotesIndex(index);
-    return { success: true, notes: index.notes };
+    return { success: true, folder };
   } catch (error) {
     return { success: false, error: error.message };
   }
 });
 
-ipcMain.handle("notes:list", async () => {
+ipcMain.handle("folders:rename", async (event, payload = {}) => {
+  try {
+    const folderPath = normalizeFolderPath(payload.folderPath);
+    const name = String(payload.name || "").trim();
+    if (!folderPath || !isSafeFolderName(name)) return { success: false, error: "Invalid folder name." };
+    const index = await readNotesIndex();
+    const folder = index.folders.find((item) => normalizeFolderPath(item.path) === folderPath);
+    if (!folder) return { success: false, error: "Folder not found." };
+    const parentPath = normalizeFolderPath(folder.parentPath);
+    const nextPath = normalizeFolderPath(parentPath ? `${parentPath}/${name}` : name);
+    if (nextPath === folderPath) return { success: true, folder };
+    if (index.folders.some((item) => normalizeFolderPath(item.path).toLowerCase() === nextPath.toLowerCase())) {
+      return { success: false, error: "Folder already exists." };
+    }
+
+    const notesDir = await ensureNotesDir();
+    await fs.promises.rename(getFolderDiskPath(notesDir, folderPath), getFolderDiskPath(notesDir, nextPath));
+    const oldPrefix = `${folderPath}/`;
+    const nextPrefix = `${nextPath}/`;
+    for (const item of index.folders) {
+      if (item.path === folderPath) {
+        item.path = nextPath;
+        item.name = name;
+        item.parentPath = parentPath;
+        item.updatedAt = Date.now();
+      } else if (item.path.startsWith(oldPrefix)) {
+        item.path = `${nextPrefix}${item.path.slice(oldPrefix.length)}`;
+        item.parentPath = getFolderParentPath(item.path);
+        item.name = getFolderName(item.path);
+      }
+    }
+    for (const note of index.notes) {
+      if (note.folderPath === folderPath) note.folderPath = nextPath;
+      else if (note.folderPath?.startsWith(oldPrefix)) note.folderPath = `${nextPrefix}${note.folderPath.slice(oldPrefix.length)}`;
+    }
+    normalizeAllEntryOrders(index);
+    await writeNotesIndex(index);
+    return { success: true, folder: index.folders.find((item) => item.path === nextPath) };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle("folders:delete", async (event, folderPathInput) => {
+  try {
+    const folderPath = normalizeFolderPath(folderPathInput);
+    if (!folderPath) return { success: false, error: "Invalid folder path." };
+    const notesDir = await ensureNotesDir();
+    const index = await readNotesIndex();
+    const folder = index.folders.find((item) => item.path === folderPath);
+    if (!folder) return { success: false, error: "Folder not found." };
+    const oldPrefix = `${folderPath}/`;
+    const folderDiskPath = getFolderDiskPath(notesDir, folderPath);
+    await shell.trashItem(folderDiskPath).catch(async () => {
+      await fs.promises.rm(folderDiskPath, { recursive: true, force: true });
+    });
+    index.folders = index.folders.filter((item) => item.path !== folderPath && !item.path.startsWith(oldPrefix));
+    index.notes = index.notes.filter((note) => note.folderPath !== folderPath && !note.folderPath?.startsWith(oldPrefix));
+    normalizeAllEntryOrders(index);
+    await writeNotesIndex(index);
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle("folders:update-meta", async (event, payload = {}) => {
+  try {
+    const folderPath = normalizeFolderPath(payload.folderPath);
+    const index = await readNotesIndex();
+    const folder = index.folders.find((item) => item.path === folderPath);
+    if (!folder) return { success: false, error: "Folder not found." };
+    if (typeof payload.pinned === "boolean") {
+      folder.pinned = payload.pinned;
+      if (payload.pinned) {
+        const siblings = getDirectEntries(index, folder.parentPath).filter((item) => getEntryKey(item) !== getEntryKey(folder));
+        folder.order = Math.min(-1, ...siblings.filter((item) => item.pinned).map((item) => item.order || 0)) - 1;
+      }
+    }
+    normalizeFolderEntryOrder(index, folder.parentPath);
+    await writeNotesIndex(index);
+    return { success: true, folder };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle("notes:move-entry", async (event, payload = {}) => {
+  try {
+    const entryType = payload.entryType === "folder" ? "folder" : "note";
+    const targetFolderPath = normalizeFolderPath(payload.targetFolderPath);
+    const index = await readNotesIndex();
+    const notesDir = await ensureNotesDir();
+
+    if (targetFolderPath && !index.folders.some((folder) => folder.path === targetFolderPath)) {
+      return { success: false, error: "Target folder not found." };
+    }
+
+    if (entryType === "note") {
+      if (!isSafeNoteId(payload.noteId)) return { success: false, error: "Invalid note id." };
+      const note = index.notes.find((item) => item.id === payload.noteId);
+      if (!note) return { success: false, error: "Note not found." };
+      const sourceFolderPath = normalizeFolderPath(note.folderPath);
+      if (sourceFolderPath === targetFolderPath) return { success: true, entry: note };
+
+      const sourcePath = getNoteDiskPath(notesDir, note);
+      const nextNote = { ...note, folderPath: targetFolderPath };
+      const targetPath = getNoteDiskPath(notesDir, nextNote);
+      await fs.promises.mkdir(path.dirname(targetPath), { recursive: true });
+      await fs.promises.rename(sourcePath, targetPath);
+      note.folderPath = targetFolderPath;
+      const siblings = getDirectEntries(index, targetFolderPath).filter((entry) => getEntryKey(entry) !== getEntryKey(note));
+      const targetGroup = siblings.filter((entry) => Boolean(entry.pinned) === Boolean(note.pinned));
+      note.order = Math.min(-1, ...targetGroup.map((entry) => entry.order || 0)) - 1;
+      normalizeFolderEntryOrder(index, sourceFolderPath);
+      normalizeFolderEntryOrder(index, targetFolderPath);
+      await writeNotesIndex(index);
+      return { success: true, entry: note };
+    }
+
+    const folderPath = normalizeFolderPath(payload.folderPath);
+    const folder = index.folders.find((item) => item.path === folderPath);
+    if (!folder) return { success: false, error: "Folder not found." };
+    const sourceParentPath = normalizeFolderPath(folder.parentPath);
+    if (sourceParentPath === targetFolderPath) return { success: true, entry: folder };
+    if (targetFolderPath === folderPath || targetFolderPath.startsWith(`${folderPath}/`)) {
+      return { success: false, error: "Cannot move a folder into itself." };
+    }
+
+    const nextPath = normalizeFolderPath(targetFolderPath ? `${targetFolderPath}/${folder.name}` : folder.name);
+    if (index.folders.some((item) => item.path.toLowerCase() === nextPath.toLowerCase())) {
+      return { success: false, error: "Folder already exists." };
+    }
+
+    await fs.promises.rename(getFolderDiskPath(notesDir, folderPath), getFolderDiskPath(notesDir, nextPath));
+    const oldPrefix = `${folderPath}/`;
+    const nextPrefix = `${nextPath}/`;
+    for (const item of index.folders) {
+      if (item.path === folderPath) {
+        item.path = nextPath;
+        item.parentPath = targetFolderPath;
+        item.updatedAt = Date.now();
+      } else if (item.path.startsWith(oldPrefix)) {
+        item.path = `${nextPrefix}${item.path.slice(oldPrefix.length)}`;
+        item.parentPath = getFolderParentPath(item.path);
+        item.name = getFolderName(item.path);
+      }
+    }
+    for (const note of index.notes) {
+      if (note.folderPath === folderPath) note.folderPath = nextPath;
+      else if (note.folderPath?.startsWith(oldPrefix)) note.folderPath = `${nextPrefix}${note.folderPath.slice(oldPrefix.length)}`;
+    }
+    const movedFolder = index.folders.find((item) => item.path === nextPath);
+    const siblings = getDirectEntries(index, targetFolderPath).filter((entry) => getEntryKey(entry) !== getEntryKey(movedFolder));
+    const targetGroup = siblings.filter((entry) => Boolean(entry.pinned) === Boolean(movedFolder.pinned));
+    movedFolder.order = Math.min(-1, ...targetGroup.map((entry) => entry.order || 0)) - 1;
+    normalizeFolderEntryOrder(index, sourceParentPath);
+    normalizeFolderEntryOrder(index, targetFolderPath);
+    await writeNotesIndex(index);
+    return { success: true, entry: movedFolder };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle("notes:reorder", async (event, payload = {}) => {
+  try {
+    const folderPath = normalizeFolderPath(payload.folderPath);
+    const orderedKeys = Array.isArray(payload.orderedKeys)
+      ? payload.orderedKeys.map(String)
+      : Array.isArray(payload.orderedIds)
+        ? payload.orderedIds.filter(isSafeNoteId).map((id) => `note:${id}`)
+        : [];
+    const index = await readNotesIndex();
+    const keyToPosition = new Map(orderedKeys.map((key, order) => [key, order]));
+    for (const entry of getDirectEntries(index, folderPath)) {
+      const key = getEntryKey(entry);
+      if (keyToPosition.has(key)) entry.order = keyToPosition.get(key);
+    }
+    normalizeFolderEntryOrder(index, folderPath);
+    await writeNotesIndex(index);
+    return { success: true, entries: sortEntriesForFolder(getDirectEntries(index, folderPath)), notes: index.notes };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle("notes:list", async (event, payload = {}) => {
   const index = await readNotesIndex();
+  if (payload && Object.prototype.hasOwnProperty.call(payload, "folderPath")) {
+    return sortEntriesForFolder(withFolderNoteCounts(index, getDirectEntries(index, payload.folderPath)));
+  }
   return index.notes;
 });
 
@@ -1149,19 +1455,34 @@ ipcMain.handle("notes:refresh-index", async () => {
   const notesDir = await ensureNotesDir();
   const index = await readNotesIndex();
   const existingById = new Map(index.notes.map((note) => [note.id, note]));
-  const fileNames = await fs.promises.readdir(notesDir).catch(() => []);
-  const noteIds = new Set([
-    ...index.notes.map((note) => note.id).filter(isSafeNoteId),
-    ...fileNames
-      .filter((fileName) => fileName.endsWith(".txt"))
-      .map((fileName) => path.basename(fileName, ".txt"))
-      .filter(isSafeNoteId),
-  ]);
+  const existingFoldersByPath = new Map(index.folders.map((folder) => [folder.path, folder]));
+  const foundFiles = [];
+  const foundFolders = new Set();
+
+  async function scanFolder(folderPath = "") {
+    const dir = getFolderDiskPath(notesDir, folderPath);
+    const entries = await fs.promises.readdir(dir, { withFileTypes: true }).catch(() => []);
+    for (const entry of entries) {
+      if (entry.name === "notes.json") continue;
+      const childPath = folderPath ? `${folderPath}/${entry.name}` : entry.name;
+      if (entry.isDirectory()) {
+        const normalized = normalizeFolderPath(childPath);
+        if (!normalized) continue;
+        foundFolders.add(normalized);
+        await scanFolder(normalized);
+      } else if (entry.isFile() && entry.name.endsWith(".txt")) {
+        const noteId = path.basename(entry.name, ".txt");
+        if (isSafeNoteId(noteId)) foundFiles.push({ noteId, folderPath });
+      }
+    }
+  }
+
+  await scanFolder("");
   const nextNotes = [];
 
-  for (const noteId of noteIds) {
+  for (const { noteId, folderPath } of foundFiles) {
     const fileName = `${noteId}.txt`;
-    const notePath = path.join(notesDir, fileName);
+    const notePath = path.join(getFolderDiskPath(notesDir, folderPath), fileName);
     try {
       const [content, stat] = await Promise.all([
         fs.promises.readFile(notePath, "utf8"),
@@ -1169,23 +1490,37 @@ ipcMain.handle("notes:refresh-index", async () => {
       ]);
       const existing = existingById.get(noteId);
       nextNotes.push({
+        type: "note",
         id: noteId,
         fileName,
+        folderPath,
         title: getNoteTitleFromContent(content),
         createdAt: existing?.createdAt || stat.birthtimeMs || stat.ctimeMs || Date.now(),
         updatedAt: Math.max(existing?.updatedAt || 0, stat.mtimeMs || 0) || Date.now(),
-        pinned: Boolean(existing?.pinned) && !existing?.archived,
-        archived: Boolean(existing?.archived),
+        pinned: Boolean(existing?.pinned) && normalizeFolderPath(existing?.folderPath) === folderPath,
         order: Number.isFinite(existing?.order) ? existing.order : Number.MAX_SAFE_INTEGER,
         contentBytes: Buffer.byteLength(content, "utf8"),
-        badgeMask: normalizeNoteBadgeMask(existing?.badgeMask),
       });
     } catch {
       // Missing or unreadable notes are dropped from the refreshed index.
     }
   }
 
-  index.notes = normalizeNotesOrder(nextNotes);
+  index.notes = nextNotes;
+  index.folders = [...foundFolders].map((folderPath) => {
+    const existing = existingFoldersByPath.get(folderPath);
+    return {
+      type: "folder",
+      path: folderPath,
+      name: getFolderName(folderPath),
+      parentPath: getFolderParentPath(folderPath),
+      createdAt: existing?.createdAt || Date.now(),
+      updatedAt: existing?.updatedAt || Date.now(),
+      pinned: Boolean(existing?.pinned),
+      order: Number.isFinite(existing?.order) ? existing.order : Number.MAX_SAFE_INTEGER,
+    };
+  });
+  normalizeAllEntryOrders(index);
   await writeNotesIndex(index);
   return index.notes;
 });
@@ -1197,7 +1532,7 @@ async function cleanupEmptyNotes() {
 
   for (const note of index.notes) {
     if (!isSafeNoteId(note.id)) continue;
-    const notePath = path.join(notesDir, `${note.id}.txt`);
+    const notePath = getNoteDiskPath(notesDir, note);
     try {
       const content = await fs.promises.readFile(notePath, "utf8");
       if (content.trim()) {
@@ -1212,6 +1547,7 @@ async function cleanupEmptyNotes() {
 
   if (nextNotes.length !== index.notes.length) {
     index.notes = nextNotes;
+    normalizeAllEntryOrders(index);
     await writeNotesIndex(index);
   }
 }

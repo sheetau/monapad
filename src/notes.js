@@ -1,53 +1,13 @@
-import {
-  NOTE_ARCHIVE_FILTER,
-  NOTE_BADGE_ALL_FILTER,
-  NOTE_BADGE_EDGES,
-  countNoteBadgeEdges,
-  getNoteBadgeClass,
-  normalizeNoteBadgeMask,
-  truncateNoteTitle,
-} from "./app-utils.js";
+import { truncateNoteTitle } from "./app-utils.js";
 
-const NOTE_BADGE_STORAGE_KEY = "monapadNoteBadgesVisible";
-const NOTE_BADGE_FILTER_STORAGE_KEY = "monapadNoteBadgeFilter";
-
-export function createNoteBadgeElement(mask, className = "") {
-  const badge = document.createElement("span");
-  badge.className = ["note-badge", getNoteBadgeClass(mask), className].filter(Boolean).join(" ");
-  badge.dataset.badgeMask = String(normalizeNoteBadgeMask(mask));
-  for (const edge of NOTE_BADGE_EDGES) {
-    const edgeEl = document.createElement("span");
-    edgeEl.className = `note-badge-edge ${edge.key}`;
-    badge.appendChild(edgeEl);
-  }
-  return badge;
+export function createFileIconElement(className = "") {
+  const icon = document.createElement("span");
+  icon.className = ["file-icon", className].filter(Boolean).join(" ");
+  return icon;
 }
 
-function createNoteArchiveBadgeElement(className = "") {
-  const badge = createNoteBadgeElement(0, className);
-  badge.classList.add("is-archive");
-  const fill = document.createElement("span");
-  fill.className = "note-badge-archive-fill";
-  badge.appendChild(fill);
-  return badge;
-}
-
-export function updateNoteBadgeElement(badge, mask) {
-  if (!badge) return;
-  const className = [
-    "note-badge",
-    getNoteBadgeClass(mask),
-    badge.classList.contains("tab-note-badge") ? "tab-note-badge" : "",
-    badge.classList.contains("note-list-badge") ? "note-list-badge" : "",
-  ]
-    .filter(Boolean)
-    .join(" ");
-  badge.className = className;
-  badge.dataset.badgeMask = String(normalizeNoteBadgeMask(mask));
-}
-
-export function sortNotesForPanel(notes = []) {
-  return [...notes].sort((a, b) => {
+export function sortNotesForPanel(entries = []) {
+  return [...entries].sort((a, b) => {
     if (Boolean(a?.pinned) !== Boolean(b?.pinned)) return a?.pinned ? -1 : 1;
     const aOrder = Number.isFinite(a?.order) ? a.order : Number.MAX_SAFE_INTEGER;
     const bOrder = Number.isFinite(b?.order) ? b.order : Number.MAX_SAFE_INTEGER;
@@ -56,14 +16,34 @@ export function sortNotesForPanel(notes = []) {
   });
 }
 
-function getNoteBadgeFilterMasks(notes) {
-  const masks = [...new Set(notes.map((note) => normalizeNoteBadgeMask(note.badgeMask)))];
-  return masks.sort((a, b) => {
-    const countDiff = countNoteBadgeEdges(b) - countNoteBadgeEdges(a);
-    if (countDiff) return countDiff;
-    return a - b;
-  });
+function normalizeFolderPath(folderPath) {
+  return String(folderPath || "")
+    .replace(/\\/g, "/")
+    .split("/")
+    .filter(Boolean)
+    .join("/");
 }
+
+function getFolderName(folderPath) {
+  return normalizeFolderPath(folderPath).split("/").filter(Boolean).pop() || "";
+}
+
+function getParentFolderPath(folderPath) {
+  const value = normalizeFolderPath(folderPath);
+  const index = value.lastIndexOf("/");
+  return index === -1 ? "" : value.slice(0, index);
+}
+
+function getEntryKey(entry) {
+  return entry?.type === "folder" ? `folder:${entry.path}` : `note:${entry?.id}`;
+}
+
+function isValidFolderName(name) {
+  const value = String(name || "").trim();
+  return Boolean(value) && value.length <= 100 && value !== "." && value !== ".." && !/[<>:"/\\|?*\x00-\x1f]/.test(value);
+}
+
+const NOTES_FOLDER_STORAGE_KEY = "notesCurrentFolderPath";
 
 export function createNotesPanelController({
   i18next,
@@ -87,82 +67,88 @@ export function createNotesPanelController({
   convertNoteToUntitled,
   convertNoteToFile,
   deleteNoteEverywhere,
-  getOpenNoteTabById,
-  updateTabNoteBadge,
-  savePinnedTabsState,
+  deleteFolderEverywhere,
   onShowContextMenu,
   onNotesIndexUpdated,
 }) {
-  const { notesList, notesBadgeFilterBar, notesBadgeToggleButton, noteContextMenu } = refs;
-  let rightClickedNoteId = null;
-  let areNoteBadgesVisible = localStorage.getItem(NOTE_BADGE_STORAGE_KEY) !== "false";
-  let noteBadgeFilter = localStorage.getItem(NOTE_BADGE_FILTER_STORAGE_KEY) || NOTE_BADGE_ALL_FILTER;
+  const { notesList, notesListHeading, noteContextMenu } = refs;
+  let rightClickedEntry = null;
+  let currentFolderPath = normalizeFolderPath(localStorage.getItem(NOTES_FOLDER_STORAGE_KEY));
+  let draftFolderItem = null;
+  let activeFolderEdit = null;
 
-  function getVisibleNotesForPanel(notes) {
-    if (noteBadgeFilter === NOTE_ARCHIVE_FILTER) return notes.filter((note) => note?.archived);
-    const activeNotes = notes.filter((note) => !note?.archived);
-    if (noteBadgeFilter === NOTE_BADGE_ALL_FILTER) return activeNotes;
-    const targetMask = normalizeNoteBadgeMask(noteBadgeFilter);
-    return activeNotes.filter((note) => normalizeNoteBadgeMask(note.badgeMask) === targetMask);
+  function getEntryMeta(entry) {
+    if (!entry) return null;
+    if (entry.type === "folder") return getNotesIndexCache().find((item) => item.type === "folder" && item.path === entry.path) || entry;
+    return getNotesIndexCache().find((item) => item.id === entry.id) || entry;
   }
 
-  function ensureNoteBadgeContextButtons() {
-    const container = noteContextMenu?.querySelector(".note-context-badge-buttons");
-    if (!container || container.dataset.initialized === "true") return;
-    const fragment = document.createDocumentFragment();
-    for (const edge of NOTE_BADGE_EDGES) {
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className = "note-badge-edge-button";
-      button.dataset.edge = edge.key;
-      button.appendChild(createNoteBadgeElement(edge.bit, "note-context-badge"));
-      fragment.appendChild(button);
+  function updateFolderNav() {
+    if (!notesListHeading) return;
+    const inFolder = Boolean(currentFolderPath);
+    const label = inFolder ? getFolderName(currentFolderPath) : i18next.t("sidePanel.notesSection");
+    notesListHeading.classList.toggle("folder-heading", inFolder);
+    notesListHeading.replaceChildren();
+    const text = document.createElement("span");
+    text.className = "notes-list-heading-text";
+    text.textContent = label;
+    notesListHeading.appendChild(text);
+    if (inFolder) notesListHeading.setAttribute("role", "button");
+    else notesListHeading.removeAttribute("role");
+    notesListHeading.tabIndex = inFolder ? 0 : -1;
+    notesListHeading.setAttribute("aria-label", inFolder ? i18next.t("sidePanel.parentFolder") : i18next.t("sidePanel.notesSection"));
+    notesListHeading.title = label;
+  }
+
+  function saveCurrentFolderPath() {
+    if (currentFolderPath) localStorage.setItem(NOTES_FOLDER_STORAGE_KEY, currentFolderPath);
+    else localStorage.removeItem(NOTES_FOLDER_STORAGE_KEY);
+  }
+
+  async function ensureCurrentFolderExists() {
+    if (!currentFolderPath) return;
+    const folderPath = currentFolderPath;
+    const parentPath = getParentFolderPath(folderPath);
+    const siblings = await electronAPI.listNotes({ folderPath: parentPath });
+    const exists = Array.isArray(siblings) && siblings.some((entry) => entry?.type === "folder" && normalizeFolderPath(entry.path) === folderPath);
+    if (!exists) {
+      currentFolderPath = "";
+      saveCurrentFolderPath();
     }
-    container.appendChild(fragment);
-    container.dataset.initialized = "true";
   }
 
-  function getNoteMetaById(noteId) {
-    return getNotesIndexCache().find((note) => note.id === noteId) || null;
-  }
-
-  function updateNoteBadgeContextButtonsState() {
-    if (!noteContextMenu || !rightClickedNoteId) return;
-    ensureNoteBadgeContextButtons();
-    const mask = normalizeNoteBadgeMask(getNoteMetaById(rightClickedNoteId)?.badgeMask);
-    NOTE_BADGE_EDGES.forEach((edge) => {
-      const button = noteContextMenu.querySelector(`.note-badge-edge-button[data-edge="${edge.key}"]`);
-      button?.classList.toggle("is-active", Boolean(mask & edge.bit));
-    });
-  }
-
-  function updateNoteContextPinButtonState() {
-    if (!noteContextMenu || !rightClickedNoteId) return;
+  function updateContextPinButtonState() {
+    if (!noteContextMenu || !rightClickedEntry) return;
     const button = noteContextMenu.querySelector('button[data-action="togglePin"]');
     if (!button) return;
-    const note = getNoteMetaById(rightClickedNoteId);
-    const label = note?.pinned ? i18next.t("sidePanel.unpinNote") : i18next.t("sidePanel.pinNote");
-    button.hidden = Boolean(note?.archived);
-    button.style.display = note?.archived ? "none" : "";
+    const entry = getEntryMeta(rightClickedEntry);
+    const label = entry?.pinned ? i18next.t("sidePanel.unpin") : i18next.t("sidePanel.pin");
     button.textContent = label;
   }
 
-  function updateNoteContextArchiveButtonState() {
-    if (!noteContextMenu || !rightClickedNoteId) return;
-    const button = noteContextMenu.querySelector('button[data-action="toggleArchive"]');
-    if (!button) return;
-    const note = getNoteMetaById(rightClickedNoteId);
-    button.textContent = note?.archived ? i18next.t("sidePanel.unarchive") : i18next.t("sidePanel.archive");
+  function updateContextMenuItems() {
+    if (!noteContextMenu || !rightClickedEntry) return;
+    const isFolder = rightClickedEntry.type === "folder";
+    noteContextMenu.querySelectorAll("[data-note-only]").forEach((item) => {
+      item.hidden = isFolder;
+      item.style.display = isFolder ? "none" : "";
+    });
+    noteContextMenu.querySelectorAll("[data-folder-only]").forEach((item) => {
+      item.hidden = !isFolder;
+      item.style.display = isFolder ? "" : "none";
+    });
+    updateContextPinButtonState();
   }
 
-  function showNoteContextMenu(e, noteId) {
+  function showContextMenu(e, entry) {
     e.preventDefault();
     e.stopPropagation();
     onShowContextMenu?.();
-    rightClickedNoteId = noteId;
+    rightClickedEntry = entry;
 
     noteContextMenu.style.display = "block";
     noteContextMenu.style.visibility = "hidden";
+    updateContextMenuItems();
     const menuWidth = noteContextMenu.offsetWidth;
     const menuHeight = noteContextMenu.offsetHeight;
     let left = e.pageX;
@@ -173,117 +159,106 @@ export function createNotesPanelController({
     noteContextMenu.style.top = `${top}px`;
     noteContextMenu.style.visibility = "visible";
     noteContextMenu.style.display = "block";
-    updateNoteBadgeContextButtonsState();
-    updateNoteContextPinButtonState();
-    updateNoteContextArchiveButtonState();
-  }
-
-  function renderNoteBadgeFilterBar() {
-    if (!notesBadgeFilterBar) return;
-    notesBadgeFilterBar.innerHTML = "";
-    const notes = getNotesIndexCache();
-    const activeNotes = notes.filter((note) => !note?.archived);
-    const hasArchivedNotes = notes.some((note) => note?.archived);
-    const availableMasks = getNoteBadgeFilterMasks(activeNotes);
-    const entries = [
-      { value: NOTE_BADGE_ALL_FILTER, all: true, title: i18next.t("sidePanel.noteMarkAll") },
-      ...availableMasks
-        .filter((mask) => mask !== 0)
-        .map((mask) => ({ value: mask, title: i18next.t("sidePanel.noteMarkFilter", { mask }) })),
-      ...(availableMasks.includes(0) ? [{ value: 0, title: i18next.t("sidePanel.noteMarkNone") }] : []),
-      ...(hasArchivedNotes ? [{ value: NOTE_ARCHIVE_FILTER, archive: true, title: i18next.t("sidePanel.archive") }] : []),
-    ];
-
-    for (const entry of entries) {
-      const button = document.createElement("button");
-      button.className = "note-badge-filter-button";
-      button.type = "button";
-      button.dataset.badgeFilter = String(entry.value);
-      button.title = entry.title;
-      button.setAttribute("aria-label", entry.title);
-      button.classList.toggle("is-active", String(noteBadgeFilter) === String(entry.value));
-      const badge = entry.archive
-        ? createNoteArchiveBadgeElement()
-        : entry.all
-          ? createNoteBadgeElement(15)
-          : createNoteBadgeElement(entry.value);
-      if (entry.all) badge.classList.add("is-all");
-      button.appendChild(badge);
-      button.addEventListener("click", async () => {
-        noteBadgeFilter = entry.value;
-        localStorage.setItem(NOTE_BADGE_FILTER_STORAGE_KEY, String(noteBadgeFilter));
-        await renderNotesList();
-      });
-      notesBadgeFilterBar.appendChild(button);
-    }
   }
 
   async function renderNotesList({ scheduleSearch = true } = {}) {
     if (!notesList) return;
-    const notes = await electronAPI.listNotes();
-    setNotesIndexCache(sortNotesForPanel(Array.isArray(notes) ? notes : []));
+    cancelFolderDraft();
+    await ensureCurrentFolderExists();
+    updateFolderNav();
+    const panelEntries = await electronAPI.listNotes({ folderPath: currentFolderPath });
+    const allNotes = await electronAPI.listNotes();
+    const folders = Array.isArray(panelEntries)
+      ? panelEntries.filter((entry) => entry?.type === "folder")
+      : [];
+    setNotesIndexCache([...folders, ...(Array.isArray(allNotes) ? allNotes : [])]);
     onNotesIndexUpdated?.(getNotesIndexCache());
-    if (noteBadgeFilter !== NOTE_BADGE_ALL_FILTER) {
-      const hasFilter =
-        noteBadgeFilter === NOTE_ARCHIVE_FILTER
-          ? getNotesIndexCache().some((note) => note?.archived)
-          : getNotesIndexCache().some(
-              (note) => !note?.archived && normalizeNoteBadgeMask(note.badgeMask) === normalizeNoteBadgeMask(noteBadgeFilter),
-            );
-      if (!hasFilter) noteBadgeFilter = NOTE_BADGE_ALL_FILTER;
+    const fragment = document.createDocumentFragment();
+
+    for (const entry of sortNotesForPanel(Array.isArray(panelEntries) ? panelEntries : [])) {
+      if (entry?.type === "folder") fragment.appendChild(createFolderItem(entry));
+      else if (entry?.id) fragment.appendChild(createNoteItem(entry));
     }
-    renderNoteBadgeFilterBar();
-    notesList.innerHTML = "";
-
-    for (const note of getVisibleNotesForPanel(getNotesIndexCache())) {
-      if (!note?.id) continue;
-      const item = document.createElement("div");
-      item.className = `note-list-item${note.pinned ? " pinned" : ""}${note.archived ? " archived" : ""}`;
-      item.dataset.noteId = note.id;
-      item.dataset.badgeMask = String(normalizeNoteBadgeMask(note.badgeMask));
-      item.dataset.archived = String(Boolean(note.archived));
-
-      const badge = createNoteBadgeElement(note.badgeMask, "note-list-badge");
-
-      const title = document.createElement("span");
-      title.className = "note-list-title";
-      title.textContent = truncateNoteTitle(note.title || getNoteTitleFromContent(""));
-      title.title = title.textContent;
-
-      const pinButton = document.createElement("button");
-      pinButton.className = `note-pin-button codicon ${note.pinned ? "codicon-pinned" : "codicon-pin"}`;
-      pinButton.type = "button";
-      pinButton.hidden = Boolean(note.archived);
-      const pinLabel = note.pinned ? i18next.t("sidePanel.unpinNote") : i18next.t("sidePanel.pinNote");
-      pinButton.setAttribute("aria-label", pinLabel);
-      pinButton.title = pinLabel;
-      pinButton.addEventListener("click", async (e) => {
-        e.stopPropagation();
-        await toggleNotePinned(note.id);
-      });
-
-      item.append(badge, title, pinButton);
-      item.addEventListener("click", async () => {
-        if (isNoteClickSuppressed()) return;
-        await openNoteById(note.id, { preview: true });
-      });
-      item.addEventListener("dblclick", async () => {
-        if (isNoteClickSuppressed()) return;
-        await openNoteById(note.id, { preview: false });
-      });
-      item.addEventListener("auxclick", async (e) => {
-        if (e.button !== 1 || isNoteClickSuppressed()) return;
-        e.preventDefault();
-        await openNoteById(note.id, { preview: false });
-      });
-      item.addEventListener("contextmenu", (e) => showNoteContextMenu(e, note.id));
-      item.addEventListener("mousedown", (e) => beginNoteListDrag(e, item));
-      notesList.appendChild(item);
-    }
+    notesList.replaceChildren(fragment);
 
     updateActiveNoteListItem();
     updateGlobalSearchActionState();
     if (scheduleSearch && isGlobalSearchActive()) scheduleGlobalSearch();
+  }
+
+  function createFolderItem(folder) {
+    const item = document.createElement("div");
+    item.className = `note-list-item folder-list-item${folder.pinned ? " pinned" : ""}`;
+    item.dataset.entryType = "folder";
+    item.dataset.folderPath = folder.path;
+    item.dataset.entryKey = getEntryKey(folder);
+
+    const fileIcon = createFileIconElement("note-list-file-icon");
+    const title = document.createElement("span");
+    title.className = "note-list-title";
+    title.textContent = folder.name || getFolderName(folder.path);
+    title.title = title.textContent;
+
+    const pinButton = createPinButton(folder);
+    const count = document.createElement("span");
+    count.className = "note-list-count";
+    count.textContent = String(Math.max(0, Number(folder.noteCount) || 0));
+    item.append(fileIcon, title, count, pinButton);
+    item.addEventListener("click", async (e) => {
+      if (e.target.closest(".note-list-rename-input") || item.querySelector(".note-list-rename-input")) return;
+      if (isNoteClickSuppressed()) return;
+      await openFolder(folder.path);
+    });
+    item.addEventListener("contextmenu", (e) => showContextMenu(e, folder));
+    item.addEventListener("mousedown", (e) => beginNoteListDrag(e, item));
+    return item;
+  }
+
+  function createNoteItem(note) {
+    const item = document.createElement("div");
+    item.className = `note-list-item${note.pinned ? " pinned" : ""}`;
+    item.dataset.entryType = "note";
+    item.dataset.noteId = note.id;
+    item.dataset.entryKey = getEntryKey(note);
+
+    const fileIcon = createFileIconElement("note-list-file-icon");
+    const title = document.createElement("span");
+    title.className = "note-list-title";
+    title.textContent = truncateNoteTitle(note.title || getNoteTitleFromContent(""));
+    title.title = title.textContent;
+
+    const pinButton = createPinButton(note);
+    item.append(fileIcon, title, pinButton);
+    item.addEventListener("click", async () => {
+      if (isNoteClickSuppressed()) return;
+      await openNoteById(note.id, { preview: true });
+    });
+    item.addEventListener("dblclick", async () => {
+      if (isNoteClickSuppressed()) return;
+      await openNoteById(note.id, { preview: false });
+    });
+    item.addEventListener("auxclick", async (e) => {
+      if (e.button !== 1 || isNoteClickSuppressed()) return;
+      e.preventDefault();
+      await openNoteById(note.id, { preview: false });
+    });
+    item.addEventListener("contextmenu", (e) => showContextMenu(e, note));
+    item.addEventListener("mousedown", (e) => beginNoteListDrag(e, item));
+    return item;
+  }
+
+  function createPinButton(entry) {
+    const pinButton = document.createElement("button");
+    pinButton.className = `note-pin-button codicon ${entry.pinned ? "codicon-pinned" : "codicon-pin"}`;
+    pinButton.type = "button";
+    const pinLabel = entry.pinned ? i18next.t("sidePanel.unpin") : i18next.t("sidePanel.pin");
+    pinButton.setAttribute("aria-label", pinLabel);
+    pinButton.title = pinLabel;
+    pinButton.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      await toggleEntryPinned(entry);
+    });
+    return pinButton;
   }
 
   function updateActiveNoteListItem() {
@@ -294,95 +269,45 @@ export function createNotesPanelController({
     });
   }
 
-  async function toggleNotePinned(noteId) {
-    const note = getNoteMetaById(noteId);
-    if (!note || note.archived) return false;
-    const result = await electronAPI.updateNoteMeta({ noteId, pinned: !note.pinned });
+  async function toggleEntryPinned(entryInput) {
+    const entry = getEntryMeta(entryInput);
+    if (!entry) return false;
+    const result =
+      entry.type === "folder"
+        ? await electronAPI.updateFolderMeta({ folderPath: entry.path, pinned: !entry.pinned })
+        : await electronAPI.updateNoteMeta({ noteId: entry.id, pinned: !entry.pinned });
     if (!result?.success) return false;
-    const cached = getNoteMetaById(noteId);
-    if (cached) {
-      cached.pinned = Boolean(result.note?.pinned);
-      if (Number.isFinite(result.note?.order)) cached.order = result.note.order;
-    }
     await renderNotesList();
     await populateRecentMenu();
-    updateNoteContextPinButtonState();
+    updateContextPinButtonState();
     return true;
-  }
-
-  async function toggleNoteArchived(noteId) {
-    const note = getNoteMetaById(noteId);
-    if (!note) return false;
-    const result = await electronAPI.updateNoteMeta({ noteId, archived: !note.archived });
-    if (!result?.success) return false;
-    const cached = getNoteMetaById(noteId);
-    if (cached) {
-      cached.archived = Boolean(result.note?.archived);
-      cached.pinned = Boolean(result.note?.pinned);
-      if (Number.isFinite(result.note?.order)) cached.order = result.note.order;
-    }
-    await renderNotesList();
-    await populateRecentMenu();
-    updateNoteContextPinButtonState();
-    updateNoteContextArchiveButtonState();
-    return true;
-  }
-
-  async function toggleNoteBadgeEdge(edgeKey) {
-    if (!rightClickedNoteId) return;
-    const edge = NOTE_BADGE_EDGES.find((item) => item.key === edgeKey);
-    if (!edge) return;
-    const noteId = rightClickedNoteId;
-    const currentMask = normalizeNoteBadgeMask(getNoteMetaById(noteId)?.badgeMask);
-    const nextMask = currentMask ^ edge.bit;
-    const result = await electronAPI.updateNoteMeta({ noteId, badgeMask: nextMask });
-    if (!result?.success) return;
-    const cached = getNoteMetaById(noteId);
-    if (cached) cached.badgeMask = nextMask;
-    const openTab = getOpenNoteTabById(noteId);
-    if (openTab) {
-      openTab.noteBadgeMask = nextMask;
-      updateTabNoteBadge(openTab);
-      savePinnedTabsState();
-    }
-    updateNoteBadgeContextButtonsState();
-    await renderNotesList();
-    if (noteBadgeFilter !== NOTE_BADGE_ALL_FILTER && normalizeNoteBadgeMask(noteBadgeFilter) !== nextMask) {
-      closeContextMenu();
-    }
-    await populateRecentMenu();
   }
 
   async function handleContextMenuClick(e) {
-    const edgeButton = e.target.closest("button[data-edge]");
-    if (edgeButton) {
-      e.stopPropagation();
-      await toggleNoteBadgeEdge(edgeButton.dataset.edge);
-      return;
-    }
-
     const action = e.target.closest("button")?.dataset.action;
-    if (!action || !rightClickedNoteId) return;
-    const noteId = rightClickedNoteId;
+    if (!action || !rightClickedEntry) return;
+    const entry = rightClickedEntry;
     closeContextMenu();
 
     switch (action) {
       case "togglePin":
-        await toggleNotePinned(noteId);
+        await toggleEntryPinned(entry);
         break;
 
-      case "toggleArchive":
-        await toggleNoteArchived(noteId);
+      case "rename":
+        if (entry.type === "folder") beginRenameFolder(entry);
         break;
 
       case "copyText": {
-        const content = await getLiveNoteContent(noteId);
+        if (entry.type !== "note") break;
+        const content = await getLiveNoteContent(entry.id);
         if (content !== null) await navigator.clipboard.writeText(content);
         break;
       }
 
       case "duplicate": {
-        const result = await electronAPI.duplicateNote(noteId);
+        if (entry.type !== "note") break;
+        const result = await electronAPI.duplicateNote(entry.id);
         if (result?.success) {
           const note = await electronAPI.readNote(result.id);
           const duplicatedTab = await createNoteTab(note?.content || "", null, note);
@@ -397,60 +322,188 @@ export function createNotesPanelController({
       }
 
       case "convertToUntitled":
-        await convertNoteToUntitled(noteId);
+        if (entry.type === "note") await convertNoteToUntitled(entry.id);
         break;
 
       case "convertToFile":
-        await convertNoteToFile(noteId);
+        if (entry.type === "note") await convertNoteToFile(entry.id);
         break;
 
       case "delete":
-        await deleteNoteEverywhere(noteId, { trash: true });
+        if (entry.type === "folder") await deleteFolderEverywhere(entry.path);
+        else await deleteNoteEverywhere(entry.id, { trash: true });
         break;
     }
   }
 
+  async function openFolder(folderPath) {
+    currentFolderPath = normalizeFolderPath(folderPath);
+    saveCurrentFolderPath();
+    await renderNotesList();
+  }
+
+  async function openParentFolder() {
+    if (!currentFolderPath) return;
+    currentFolderPath = getParentFolderPath(currentFolderPath);
+    saveCurrentFolderPath();
+    await renderNotesList();
+  }
+
+  function createFolderDraft() {
+    if (!notesList || draftFolderItem) return;
+    closeContextMenu();
+    updateFolderNav();
+    draftFolderItem = document.createElement("div");
+    draftFolderItem.className = "note-list-item folder-list-item editing";
+
+    const fileIcon = createFileIconElement("note-list-file-icon");
+    const input = document.createElement("input");
+    input.className = "note-list-rename-input";
+    input.type = "text";
+    input.maxLength = 100;
+    input.spellcheck = false;
+    input.setAttribute("aria-label", i18next.t("sidePanel.newFolder"));
+    draftFolderItem.append(fileIcon, input);
+    const firstUnpinnedItem = [...notesList.querySelectorAll(".note-list-item")].find((item) => !item.classList.contains("pinned"));
+    notesList.insertBefore(draftFolderItem, firstUnpinnedItem || null);
+
+    let done = false;
+    const finish = async (save) => {
+      if (done) return;
+      done = true;
+      input.removeEventListener("blur", commit);
+      if (!draftFolderItem) return;
+      const name = input.value.trim();
+      if (!save || !isValidFolderName(name)) {
+        activeFolderEdit = null;
+        cancelFolderDraft();
+        return;
+      }
+      const result = await electronAPI.createFolder({ parentPath: currentFolderPath, name });
+      activeFolderEdit = null;
+      cancelFolderDraft();
+      if (result?.success) await renderNotesList();
+    };
+    activeFolderEdit = { item: draftFolderItem, input, finish };
+    const commit = () => setTimeout(() => finish(true), 0);
+    input.addEventListener("keydown", async (e) => {
+      e.stopPropagation();
+      if (e.key === "Escape") {
+        e.preventDefault();
+        await finish(false);
+      } else if (e.key === "Enter") {
+        e.preventDefault();
+        await finish(true);
+      }
+    });
+    input.addEventListener("blur", commit);
+    requestAnimationFrame(() => input.focus());
+  }
+
+  function beginRenameFolder(folder) {
+    const item = notesList?.querySelector(`.note-list-item[data-folder-path="${CSS.escape(folder.path)}"]`);
+    if (!item) return;
+    const title = item.querySelector(".note-list-title");
+    if (!title) return;
+    const input = document.createElement("input");
+    input.className = "note-list-rename-input";
+    input.type = "text";
+    input.maxLength = 100;
+    input.value = folder.name || getFolderName(folder.path);
+    input.spellcheck = false;
+    ["pointerdown", "mousedown", "mouseup", "click", "dblclick"].forEach((eventName) => {
+      input.addEventListener(eventName, (e) => e.stopPropagation());
+    });
+    title.replaceWith(input);
+    input.select();
+
+    let done = false;
+    const finish = async (save) => {
+      if (done) return;
+      done = true;
+      activeFolderEdit = null;
+      const name = input.value.trim();
+      if (save && isValidFolderName(name)) await electronAPI.renameFolder({ folderPath: folder.path, name });
+      await renderNotesList();
+    };
+    activeFolderEdit = { item, input, finish };
+    input.addEventListener("keydown", async (e) => {
+      e.stopPropagation();
+      if (e.key === "Escape") {
+        e.preventDefault();
+        await finish(false);
+      } else if (e.key === "Enter") {
+        e.preventDefault();
+        await finish(true);
+      }
+    });
+    input.addEventListener("blur", () => setTimeout(() => finish(true), 0));
+  }
+
+  function cancelFolderDraft() {
+    if (!draftFolderItem) return;
+    const item = draftFolderItem;
+    draftFolderItem = null;
+    if (activeFolderEdit?.item === item) activeFolderEdit = null;
+    if (item.parentNode) item.remove();
+  }
+
   function closeContextMenu() {
     if (noteContextMenu) noteContextMenu.style.display = "none";
-    rightClickedNoteId = null;
+    rightClickedEntry = null;
   }
 
-  function toggleBadgesVisible() {
-    areNoteBadgesVisible = !areNoteBadgesVisible;
-    localStorage.setItem(NOTE_BADGE_STORAGE_KEY, String(areNoteBadgesVisible));
+  async function continueListMouseDownAfterEdit(e) {
+    if (!activeFolderEdit || activeFolderEdit.item.contains(e.target)) return;
+    const targetItem = e.target.closest(".note-list-item");
+    if (!targetItem || !notesList?.contains(targetItem)) return;
+    const entry =
+      targetItem.dataset.entryType === "folder"
+        ? getNotesIndexCache().find((item) => item.type === "folder" && item.path === targetItem.dataset.folderPath)
+        : getNotesIndexCache().find((item) => item.id === targetItem.dataset.noteId);
+    if (!entry) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+    e.stopImmediatePropagation();
+    const button = e.button;
+    await activeFolderEdit.finish(true);
+    if (button === 0) {
+      if (entry.type === "folder") await openFolder(entry.path);
+      else await openNoteById(entry.id, { preview: true });
+    } else if (button === 1 && entry.type !== "folder") {
+      await openNoteById(entry.id, { preview: false });
+    } else if (button === 2) {
+      showContextMenu(e, entry);
+    }
   }
 
-  notesBadgeFilterBar?.addEventListener(
-    "wheel",
-    (e) => {
-      if (!notesBadgeFilterBar || Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
-      notesBadgeFilterBar.scrollLeft += e.deltaY;
-      e.preventDefault();
-    },
-    { passive: false },
-  );
+  notesList?.addEventListener("mousedown", continueListMouseDownAfterEdit, true);
+  notesListHeading?.addEventListener("click", () => {
+    if (currentFolderPath) openParentFolder();
+  });
+  notesListHeading?.addEventListener("keydown", (e) => {
+    if (!currentFolderPath || (e.key !== "Enter" && e.key !== " ")) return;
+    e.preventDefault();
+    openParentFolder();
+  });
   noteContextMenu?.addEventListener("click", handleContextMenuClick);
 
   return {
     renderNotesList,
     updateActiveNoteListItem,
-    ensureNoteBadgeContextButtons,
-    updateNoteBadgeContextButtonsState,
-    getCurrentNoteCreationBadgeMask() {
-      return noteBadgeFilter === NOTE_BADGE_ALL_FILTER || noteBadgeFilter === NOTE_ARCHIVE_FILTER
-        ? 0
-        : normalizeNoteBadgeMask(noteBadgeFilter);
+    createFolderDraft,
+    openFolder,
+    openParentFolder,
+    getCurrentFolderPath() {
+      return currentFolderPath;
     },
-    getNoteBadgeFilter() {
-      return noteBadgeFilter;
-    },
-    areNoteBadgesVisible() {
-      return areNoteBadgesVisible;
-    },
-    toggleBadgesVisible,
     closeContextMenu,
     isContextMenuOpen() {
       return noteContextMenu?.style.display !== "none";
+    },
+    isEditingFolderName() {
+      return Boolean(draftFolderItem || notesList?.querySelector(".note-list-rename-input"));
     },
   };
 }

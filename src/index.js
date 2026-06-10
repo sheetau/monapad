@@ -9,22 +9,10 @@ import {
   registerMonacoFormattingActions as registerMonacoFormattingEditorActions,
   registerMonacoQuickInputActions as registerMonacoQuickInputEditorActions,
 } from "./monaco-actions.js";
-import {
-  updateNoteBadgeContextMenuLabelsUi,
-  updateNoteBadgeToggleButtonUi,
-  updateSettingsTooltipsUi,
-  updateStaticUiText,
-} from "./i18next.js";
+import { updateSettingsTooltipsUi, updateStaticUiText } from "./i18next.js";
 import { createGlobalSearchController } from "./search.js";
+import { createFileIconElement, createNotesPanelController, sortNotesForPanel } from "./notes.js";
 import {
-  createNoteBadgeElement,
-  createNotesPanelController,
-  sortNotesForPanel,
-  updateNoteBadgeElement,
-} from "./notes.js";
-import {
-  NOTE_BADGE_ALL_FILTER,
-  NOTE_BADGE_EDGES,
   clampNumber,
   formatNoteUpdatedAt,
   getPathBasename,
@@ -32,7 +20,6 @@ import {
   isDefaultThemeName,
   isPointInRect,
   normalizeFileReadResult,
-  normalizeNoteBadgeMask,
   normalizeTextForModelComparison,
   truncateNoteTitle,
 } from "./app-utils.js";
@@ -63,6 +50,7 @@ const sidePanelClose = document.getElementById("side-panel-close");
 const sidePanelMenuButton = document.getElementById("side-panel-menu-button");
 const sidePanelResizeHandle = document.getElementById("side-panel-resize-handle");
 const notesAddButton = document.getElementById("notes-add");
+const foldersAddButton = document.getElementById("folders-add");
 const notesListRefreshButton = document.getElementById("notes-list-refresh");
 const notesListHeading = document.getElementById("notes-list-heading");
 const globalSearchHeading = document.getElementById("global-search-heading");
@@ -77,8 +65,6 @@ const globalSearchRefreshButton = document.getElementById("global-search-refresh
 const globalSearchClearButton = document.getElementById("global-search-clear");
 const globalSearchCollapseButton = document.getElementById("global-search-collapse");
 const notesList = document.getElementById("notes-list");
-const notesBadgeToggleButton = document.getElementById("notes-badge-toggle");
-const notesBadgeFilterBar = document.getElementById("notes-badge-filter-bar");
 const noteContextMenu = document.getElementById("note-context-menu");
 const customContextMenu = document.getElementById("custom-context-menu");
 const tabContextMenu = document.getElementById("tab-context-menu");
@@ -151,6 +137,8 @@ let lastPreviewY = null;
 let draggingTab = null;
 let draggingTabData = null;
 let draggingTabWasPinned = false;
+let tabDragOriginalOrder = null;
+let tabDragOriginalActiveTab = null;
 let dragStartX = 0;
 let originalX = 0;
 let startX = 0;
@@ -456,10 +444,10 @@ window.electronAPI.onLoadTabData(async (receivedTabData) => {
     newTabData.isNote = true;
     newTabData.noteId = payload.noteId;
     newTabData.notePath = payload.notePath;
+    newTabData.noteFolderPath = payload.noteFolderPath || "";
     newTabData.noteTitle = payload.noteTitle || payload.name;
     newTabData.noteCreatedAt = payload.noteCreatedAt;
     newTabData.noteUpdatedAt = payload.noteUpdatedAt;
-    newTabData.noteBadgeMask = normalizeNoteBadgeMask(payload.noteBadgeMask);
     newTabData.noteDirty = false;
     newTabData.draftId = null;
     newTabData.path = null;
@@ -468,7 +456,6 @@ window.electronAPI.onLoadTabData(async (receivedTabData) => {
     newTabData.element.classList.add("note");
     newTabData.element.querySelector(".close")?.classList.remove("show-unsaved");
     updateNoteTabTitle(newTabData, payload.content);
-    updateTabNoteBadge(newTabData);
   }
 
   // restore save state
@@ -547,26 +534,22 @@ function getI18nUiContext() {
       autosaveRestoreNo,
       autosaveRestoreYes,
       deviceShareController,
+      foldersAddButton,
       globalSearchHeading,
       globalSearchInput,
       monacoNlsRestartWarning,
       noteContextMenu,
       notesAddButton,
-      notesBadgeFilterBar,
-      notesBadgeToggleButton,
       notesListHeading,
       notesListRefreshButton,
       sidePanelClose,
       tabContextMenu,
     },
     state: {
-      areNoteBadgesVisible: notesController?.areNoteBadgesVisible() ?? true,
-      noteBadgeEdges: NOTE_BADGE_EDGES,
       rightClickedTab,
       selectedFontFamily,
     },
     callbacks: {
-      ensureNoteBadgeContextButtons,
       updateGlobalSearchLabels,
       updateGlobalSearchPlaceholder,
       updateGlobalSearchResultHeaderLabels,
@@ -585,24 +568,6 @@ function updateSettingsTooltips() {
   updateSettingsTooltipsUi({
     t: i18next.t.bind(i18next),
     selectedFontFamily,
-  });
-}
-
-function updateNoteBadgeContextMenuLabels() {
-  updateNoteBadgeContextMenuLabelsUi({
-    t: i18next.t.bind(i18next),
-    noteContextMenu,
-    noteBadgeEdges: NOTE_BADGE_EDGES,
-    ensureNoteBadgeContextButtons,
-  });
-}
-
-function updateNoteBadgeToggleButton() {
-  updateNoteBadgeToggleButtonUi({
-    t: i18next.t.bind(i18next),
-    notesBadgeFilterBar,
-    notesBadgeToggleButton,
-    areNoteBadgesVisible: notesController?.areNoteBadgesVisible() ?? true,
   });
 }
 
@@ -1541,14 +1506,6 @@ deviceShareController = createDeviceShareController({
   },
 });
 
-function ensureNoteBadgeContextButtons() {
-  notesController?.ensureNoteBadgeContextButtons();
-}
-
-function getCurrentNoteCreationBadgeMask() {
-  return notesController?.getCurrentNoteCreationBadgeMask() ?? 0;
-}
-
 function isNoteContentSaved(tab, content = null) {
   if (!tab?.isNote) return false;
   const nextContent = content ?? tab.model?.getValue?.() ?? tab.content ?? "";
@@ -1608,11 +1565,6 @@ function updateNoteTabTitle(tab, content = null) {
     nameSpan.textContent = title;
     nameSpan.title = title;
   }
-}
-
-function updateTabNoteBadge(tab) {
-  if (!tab?.element) return;
-  updateNoteBadgeElement(tab.element.querySelector(".tab-note-badge"), tab.noteBadgeMask);
 }
 
 function isTabModelDisposed(tab) {
@@ -1722,7 +1674,7 @@ async function writeNoteTab(tab, content = null, force = false) {
       const result = await window.electronAPI.createNote({
         content: nextContent,
         title: tab.noteTitle || getNoteTitleFromContent(nextContent),
-        badgeMask: tab.noteBadgeMask,
+        folderPath: tab.noteFolderPath || getCurrentNotesFolderPath(),
       });
       if (!result?.success) return false;
 
@@ -1762,14 +1714,12 @@ async function writeNoteTab(tab, content = null, force = false) {
       noteId: tab.noteId,
       title: tab.noteTitle,
       content: nextContent,
-      badgeMask: tab.noteBadgeMask,
     });
     if (!result?.success) return false;
 
     tab.notePath = result.path || tab.notePath;
     tab.noteUpdatedAt = result.meta?.updatedAt || Date.now();
     tab.noteCreatedAt = result.meta?.createdAt || tab.noteCreatedAt;
-    tab.noteBadgeMask = normalizeNoteBadgeMask(result.meta?.badgeMask ?? tab.noteBadgeMask);
     tab.originalContent = nextContent;
     tab.content = nextContent;
     tab.isFileSaved = true;
@@ -1821,6 +1771,7 @@ async function prepareReusableEmptyTabForReplacement(tab) {
   tab.isNotePreview = false;
   tab.noteId = null;
   tab.notePath = null;
+  tab.noteFolderPath = null;
   tab.noteTitle = null;
   tab.noteCreatedAt = null;
   tab.noteUpdatedAt = null;
@@ -1850,10 +1801,10 @@ function applyNoteDataToTab(tab, note, content, options = {}) {
   tab.isNote = true;
   tab.noteId = note.id;
   tab.notePath = note.path;
+  tab.noteFolderPath = note.meta?.folderPath || "";
   tab.noteTitle = title;
   tab.noteCreatedAt = note.meta?.createdAt || Date.now();
   tab.noteUpdatedAt = note.meta?.updatedAt || Date.now();
-  tab.noteBadgeMask = normalizeNoteBadgeMask(note.meta?.badgeMask);
   tab.noteDirty = false;
   tab.draftId = null;
   tab.path = null;
@@ -1870,7 +1821,6 @@ function applyNoteDataToTab(tab, note, content, options = {}) {
   tab.element.querySelector(".close")?.classList.remove("show-unsaved");
   reloadButton(tab, null, "remove");
   updateNoteTabTitle(tab, content);
-  updateTabNoteBadge(tab);
 }
 
 function applyPendingNoteDataToTab(tab, content = "", options = {}) {
@@ -1878,10 +1828,10 @@ function applyPendingNoteDataToTab(tab, content = "", options = {}) {
   tab.isNote = true;
   tab.noteId = null;
   tab.notePath = null;
+  tab.noteFolderPath = options.folderPath || getCurrentNotesFolderPath();
   tab.noteTitle = title;
   tab.noteCreatedAt = null;
   tab.noteUpdatedAt = null;
-  tab.noteBadgeMask = normalizeNoteBadgeMask(options.badgeMask);
   tab.noteDirty = Boolean(String(content || "").trim());
   if (!tab.draftId) tab.draftId = createAutosaveId();
   tab.path = null;
@@ -1898,7 +1848,6 @@ function applyPendingNoteDataToTab(tab, content = "", options = {}) {
   tab.element.querySelector(".close")?.classList.remove("show-unsaved");
   reloadButton(tab, null, "remove");
   updateNoteTabTitle(tab, content);
-  updateTabNoteBadge(tab);
 }
 
 function clearAutosaveTimer(tab) {
@@ -3002,6 +2951,16 @@ function getQuickOpenNoteTitle(note) {
   return truncateNoteTitle(note?.title || getDefaultNoteTitle());
 }
 
+function getQuickOpenNotePathLabel(note) {
+  const root = i18next.t("monaco.quickOpen.notes");
+  const folderPath = String(note?.folderPath || "")
+    .replace(/\\/g, "/")
+    .split("/")
+    .filter(Boolean)
+    .join("\\");
+  return folderPath ? `${root}\\${folderPath}` : root;
+}
+
 function createQuickOpenFileItem(filePath, sourceRank) {
   const label = getPathBasename(filePath);
   return {
@@ -3017,11 +2976,12 @@ function createQuickOpenFileItem(filePath, sourceRank) {
 
 function createQuickOpenNoteItem(note, sourceRank) {
   const title = getQuickOpenNoteTitle(note);
+  const pathLabel = getQuickOpenNotePathLabel(note);
   return {
     label: `$(notebook) ${title}`,
-    description: i18next.t("monaco.quickOpen.notes"),
-    tooltip: title,
-    ariaLabel: `${title} ${i18next.t("monaco.quickOpen.notes")}`,
+    description: pathLabel,
+    tooltip: `${title} ${pathLabel}`,
+    ariaLabel: `${title} ${pathLabel}`,
     iconClasses: ["monapad-quick-open-note"],
     kind: "note",
     noteId: note.id,
@@ -3069,7 +3029,7 @@ async function getQuickOpenItems() {
     if (tab?.path) {
       pushFile(tab.path, 1);
     } else if (tab?.isNote && tab.noteId) {
-      pushNote(notesById.get(tab.noteId) || { id: tab.noteId, title: tab.name }, 1);
+      pushNote(notesById.get(tab.noteId) || { id: tab.noteId, title: tab.name, folderPath: tab.noteFolderPath }, 1);
     }
   });
 
@@ -3296,12 +3256,12 @@ notesAddButton?.addEventListener("click", async () => {
   await createNewNote();
 });
 
+foldersAddButton?.addEventListener("click", () => {
+  notesController?.createFolderDraft();
+});
+
 notesListRefreshButton?.addEventListener("click", async () => {
   await refreshNotesListNow();
-});
-notesBadgeToggleButton?.addEventListener("click", () => {
-  notesController?.toggleBadgesVisible();
-  updateNoteBadgeToggleButton();
 });
 
 // menu button
@@ -4044,6 +4004,8 @@ function enableTabDragging(tab, data) {
     // console.log("📌mousedown: draggingTab set");
     draggingTabData = data;
     draggingTabWasPinned = Boolean(data.isPinned);
+    tabDragOriginalOrder = [...tabData];
+    tabDragOriginalActiveTab = currentTab;
     tabOrderChangedDuringDrag = false;
     document.body.classList.add("tab-dragging");
     dragIndex = tabData.indexOf(data);
@@ -4052,9 +4014,9 @@ function enableTabDragging(tab, data) {
     currentX = 0;
     tab.style.transition = "none";
     tab.style.position = "relative";
+    externalCancelDragging = handleCancelDraggingByShortcut;
     windowBoundsCache = await window.electronAPI.getMyBounds();
     cachedToolbarRect = toolbar.getBoundingClientRect();
-    externalCancelDragging = handleCancelDraggingByShortcut;
     // console.log("📌mousedown: adding eventlistener...");
     document.addEventListener("mousemove", onMouseMove);
     document.addEventListener("mouseup", onMouseUp);
@@ -4231,6 +4193,8 @@ function enableTabDragging(tab, data) {
       document.body.classList.remove("tab-dragging");
       dragStartClientPos = null;
       externalCancelDragging = null;
+      tabDragOriginalOrder = null;
+      tabDragOriginalActiveTab = null;
       return;
     }
 
@@ -4256,6 +4220,8 @@ function enableTabDragging(tab, data) {
     draggingTab = null;
     draggingTabData = null;
     draggingTabWasPinned = false;
+    tabDragOriginalOrder = null;
+    tabDragOriginalActiveTab = null;
     cachedToolbarRect = null;
     externalCancelDragging = null;
     dragIndex = -1;
@@ -4305,10 +4271,10 @@ function enableTabDragging(tab, data) {
             isNote: releasedTabData.isNote,
             noteId: releasedTabData.noteId,
             notePath: releasedTabData.notePath,
+            noteFolderPath: releasedTabData.noteFolderPath,
             noteTitle: releasedTabData.noteTitle,
             noteCreatedAt: releasedTabData.noteCreatedAt,
             noteUpdatedAt: releasedTabData.noteUpdatedAt,
-            noteBadgeMask: releasedTabData.noteBadgeMask,
             isFileSaved: releasedTabData.isFileSaved,
             originalContent: releasedTabData.originalContent,
             fontSize: releasedTabData.fontSize,
@@ -4356,11 +4322,16 @@ function enableTabDragging(tab, data) {
 
     document.removeEventListener("mousemove", onMouseMove);
     document.removeEventListener("mouseup", onMouseUp);
+    tabPendingDeferredMouseUp = null;
+    deferredOnMouseUp = false;
+    deferredMouseUpEvent = null;
 
     if (!draggingTab) {
       document.body.classList.remove("tab-dragging");
       dragStartClientPos = null;
       externalCancelDragging = null;
+      tabDragOriginalOrder = null;
+      tabDragOriginalActiveTab = null;
       return;
     }
 
@@ -4369,6 +4340,15 @@ function enableTabDragging(tab, data) {
     draggingTab.style.position = "";
     draggingTab.style.pointerEvents = "";
     draggingTab.style.opacity = "1";
+    if (tabDragOriginalOrder?.length) {
+      tabData = tabDragOriginalOrder.filter(Boolean);
+      for (const item of tabData) {
+        if (item?.element) tabs.appendChild(item.element);
+      }
+      normalizePinnedTabs();
+      updateTabAdjacencyClasses();
+      if (tabDragOriginalActiveTab && tabData.includes(tabDragOriginalActiveTab)) switchTab(tabDragOriginalActiveTab);
+    }
     tabs.classList.remove("dragging");
     document.body.classList.remove("tab-dragging");
 
@@ -4377,10 +4357,15 @@ function enableTabDragging(tab, data) {
       resetCursorWindowMove();
       window.electronAPI.destroyCursorWindow();
     }
+    resetExternalPreviewTargetWindow();
+    hideDropIndicator();
+    windowBoundsCache = null;
 
     draggingTab = null;
     draggingTabData = null;
     draggingTabWasPinned = false;
+    tabDragOriginalOrder = null;
+    tabDragOriginalActiveTab = null;
     cachedToolbarRect = null;
     dragStartClientPos = null;
     externalCancelDragging = null;
@@ -4414,10 +4399,10 @@ async function openTabInNewWindow(targetTabData, position) {
     isNote: targetTabData.isNote,
     noteId: targetTabData.noteId,
     notePath: targetTabData.notePath,
+    noteFolderPath: targetTabData.noteFolderPath,
     noteTitle: targetTabData.noteTitle,
     noteCreatedAt: targetTabData.noteCreatedAt,
     noteUpdatedAt: targetTabData.noteUpdatedAt,
-    noteBadgeMask: targetTabData.noteBadgeMask,
     isFileSaved: targetTabData.isFileSaved,
     originalContent: targetTabData.originalContent,
     fontSize: targetTabData.fontSize,
@@ -4506,10 +4491,10 @@ function createTab(name, content = "", path = null, insertIndex = null, options 
   nameSpan.className = "name";
   nameSpan.textContent = name;
   nameSpan.title = name;
-  const noteBadge = createNoteBadgeElement(0, "tab-note-badge");
+  const fileIcon = createFileIconElement("tab-file-icon");
   const nameWrap = document.createElement("div");
   nameWrap.className = "name-wrap";
-  nameWrap.append(noteBadge, nameSpan);
+  nameWrap.append(fileIcon, nameSpan);
 
   const close = document.createElement("span");
   close.className = "close";
@@ -4555,7 +4540,7 @@ function createTab(name, content = "", path = null, insertIndex = null, options 
     _lastExternalHasBom: Boolean(options.hasBom),
     _lastExternalIsUtf8Valid: options.isUtf8Valid !== false,
     draftId: path ? null : createAutosaveId(),
-    noteBadgeMask: 0,
+    noteFolderPath: null,
   };
 
   if (targetInsertIndex !== null && targetInsertIndex >= 0 && targetInsertIndex < tabData.length) {
@@ -4655,13 +4640,22 @@ function createDefaultEmptyTab(options = {}) {
   return createEmptyTabByType(getDefaultNewTabType({ invert: Boolean(options.invert) }), options);
 }
 
+function getCurrentNotesFolderPath() {
+  return notesController?.getCurrentFolderPath() || "";
+}
+
+function getParentNotesFolderPath(folderPath = getCurrentNotesFolderPath()) {
+  const value = String(folderPath || "").replace(/\\/g, "/").split("/").filter(Boolean);
+  value.pop();
+  return value.join("/");
+}
+
 async function createNoteTab(content = "", insertIndex = null, existingNote = null, options = {}) {
   const title = existingNote?.meta?.title || getNoteTitleFromContent(content);
   let note = existingNote;
-  const badgeMask = normalizeNoteBadgeMask(existingNote?.meta?.badgeMask ?? options.badgeMask);
 
   if (!note && content.trim()) {
-    note = await window.electronAPI.createNote({ content, title, badgeMask });
+    note = await window.electronAPI.createNote({ content, title, folderPath: options.folderPath || getCurrentNotesFolderPath() });
     if (!note?.success) {
       console.error("Failed to create note:", note?.error);
       return null;
@@ -4677,7 +4671,7 @@ async function createNoteTab(content = "", insertIndex = null, existingNote = nu
     if (note) {
       applyNoteDataToTab(reusableTab, note, noteContent, options);
     } else {
-      applyPendingNoteDataToTab(reusableTab, noteContent, { ...options, badgeMask });
+      applyPendingNoteDataToTab(reusableTab, noteContent, options);
     }
     if (reusableTab === currentTab) {
       currentFilePath = `Note: ${reusableTab.name}`;
@@ -4688,7 +4682,7 @@ async function createNoteTab(content = "", insertIndex = null, existingNote = nu
   }
 
   if (!note) {
-    const data = createPendingNoteTab(noteContent, insertIndex, { ...options, badgeMask });
+    const data = createPendingNoteTab(noteContent, insertIndex, options);
     renderNotesList();
     return data;
   }
@@ -4700,7 +4694,7 @@ async function createNoteTab(content = "", insertIndex = null, existingNote = nu
 }
 
 async function createNewNote() {
-  const data = await createNoteTab("", null, null, { preview: false, badgeMask: getCurrentNoteCreationBadgeMask() });
+  const data = await createNoteTab("", null, null, { preview: false });
   if (data) {
     switchTab(data);
     if (data.noteId) updateRecentNote(data.noteId);
@@ -4734,7 +4728,7 @@ async function saveAsNote() {
     return false;
   }
 
-  const note = await window.electronAPI.createNote({ content, title: getNoteTitleFromContent(content) });
+  const note = await window.electronAPI.createNote({ content, title: getNoteTitleFromContent(content), folderPath: getCurrentNotesFolderPath() });
   if (!note?.success) {
     console.error("Failed to save as note:", note?.error);
     return false;
@@ -4746,6 +4740,7 @@ async function saveAsNote() {
     active.isNote = true;
     active.noteId = note.id;
     active.notePath = note.path;
+    active.noteFolderPath = note.meta?.folderPath || "";
     active.noteTitle = note.meta?.title || getNoteTitleFromContent(content);
     active.noteCreatedAt = note.meta?.createdAt || Date.now();
     active.noteUpdatedAt = note.meta?.updatedAt || Date.now();
@@ -5629,9 +5624,9 @@ function reloadButton(tab, filePath, mode) {
       applyFileContentToEditor(tab, content, fileInfo);
     });
 
-    const badgeEl = tab.element.querySelector(".tab-note-badge");
+    const iconEl = tab.element.querySelector(".file-icon");
     const nameEl = tab.element.querySelector(".name");
-    const referenceEl = badgeEl || nameEl;
+    const referenceEl = iconEl || nameEl;
     if (referenceEl?.parentElement) referenceEl.parentElement.insertBefore(button, referenceEl);
     if (tab === currentTab) updateStatusBar();
   }
@@ -5886,8 +5881,7 @@ notesController = createNotesPanelController({
   electronAPI: window.electronAPI,
   refs: {
     notesList,
-    notesBadgeFilterBar,
-    notesBadgeToggleButton,
+    notesListHeading,
     noteContextMenu,
   },
   getNotesIndexCache: () => notesIndexCache,
@@ -5910,9 +5904,7 @@ notesController = createNotesPanelController({
   convertNoteToUntitled,
   convertNoteToFile,
   deleteNoteEverywhere,
-  getOpenNoteTabById,
-  updateTabNoteBadge,
-  savePinnedTabsState,
+  deleteFolderEverywhere,
   onNotesIndexUpdated: syncOpenNoteTabsWithNotesIndex,
   onShowContextMenu: () => {
     customContextMenu.style.display = "none";
@@ -5920,8 +5912,6 @@ notesController = createNotesPanelController({
     rightClickedTab = null;
   },
 });
-updateNoteBadgeToggleButton();
-updateNoteBadgeContextMenuLabels();
 
 async function renderNotesList(options = {}) {
   return await notesController?.renderNotesList(options);
@@ -6010,14 +6000,13 @@ function syncOpenNoteTabsWithNotesIndex(notes = notesIndexCache) {
     const meta = notesById.get(tab.noteId);
     if (!meta) continue;
 
-    const nextMask = normalizeNoteBadgeMask(meta.badgeMask);
-    if (tab.noteBadgeMask !== nextMask) {
-      tab.noteBadgeMask = nextMask;
-      updateTabNoteBadge(tab);
-      changed = true;
-    }
     if (meta.createdAt && tab.noteCreatedAt !== meta.createdAt) tab.noteCreatedAt = meta.createdAt;
     if (meta.updatedAt && tab.noteUpdatedAt !== meta.updatedAt) tab.noteUpdatedAt = meta.updatedAt;
+    const nextFolderPath = meta.folderPath || "";
+    if (tab.noteFolderPath !== nextFolderPath) {
+      tab.noteFolderPath = nextFolderPath;
+      changed = true;
+    }
   }
   if (changed) savePinnedTabsState();
 }
@@ -6084,10 +6073,10 @@ async function getOpenTabPayload(tab) {
     isNote: tab.isNote,
     noteId: tab.noteId,
     notePath: tab.notePath,
+    noteFolderPath: tab.noteFolderPath,
     noteTitle: tab.noteTitle,
     noteCreatedAt: tab.noteCreatedAt,
     noteUpdatedAt: tab.noteUpdatedAt,
-    noteBadgeMask: tab.noteBadgeMask,
     isFileSaved: tab.isFileSaved,
     originalContent: tab.originalContent,
     fontSize: tab.fontSize,
@@ -6181,6 +6170,19 @@ async function deleteNoteEverywhere(noteId, { trash = false } = {}) {
   return true;
 }
 
+async function deleteFolderEverywhere(folderPath) {
+  const prefix = `${folderPath}/`;
+  const result = await window.electronAPI.deleteFolder(folderPath);
+  if (!result?.success) return false;
+
+  for (const tab of [...tabData].filter((item) => item.isNote && (item.noteFolderPath === folderPath || item.noteFolderPath?.startsWith(prefix)))) {
+    removeTabAndAdjustUI(tab);
+  }
+  await renderNotesList();
+  await populateRecentMenu();
+  return true;
+}
+
 async function getLiveNoteContent(noteId) {
   const openTab = tabData.find((tab) => tab.isNote && tab.noteId === noteId);
   if (openTab) return openTab.model?.getValue() ?? openTab.content ?? "";
@@ -6202,6 +6204,7 @@ async function convertNoteToUntitled(noteId) {
     openTab.isNotePreview = false;
     openTab.noteId = null;
     openTab.notePath = null;
+    openTab.noteFolderPath = null;
     openTab.noteTitle = null;
     openTab.noteDirty = false;
     openTab.path = null;
@@ -6261,10 +6264,10 @@ async function getNoteTabPayload(noteId) {
       isNote: true,
       noteId: openTab.noteId,
       notePath: openTab.notePath,
+      noteFolderPath: openTab.noteFolderPath,
       noteTitle: truncateNoteTitle(openTab.noteTitle || openTab.name),
       noteCreatedAt: openTab.noteCreatedAt,
       noteUpdatedAt: openTab.noteUpdatedAt,
-      noteBadgeMask: openTab.noteBadgeMask,
       isFileSaved: true,
       originalContent: content,
       fontSize: openTab.fontSize,
@@ -6284,10 +6287,10 @@ async function getNoteTabPayload(noteId) {
     isNote: true,
     noteId: note.id,
     notePath: note.path,
+    noteFolderPath: note.meta?.folderPath || "",
     noteTitle: title,
     noteCreatedAt: note.meta?.createdAt,
     noteUpdatedAt: note.meta?.updatedAt,
-    noteBadgeMask: normalizeNoteBadgeMask(note.meta?.badgeMask),
     isFileSaved: true,
     originalContent: note.content || "",
     fontSize: persistentFontSize,
@@ -6301,7 +6304,6 @@ async function createNoteTabFromPayload(payload, insertIndex = null, placement =
   if (!payload?.noteId)
     return createNoteTab(payload?.content || "", insertIndex, null, {
       preview: false,
-      badgeMask: payload?.noteBadgeMask,
     });
   const existingTab = tabData.find((tab) => tab.isNote && tab.noteId === payload.noteId);
   const pinnedCount = getPinnedTabCount();
@@ -6324,10 +6326,10 @@ async function createNoteTabFromPayload(payload, insertIndex = null, placement =
     path: payload.notePath,
     content: payload.content,
     meta: {
+      folderPath: payload.noteFolderPath || "",
       title: truncateNoteTitle(payload.noteTitle || payload.name),
       createdAt: payload.noteCreatedAt,
       updatedAt: payload.noteUpdatedAt,
-      badgeMask: payload.noteBadgeMask,
     },
   };
   const tab = await createNoteTab(payload.content || "", adjustedInsertIndex, note);
@@ -6424,6 +6426,9 @@ let suppressNoteClick = false;
 let suppressGlobalSearchMatchClick = false;
 let notePreviewOpenSeq = 0;
 const pendingNoteOpens = new Map();
+const NOTE_FOLDER_HOVER_ARM_DELAY = 220;
+const NOTE_FOLDER_HOVER_OPEN_DELAY = 1500;
+const NOTE_FOLDER_DROP_FLASH_DURATION = 280;
 
 function beginNoteListDrag(e, item) {
   if (e.button === 1) {
@@ -6435,19 +6440,24 @@ function beginNoteListDrag(e, item) {
 }
 
 function startSidePanelNoteDragFromItem(item, e, options = {}) {
+  const entryType = item.dataset.entryType || "note";
   noteDragState = {
     item,
+    entryType,
+    entryKey: item.dataset.entryKey,
     noteId: item.dataset.noteId,
+    folderPath: entryType === "folder" ? item.dataset.folderPath : getCurrentNotesFolderPath(),
+    sourceFolderPath: getCurrentNotesFolderPath(),
     startY: e.clientY,
     currentY: 0,
+    pointerOffsetY: e.clientY - item.getBoundingClientRect().top,
     dragIndex: [...notesList.querySelectorAll(".note-list-item")].indexOf(item),
-    originalOrder: [...notesList.querySelectorAll(".note-list-item")].map((node) => node.dataset.noteId),
+    originalOrder: [...notesList.querySelectorAll(".note-list-item")].map((node) => node.dataset.entryKey),
     dragging: false,
     mode: "panel",
-    payloadPromise: getNoteTabPayload(item.dataset.noteId),
+    payloadPromise: entryType === "note" ? getNoteTabPayload(item.dataset.noteId) : null,
     externalStarted: false,
     transferringToTabDrag: false,
-    sortLocked: notesController?.getNoteBadgeFilter() !== NOTE_BADGE_ALL_FILTER,
   };
   if (options.forceDragging) {
     noteDragState.dragging = true;
@@ -6463,6 +6473,11 @@ function isPointInSidePanel(e) {
 
 function resetNoteListDragItem(item) {
   document.body.classList.remove("note-dragging");
+  if (!item) return;
+  resetNoteListDragItemStyle(item);
+}
+
+function resetNoteListDragItemStyle(item) {
   if (!item) return;
   item.classList.remove("dragging");
   item.style.transition = "";
@@ -6481,13 +6496,167 @@ function applyNoteListDragItemStyle(item) {
   item.style.pointerEvents = "none";
 }
 
+function clearNoteFolderDropTarget({ flash = false } = {}) {
+  if (noteDragState?.folderDropArmTimer) {
+    clearTimeout(noteDragState.folderDropArmTimer);
+    noteDragState.folderDropArmTimer = null;
+  }
+  if (noteDragState?.folderDropTimer) {
+    clearTimeout(noteDragState.folderDropTimer);
+    noteDragState.folderDropTimer = null;
+  }
+  const target = noteDragState?.folderDropElement;
+  if (target) {
+    target.classList.remove("folder-drop-hover");
+    if (flash) {
+      target.classList.remove("folder-drop-flash");
+      void target.offsetWidth;
+      target.classList.add("folder-drop-flash");
+      setTimeout(() => target.classList.remove("folder-drop-flash"), NOTE_FOLDER_DROP_FLASH_DURATION);
+    }
+  }
+  if (noteDragState) {
+    noteDragState.folderDropKey = null;
+    noteDragState.folderDropElement = null;
+    noteDragState.folderDropTargetPath = null;
+    noteDragState.folderDropKind = null;
+  }
+}
+
+function getDraggedItemProjectedRect(state) {
+  const item = state?.item;
+  if (!item) return null;
+  const rect = item.getBoundingClientRect();
+  return {
+    top: rect.top,
+    bottom: rect.bottom,
+    height: rect.height,
+  };
+}
+
+function isDraggedEdgeInMiddleBand(state, targetRect) {
+  const draggedRect = getDraggedItemProjectedRect(state);
+  if (!draggedRect) return false;
+  const middleStart = targetRect.top + targetRect.height / 3;
+  const middleEnd = targetRect.top + (targetRect.height * 2) / 3;
+  const edge = state.currentY >= 0 ? draggedRect.bottom : draggedRect.top;
+  return edge >= middleStart && edge <= middleEnd;
+}
+
+function getNoteFolderDropTarget(state) {
+  if (!state?.dragging) return null;
+  if (state.item?.classList.contains("pinned")) return null;
+  const heading = notesListHeading?.classList.contains("folder-heading") ? notesListHeading : null;
+  if (heading) {
+    const rect = heading.getBoundingClientRect();
+    const draggedRect = getDraggedItemProjectedRect(state);
+    if (draggedRect && draggedRect.bottom >= rect.top && draggedRect.top <= rect.top + (rect.height * 2) / 3) {
+      return {
+        key: "parent",
+        element: heading,
+        targetFolderPath: getParentNotesFolderPath(),
+        kind: "parent",
+      };
+    }
+  }
+
+  const candidates = [...notesList.querySelectorAll(".note-list-item.folder-list-item")].filter((target) => target !== state.item);
+  for (const target of candidates) {
+    const rect = target.getBoundingClientRect();
+    if (!isDraggedEdgeInMiddleBand(state, rect)) continue;
+    return {
+      key: target.dataset.entryKey,
+      element: target,
+      targetFolderPath: target.dataset.folderPath || "",
+      kind: "folder",
+    };
+  }
+  return null;
+}
+
+function flashNoteFolderDropElement(element) {
+  if (!element) return Promise.resolve();
+  element.classList.remove("folder-drop-hover");
+  element.classList.remove("folder-drop-flash");
+  void element.offsetWidth;
+  element.classList.add("folder-drop-flash");
+  return new Promise((resolve) => {
+    setTimeout(() => {
+      element.classList.remove("folder-drop-flash");
+      resolve();
+    }, NOTE_FOLDER_DROP_FLASH_DURATION);
+  });
+}
+
+async function openNoteFolderDropTarget(state) {
+  if (!state || noteDragState !== state || state.folderDropTargetPath == null) return;
+  const targetPath = state.folderDropTargetPath;
+  const targetKind = state.folderDropKind;
+  const targetElement = state.folderDropElement;
+  if (state.folderDropTimer) {
+    clearTimeout(state.folderDropTimer);
+    state.folderDropTimer = null;
+  }
+  state.folderDropOpening = true;
+  await flashNoteFolderDropElement(targetElement);
+  if (noteDragState !== state) return;
+  state.folderDropKey = null;
+  state.folderDropElement = null;
+  state.folderDropTargetPath = null;
+  state.folderDropKind = null;
+  state.folderDropOpening = false;
+  if (targetKind === "parent") await notesController?.openParentFolder?.();
+  else await notesController?.openFolder?.(targetPath);
+  if (noteDragState !== state) return;
+  const clientY = state.lastClientY || state.startY;
+  state.pendingMoveFolderPath = getCurrentNotesFolderPath();
+  pickUpDraggedNoteListItemInCurrentFolder(state, clientY);
+  state.originalOrder = [...notesList.querySelectorAll(".note-list-item")]
+    .filter((node) => node !== state.item)
+    .map((node) => node.dataset.entryKey);
+  state.originalOrder.push(state.entryKey);
+}
+
+function updateNoteFolderDropTarget(e) {
+  if (!noteDragState?.dragging || noteDragState.mode !== "panel") return false;
+  if (noteDragState.folderDropOpening) return true;
+  const target = getNoteFolderDropTarget(noteDragState);
+  if (!target) {
+    clearNoteFolderDropTarget();
+    return false;
+  }
+  if (noteDragState.folderDropKey !== target.key) {
+    clearNoteFolderDropTarget();
+    noteDragState.folderDropKey = target.key;
+    noteDragState.folderDropElement = target.element;
+    noteDragState.folderDropTargetPath = target.targetFolderPath;
+    noteDragState.folderDropKind = target.kind;
+    const state = noteDragState;
+    state.folderDropArmTimer = setTimeout(() => {
+      if (noteDragState !== state || state.folderDropKey !== target.key) return;
+      state.folderDropArmTimer = null;
+      target.element.classList.add("folder-drop-hover");
+      state.folderDropTimer = setTimeout(() => openNoteFolderDropTarget(state), NOTE_FOLDER_HOVER_OPEN_DELAY);
+    }, NOTE_FOLDER_HOVER_ARM_DELAY);
+  }
+  return true;
+}
+
 function restoreNoteListOrder(state) {
   if (!state?.originalOrder?.length) return;
-  const nodes = new Map([...notesList.querySelectorAll(".note-list-item")].map((node) => [node.dataset.noteId, node]));
-  for (const noteId of state.originalOrder) {
-    const node = nodes.get(noteId);
+  const nodes = new Map([...notesList.querySelectorAll(".note-list-item")].map((node) => [node.dataset.entryKey, node]));
+  for (const entryKey of state.originalOrder) {
+    const node = nodes.get(entryKey);
     if (node) notesList.appendChild(node);
   }
+}
+
+function removeDraggedItemWhenVirtualFolder(state) {
+  if (!state || state.pendingMoveFolderPath == null) return false;
+  if (state.pendingMoveFolderPath === state.folderPath) return false;
+  resetNoteListDragItemStyle(state.item);
+  if (state.item?.parentNode) state.item.remove();
+  return true;
 }
 
 function cleanupNoteExternalDrag() {
@@ -6523,13 +6692,39 @@ function positionNoteListItemAtCursor(state, clientY) {
   state.item.style.transform = `translateY(${state.currentY}px)`;
 }
 
+function pickUpDraggedNoteListItemInCurrentFolder(state, clientY) {
+  if (!state?.entryKey) return;
+  const existing = [...notesList.querySelectorAll(".note-list-item")].find((node) => node.dataset.entryKey === state.entryKey);
+  if (existing && existing !== state.item) {
+    resetNoteListDragItemStyle(state.item);
+    if (state.item?.parentNode) state.item.remove();
+    state.item = existing;
+  } else if (!existing && state.item && !notesList.contains(state.item)) {
+    notesList.appendChild(state.item);
+  }
+
+  state.item.style.transform = "";
+  applyNoteListDragItemStyle(state.item);
+  state.dragIndex = moveNoteListItemToCursor(state.item, clientY);
+  state.item.style.transform = "";
+  const baseTop = state.item.getBoundingClientRect().top;
+  state.currentY = clientY - state.pointerOffsetY - baseTop;
+  state.startY = clientY - state.currentY;
+  state.item.style.transform = `translateY(${state.currentY}px)`;
+}
+
 async function startNoteExternalDrag(e) {
   if (!noteDragState || noteDragState.externalStarted) return;
+  if (noteDragState.entryType !== "note") return;
   const state = noteDragState;
   state.externalStarted = true;
   state.mode = "external";
-  restoreNoteListOrder(state);
-  resetNoteListDragItem(state.item);
+  if (!removeDraggedItemWhenVirtualFolder(state)) {
+    restoreNoteListOrder(state);
+    resetNoteListDragItem(state.item);
+  } else {
+    document.body.classList.remove("note-dragging");
+  }
   windowBoundsCache = await window.electronAPI.getMyBounds();
   if (noteDragState !== state) return;
   dragStartClientPos = { x: e.clientX, y: e.clientY };
@@ -6606,9 +6801,7 @@ function resumeSidePanelNoteDrag(e) {
   state.externalStarted = false;
   state.transferringToTabDrag = false;
   state.dragging = true;
-  applyNoteListDragItemStyle(state.item);
-  if (!state.sortLocked) state.dragIndex = moveNoteListItemToCursor(state.item, e.clientY);
-  positionNoteListItemAtCursor(state, e.clientY);
+  pickUpDraggedNoteListItemInCurrentFolder(state, e.clientY);
 }
 
 async function finishNoteExternalDrag(e) {
@@ -6653,13 +6846,27 @@ async function finishNoteExternalDrag(e) {
   await window.electronAPI.createNewWindowWithTab(payload, position);
 }
 
-function cancelNoteDragByShortcut() {
+async function cancelNoteDragByShortcut() {
   if (!noteDragState) return;
   const state = noteDragState;
+  clearNoteFolderDropTarget();
+  cleanupNoteExternalDrag();
+  if (getCurrentNotesFolderPath() !== state.sourceFolderPath) {
+    await notesController?.openFolder?.(state.sourceFolderPath || "");
+  }
+  if (noteDragState !== state) return;
+  const existing = [...notesList.querySelectorAll(".note-list-item")].find((node) => node.dataset.entryKey === state.entryKey);
+  if (existing && existing !== state.item) {
+    resetNoteListDragItemStyle(state.item);
+    if (state.item?.parentNode) state.item.remove();
+    state.item = existing;
+  } else if (!existing && state.item && !notesList.contains(state.item)) {
+    notesList.appendChild(state.item);
+  }
   restoreNoteListOrder(state);
   resetNoteListDragItem(state.item);
-  cleanupNoteExternalDrag();
   noteDragState = null;
+  await renderNotesList();
 }
 
 function beginGlobalSearchMatchDrag(e, row, match) {
@@ -6811,6 +7018,37 @@ function cancelGlobalSearchMatchDragByShortcut() {
   globalSearchDragState = null;
 }
 
+async function cancelActiveDragByEscape() {
+  if (draggingTab && externalCancelDragging) {
+    await Promise.resolve(externalCancelDragging());
+    return true;
+  }
+  if (noteDragState) {
+    await cancelNoteDragByShortcut();
+    return true;
+  }
+  if (globalSearchDragState) {
+    cancelGlobalSearchMatchDragByShortcut();
+    return true;
+  }
+  if (externalCancelDragging) {
+    await Promise.resolve(externalCancelDragging());
+    return true;
+  }
+  return false;
+}
+
+async function moveDraggedNoteEntryToFolder(state, targetFolderPath) {
+  if (!state) return false;
+  const result = await window.electronAPI.moveNoteEntry({
+    entryType: state.entryType,
+    noteId: state.noteId,
+    folderPath: state.folderPath,
+    targetFolderPath,
+  });
+  return Boolean(result?.success);
+}
+
 window.addEventListener("mousemove", (e) => {
   if (globalSearchDragState) {
     if (!globalSearchDragState.dragging) {
@@ -6850,13 +7088,17 @@ window.addEventListener("mousemove", (e) => {
   }
 
   if (!isPointInSidePanel(e)) {
+    clearNoteFolderDropTarget();
     startNoteExternalDrag(e);
     return;
   }
 
   noteDragState.currentY = e.clientY - noteDragState.startY;
+  noteDragState.lastClientY = e.clientY;
   item.style.transform = `translateY(${noteDragState.currentY}px)`;
-  if (noteDragState.sortLocked) return;
+  if (updateNoteFolderDropTarget(e)) {
+    return;
+  }
 
   const items = [...notesList.querySelectorAll(".note-list-item")];
   const currentRect = item.getBoundingClientRect();
@@ -6910,11 +7152,15 @@ window.addEventListener("mouseup", async (e) => {
   }
 
   if (!noteDragState) return;
-  const { item, dragging } = noteDragState;
+  const state = noteDragState;
+  const { item, dragging } = state;
   if (noteDragState.mode === "external") {
     await finishNoteExternalDrag(e);
     return;
   }
+  const dropFolderPath = state.folderDropTargetPath;
+  const pendingMoveFolderPath = state.pendingMoveFolderPath;
+  clearNoteFolderDropTarget();
   noteDragState = null;
   document.body.classList.remove("note-dragging");
   if (!dragging) return;
@@ -6922,16 +7168,15 @@ window.addEventListener("mouseup", async (e) => {
   setTimeout(() => {
     suppressNoteClick = false;
   }, 0);
-  item.classList.remove("dragging");
-  item.style.transition = "";
-  item.style.transform = "";
-  item.style.position = "";
-  item.style.zIndex = "";
-  item.style.pointerEvents = "";
-  const orderedIds = [...notesList.querySelectorAll(".note-list-item")]
-    .map((node) => node.dataset.noteId)
+  resetNoteListDragItemStyle(item);
+  const targetFolderPath = dropFolderPath ?? pendingMoveFolderPath ?? null;
+  if (targetFolderPath !== null && targetFolderPath !== state.folderPath) {
+    await moveDraggedNoteEntryToFolder(state, targetFolderPath);
+  }
+  const orderedKeys = [...notesList.querySelectorAll(".note-list-item")]
+    .map((node) => node.dataset.entryKey)
     .filter(Boolean);
-  if (notesController?.getNoteBadgeFilter() === NOTE_BADGE_ALL_FILTER) await window.electronAPI.reorderNotes({ orderedIds });
+  await window.electronAPI.reorderNotes({ folderPath: getCurrentNotesFolderPath(), orderedKeys });
   await renderNotesList();
   await populateRecentMenu();
 });
@@ -7197,6 +7442,20 @@ function syncTabSaveState(tab, content = null) {
 const messageQueue = [];
 let isShowingMessage = false;
 let isWindowFocused = true; // default is focused
+let notesFocusRefreshTimer = null;
+
+function scheduleNotesFocusRefresh(delay = 150) {
+  if (notesFocusRefreshTimer) clearTimeout(notesFocusRefreshTimer);
+  notesFocusRefreshTimer = setTimeout(() => {
+    notesFocusRefreshTimer = null;
+    if (!isWindowFocused) return;
+    if (noteDragState || globalSearchDragState) {
+      scheduleNotesFocusRefresh(150);
+      return;
+    }
+    refreshNotesOnWindowFocus();
+  }, delay);
+}
 
 function isStatusBarVisible() {
   return Boolean(settings.statusBarVisible);
@@ -7290,7 +7549,11 @@ function processQueue() {
 // get forcus state
 window.electronAPI.onWindowFocus((focused) => {
   isWindowFocused = focused;
-  if (focused) refreshNotesOnWindowFocus();
+  if (notesFocusRefreshTimer) {
+    clearTimeout(notesFocusRefreshTimer);
+    notesFocusRefreshTimer = null;
+  }
+  if (focused) scheduleNotesFocusRefresh();
   if (focused && messageQueue.length > 0 && !isShowingMessage) {
     processQueue();
   }
@@ -7729,6 +7992,8 @@ async function closeTopOverlayByEscape() {
     return true;
   }
 
+  if (notesController?.isEditingFolderName()) return false;
+
   if (document.body.classList.contains("side-panel-open")) {
     setSidePanelOpen(false);
     return true;
@@ -7769,8 +8034,25 @@ settingsMenu.addEventListener("focusin", () => {
 });
 
 // shortcuts
+window.addEventListener(
+  "keydown",
+  (e) => {
+    if (e.code !== "Escape" || e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
+    if (!draggingTab && !noteDragState && !globalSearchDragState && !externalCancelDragging) return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    void cancelActiveDragByEscape();
+  },
+  true,
+);
+
 window.addEventListener("keydown", async (e) => {
   if (e.code === "Escape" && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey) {
+    if (await cancelActiveDragByEscape()) {
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
     if (await closeTopOverlayByEscape()) {
       e.preventDefault();
       e.stopPropagation();
