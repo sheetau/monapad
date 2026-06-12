@@ -13,7 +13,6 @@
   --highlight: #e6b450; /* accent color, link color */
   --btnHighlight: var(--highlight); /* modal highlight button */
   --warn: #d95757; /* deleted file title */
-  --windowClose: var(--warn); /* window close */
 
   /* you can specify one or more fonts to be used in the editor in order of priority */
   /* if this field is not empty, the font setting in the app will be ignored */

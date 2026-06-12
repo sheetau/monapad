@@ -13,7 +13,6 @@
   --highlight: #fafafa; /* accent color, link color */
   --btnHighlight: var(--highlight); /* modal highlight button */
   --warn: #cf5d6e; /* deleted file title */
-  --windowClose: var(--highlight); /* window close */
 
   --window-top-safe-area: 0px; /* to prevent windows 11 border from overlapping the content, set to 0px if not needed */
 

@@ -3660,32 +3660,17 @@ document.getElementById("aboutBtn").addEventListener("click", () => {
 document.getElementById("about-close").addEventListener("click", closeAboutModal);
 
 // window controls
-const maxButton = document.getElementById("max-button");
-const maxButtonIcon = maxButton?.querySelector(".codicon");
-
-function updateMaximizeButtonIcon(isMaximized) {
-  if (!maxButton || !maxButtonIcon) return;
-  maxButtonIcon.classList.toggle("codicon-chrome-maximize", !isMaximized);
-  maxButtonIcon.classList.toggle("codicon-chrome-restore", Boolean(isMaximized));
-  const label = isMaximized ? "Restore" : "Maximize";
-  maxButton.setAttribute("aria-label", label);
-  maxButton.title = label;
-}
-
-document.getElementById("min-button").addEventListener("click", () => {
+document.getElementById("min-button")?.addEventListener("click", () => {
   window.electronAPI.minimizeWindow();
 });
 
-maxButton.addEventListener("click", () => {
+document.getElementById("max-button")?.addEventListener("click", () => {
   window.electronAPI.toggleMaximizeWindow();
 });
 
-document.getElementById("close-button").addEventListener("click", () => {
+document.getElementById("close-button")?.addEventListener("click", () => {
   attemptCloseWindow();
 });
-
-window.electronAPI.onWindowMaximizeState(updateMaximizeButtonIcon);
-window.electronAPI.isWindowMaximized?.().then(updateMaximizeButtonIcon);
 
 window.electronAPI.onAttemptCloseWindow(() => {
   attemptCloseWindow();

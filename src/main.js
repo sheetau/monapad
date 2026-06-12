@@ -32,6 +32,12 @@ let mobileSharePort = null;
 let mobileShareStartPromise = null;
 let autosaveDraftRecoveryClaimed = false;
 
+const WINDOW_CONTROL_OVERLAY = {
+  height: 36,
+  color: "#000000",
+  symbolColor: "#565b66",
+};
+
 const mobileShareItems = new Map();
 const MOBILE_SHARE_CREATED_TTL_MS = 5 * 60 * 1000;
 const MOBILE_SHARE_OPENED_TTL_MS = 2 * 60 * 1000;
@@ -69,6 +75,8 @@ function createWindow() {
     minHeight: 210,
     backgroundColor: "#000000",
     frame: false,
+    titleBarStyle: "hidden",
+    titleBarOverlay: WINDOW_CONTROL_OVERLAY,
     // transparent: true,
     show: false,
     autoHideMenuBar: true,
@@ -149,6 +157,8 @@ function createNewWindow(parentWindow, position) {
     minHeight: 210,
     backgroundColor: "#000000",
     frame: false,
+    titleBarStyle: "hidden",
+    titleBarOverlay: WINDOW_CONTROL_OVERLAY,
     // transparent: true,
     show: false,
     autoHideMenuBar: true,
@@ -392,7 +402,11 @@ ipcMain.on("createCursorWindow", () => {
 ipcMain.on("moveCursorWindow", (e, pos) => {
   if (!cursorWindow) return;
   const nextBounds = { x: pos.x + 12, y: pos.y + 12, width: 23, height: 23 };
-  if (!lastCursorWindowBounds || lastCursorWindowBounds.x !== nextBounds.x || lastCursorWindowBounds.y !== nextBounds.y) {
+  if (
+    !lastCursorWindowBounds ||
+    lastCursorWindowBounds.x !== nextBounds.x ||
+    lastCursorWindowBounds.y !== nextBounds.y
+  ) {
     cursorWindow.setBounds(nextBounds);
     lastCursorWindowBounds = nextBounds;
   }
@@ -763,8 +777,7 @@ ipcMain.handle("autosave:list-drafts", async (event, payload = {}) => {
     const dirs = await ensureAutosaveDirs();
     const ownerId = Number.isInteger(payload.ownerId) ? payload.ownerId : null;
     const requesterWindow = BrowserWindow.fromWebContents(event.sender);
-    const shouldClaimRecovery =
-      !autosaveDraftRecoveryClaimed && mainWindow && requesterWindow?.id === mainWindow.id;
+    const shouldClaimRecovery = !autosaveDraftRecoveryClaimed && mainWindow && requesterWindow?.id === mainWindow.id;
     if (shouldClaimRecovery) autosaveDraftRecoveryClaimed = true;
 
     const drafts = await listAutosaveEntries(dirs.drafts);
@@ -885,7 +898,9 @@ function isSafeNoteId(id) {
 }
 
 function normalizeFolderPath(folderPath) {
-  const value = String(folderPath || "").replace(/\\/g, "/").trim();
+  const value = String(folderPath || "")
+    .replace(/\\/g, "/")
+    .trim();
   if (!value) return "";
   const parts = value.split("/").filter(Boolean);
   if (parts.some((part) => part === "." || part === ".." || !isSafeFolderName(part))) return "";
@@ -896,7 +911,13 @@ const FOLDER_NAME_MAX_LENGTH = 100;
 
 function isSafeFolderName(name) {
   const value = String(name || "").trim();
-  return Boolean(value) && value.length <= FOLDER_NAME_MAX_LENGTH && value !== "." && value !== ".." && !/[<>:"/\\|?*\x00-\x1f]/.test(value);
+  return (
+    Boolean(value) &&
+    value.length <= FOLDER_NAME_MAX_LENGTH &&
+    value !== "." &&
+    value !== ".." &&
+    !/[<>:"/\\|?*\x00-\x1f]/.test(value)
+  );
 }
 
 function getFolderParentPath(folderPath) {
@@ -937,7 +958,9 @@ function getFolderNoteCount(index, folderPath = "") {
 }
 
 function withFolderNoteCounts(index, entries) {
-  return entries.map((entry) => (entry?.type === "folder" ? { ...entry, noteCount: getFolderNoteCount(index, entry.path) } : entry));
+  return entries.map((entry) =>
+    entry?.type === "folder" ? { ...entry, noteCount: getFolderNoteCount(index, entry.path) } : entry,
+  );
 }
 
 async function withNoteHeadingMeta(entries) {
@@ -1074,7 +1097,10 @@ async function upsertNoteIndexEntry(noteId, content, extra = {}) {
   const existing = index.notes.find((note) => note.id === noteId);
   const folderPath = normalizeFolderPath(extra.folderPath ?? existing?.folderPath);
   const siblingEntries = getDirectEntries(index, folderPath);
-  const maxOrder = siblingEntries.reduce((max, entry) => Math.max(max, Number.isFinite(entry.order) ? entry.order : -1), -1);
+  const maxOrder = siblingEntries.reduce(
+    (max, entry) => Math.max(max, Number.isFinite(entry.order) ? entry.order : -1),
+    -1,
+  );
   const minUnpinnedOrder = siblingEntries
     .filter((entry) => !entry.pinned)
     .reduce((min, note) => Math.min(min, Number.isFinite(note.order) ? note.order : 0), 0);
@@ -1236,7 +1262,9 @@ ipcMain.handle("notes:update-meta", async (event, payload = {}) => {
     if (typeof payload.pinned === "boolean") {
       note.pinned = payload.pinned;
       if (payload.pinned) {
-        const siblings = getDirectEntries(index, note.folderPath).filter((item) => getEntryKey(item) !== getEntryKey(note));
+        const siblings = getDirectEntries(index, note.folderPath).filter(
+          (item) => getEntryKey(item) !== getEntryKey(note),
+        );
         note.order = Math.min(-1, ...siblings.filter((item) => item.pinned).map((item) => item.order || 0)) - 1;
       }
     }
@@ -1265,7 +1293,9 @@ ipcMain.handle("folders:create", async (event, payload = {}) => {
     await fs.promises.mkdir(getFolderDiskPath(notesDir, folderPath), { recursive: false });
     const now = Date.now();
     const siblings = getDirectEntries(index, parentPath);
-    const minUnpinnedOrder = siblings.filter((entry) => !entry.pinned).reduce((min, entry) => Math.min(min, entry.order || 0), 0);
+    const minUnpinnedOrder = siblings
+      .filter((entry) => !entry.pinned)
+      .reduce((min, entry) => Math.min(min, entry.order || 0), 0);
     const folder = {
       type: "folder",
       path: folderPath,
@@ -1318,7 +1348,8 @@ ipcMain.handle("folders:rename", async (event, payload = {}) => {
     }
     for (const note of index.notes) {
       if (note.folderPath === folderPath) note.folderPath = nextPath;
-      else if (note.folderPath?.startsWith(oldPrefix)) note.folderPath = `${nextPrefix}${note.folderPath.slice(oldPrefix.length)}`;
+      else if (note.folderPath?.startsWith(oldPrefix))
+        note.folderPath = `${nextPrefix}${note.folderPath.slice(oldPrefix.length)}`;
     }
     normalizeAllEntryOrders(index);
     await writeNotesIndex(index);
@@ -1342,7 +1373,9 @@ ipcMain.handle("folders:delete", async (event, folderPathInput) => {
       await fs.promises.rm(folderDiskPath, { recursive: true, force: true });
     });
     index.folders = index.folders.filter((item) => item.path !== folderPath && !item.path.startsWith(oldPrefix));
-    index.notes = index.notes.filter((note) => note.folderPath !== folderPath && !note.folderPath?.startsWith(oldPrefix));
+    index.notes = index.notes.filter(
+      (note) => note.folderPath !== folderPath && !note.folderPath?.startsWith(oldPrefix),
+    );
     normalizeAllEntryOrders(index);
     await writeNotesIndex(index);
     return { success: true };
@@ -1360,7 +1393,9 @@ ipcMain.handle("folders:update-meta", async (event, payload = {}) => {
     if (typeof payload.pinned === "boolean") {
       folder.pinned = payload.pinned;
       if (payload.pinned) {
-        const siblings = getDirectEntries(index, folder.parentPath).filter((item) => getEntryKey(item) !== getEntryKey(folder));
+        const siblings = getDirectEntries(index, folder.parentPath).filter(
+          (item) => getEntryKey(item) !== getEntryKey(folder),
+        );
         folder.order = Math.min(-1, ...siblings.filter((item) => item.pinned).map((item) => item.order || 0)) - 1;
       }
     }
@@ -1396,7 +1431,9 @@ ipcMain.handle("notes:move-entry", async (event, payload = {}) => {
       await fs.promises.mkdir(path.dirname(targetPath), { recursive: true });
       await fs.promises.rename(sourcePath, targetPath);
       note.folderPath = targetFolderPath;
-      const siblings = getDirectEntries(index, targetFolderPath).filter((entry) => getEntryKey(entry) !== getEntryKey(note));
+      const siblings = getDirectEntries(index, targetFolderPath).filter(
+        (entry) => getEntryKey(entry) !== getEntryKey(note),
+      );
       const targetGroup = siblings.filter((entry) => Boolean(entry.pinned) === Boolean(note.pinned));
       note.order = Math.min(-1, ...targetGroup.map((entry) => entry.order || 0)) - 1;
       normalizeFolderEntryOrder(index, sourceFolderPath);
@@ -1435,10 +1472,13 @@ ipcMain.handle("notes:move-entry", async (event, payload = {}) => {
     }
     for (const note of index.notes) {
       if (note.folderPath === folderPath) note.folderPath = nextPath;
-      else if (note.folderPath?.startsWith(oldPrefix)) note.folderPath = `${nextPrefix}${note.folderPath.slice(oldPrefix.length)}`;
+      else if (note.folderPath?.startsWith(oldPrefix))
+        note.folderPath = `${nextPrefix}${note.folderPath.slice(oldPrefix.length)}`;
     }
     const movedFolder = index.folders.find((item) => item.path === nextPath);
-    const siblings = getDirectEntries(index, targetFolderPath).filter((entry) => getEntryKey(entry) !== getEntryKey(movedFolder));
+    const siblings = getDirectEntries(index, targetFolderPath).filter(
+      (entry) => getEntryKey(entry) !== getEntryKey(movedFolder),
+    );
     const targetGroup = siblings.filter((entry) => Boolean(entry.pinned) === Boolean(movedFolder.pinned));
     movedFolder.order = Math.min(-1, ...targetGroup.map((entry) => entry.order || 0)) - 1;
     normalizeFolderEntryOrder(index, sourceParentPath);
@@ -1514,10 +1554,7 @@ ipcMain.handle("notes:refresh-index", async () => {
     const fileName = `${noteId}.txt`;
     const notePath = path.join(getFolderDiskPath(notesDir, folderPath), fileName);
     try {
-      const [content, stat] = await Promise.all([
-        fs.promises.readFile(notePath, "utf8"),
-        fs.promises.stat(notePath),
-      ]);
+      const [content, stat] = await Promise.all([fs.promises.readFile(notePath, "utf8"), fs.promises.stat(notePath)]);
       const existing = existingById.get(noteId);
       nextNotes.push({
         type: "note",

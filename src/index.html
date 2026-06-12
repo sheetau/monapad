@@ -96,7 +96,6 @@
         --grayOut: #565b66; /* grayed out text and element color */
         --highlight: #569cd6; /* accent color, link color */
         --btnHighlight: #3074ac; /* modal highlight button */
-        --windowClose: #c42b1c; /* window close */
         --warn: #cf5d6e; /* deleted file title */
 
         --window-top-safe-area: 1px; /* to prevent windows 11 border from overlapping the content, set to 0px if not needed */
@@ -994,50 +993,7 @@
         pointer-events: none;
       }
       #window-controls {
-        display: flex;
-        margin-left: auto;
-        height: 100%;
-        -webkit-app-region: no-drag;
-      }
-
-      /* window controls */
-      .window-button {
-        width: 40px;
-        height: 100%;
-        background: var(--color1);
-        border: none;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        cursor: pointer;
-        padding: 0;
-      }
-      .window-button .codicon {
-        color: var(--grayOut);
-        line-height: 1;
-      }
-      .window-button[aria-label="Minimize"] .codicon {
-        font-size: 17px;
-      }
-      .window-button[aria-label="Maximize"] .codicon {
-        font-size: 14px;
-      }
-      .window-button[aria-label="Restore"] .codicon {
-        font-size: 16px;
-      }
-      .window-button[aria-label="Close"] .codicon {
-        font-size: 14px;
-      }
-      #min-button:hover,
-      #max-button:hover {
-        background: var(--color3);
-      }
-      #close-button:hover {
-        background: var(--windowClose);
-      }
-      .window-button:hover .codicon,
-      #close-button:hover .codicon {
-        color: #fff;
+        display: none;
       }
 
       /* editor */
@@ -2799,15 +2755,9 @@
 
         <!-- window controls -->
         <div id="window-controls">
-          <button class="window-button" id="min-button" aria-label="Minimize">
-            <span class="codicon codicon-chrome-minimize" aria-hidden="true"></span>
-          </button>
-          <button class="window-button" id="max-button" aria-label="Maximize">
-            <span class="codicon codicon-chrome-maximize" aria-hidden="true"></span>
-          </button>
-          <button class="window-button" id="close-button" aria-label="Close">
-            <span class="codicon codicon-chrome-close" aria-hidden="true"></span>
-          </button>
+          <button class="window-button" id="min-button" aria-label="Minimize"></button>
+          <button class="window-button" id="max-button" aria-label="Maximize"></button>
+          <button class="window-button" id="close-button" aria-label="Close"></button>
         </div>
       </div>
 
