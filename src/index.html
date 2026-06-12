@@ -864,6 +864,49 @@
         white-space: nowrap;
         text-decoration: none;
       }
+      .file-icon {
+        display: flex;
+        flex: 0 0 0;
+        width: 0;
+        height: 22px;
+        align-items: center;
+        justify-content: flex-start;
+        overflow: hidden;
+      }
+      .file-icon.has-heading,
+      .note-list-item.folder-list-item .file-icon {
+        flex-basis: 22px;
+        width: 22px;
+      }
+      .file-icon.has-heading::before {
+        --heading-icon-box-size: 16px;
+        --heading-icon-drawn-size: 12px;
+        --heading-icon-line-width: 1px;
+        --heading-icon-line-gap: calc(var(--heading-icon-drawn-size) * 0.2);
+        content: "";
+        width: var(--heading-icon-box-size);
+        height: var(--heading-icon-box-size);
+        color: var(--grayOut);
+        background:
+          linear-gradient(currentColor, currentColor) center calc(50% - var(--heading-icon-line-gap)) /
+            var(--heading-icon-drawn-size) var(--heading-icon-line-width) no-repeat,
+          linear-gradient(currentColor, currentColor) center calc(50% + var(--heading-icon-line-gap)) /
+            var(--heading-icon-drawn-size) var(--heading-icon-line-width) no-repeat,
+          linear-gradient(currentColor, currentColor) calc(50% - var(--heading-icon-line-gap)) center /
+            var(--heading-icon-line-width) var(--heading-icon-drawn-size) no-repeat,
+          linear-gradient(currentColor, currentColor) calc(50% + var(--heading-icon-line-gap)) center /
+            var(--heading-icon-line-width) var(--heading-icon-drawn-size) no-repeat;
+        opacity: 1;
+      }
+      .tab:not(.active) .file-icon.has-heading::before {
+        color: var(--highlight);
+        opacity: 0.5;
+      }
+      .tab.active .file-icon.has-heading::before,
+      .tab:hover .file-icon.has-heading::before {
+        color: var(--highlight);
+        opacity: 1;
+      }
       .tab.has-reload-button .name {
         margin-left: -5px;
       }
@@ -2226,12 +2269,7 @@
         color: var(--grayOut);
       }
       .note-list-item.folder-list-item .file-icon {
-        display: flex;
-        flex-shrink: 0;
-        width: 22px;
-        height: 22px;
-        align-items: center;
-        justify-content: flex-start;
+        overflow: visible;
       }
       #notes-list:not(:has(.note-list-item.dragging)) .note-list-item:hover,
       .note-list-item.dragging,

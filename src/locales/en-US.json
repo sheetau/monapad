@@ -131,6 +131,8 @@
     "newNote": "New Note",
     "newFolder": "New Folder",
     "parentFolder": "Parent Folder",
+    "folderIcon": "Folder",
+    "foldableStructureIcon": "Heading structure",
     "closePanel": "Close Side Panel",
     "copyText": "Copy Text",
     "duplicate": "Duplicate",

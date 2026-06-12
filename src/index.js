@@ -11,7 +11,7 @@ import {
 } from "./monaco-actions.js";
 import { updateSettingsTooltipsUi, updateStaticUiText } from "./i18next.js";
 import { createGlobalSearchController } from "./search.js";
-import { createFileIconElement, createNotesPanelController, sortNotesForPanel } from "./notes.js";
+import { createFileIconElement, createNotesPanelController, getDisplayNoteTitle, sortNotesForPanel } from "./notes.js";
 import {
   clampNumber,
   formatNoteUpdatedAt,
@@ -1555,16 +1555,43 @@ function getNoteTitleFromContent(content) {
   return truncateNoteTitle(firstTextLine || getDefaultNoteTitle());
 }
 
+function contentHasHeading(content) {
+  let inCodeBlock = false;
+  for (const line of String(content || "").split(/\r\n|\r|\n/)) {
+    if (/^\s*```/.test(line)) {
+      inCodeBlock = !inCodeBlock;
+      continue;
+    }
+    if (!inCodeBlock && /^\s*#{1,3}\s[^#]/.test(line)) return true;
+  }
+  return false;
+}
+
+function updateTabTitleDisplay(tab) {
+  const nameSpan = tab?.element?.querySelector(".name");
+  if (!nameSpan) return;
+  nameSpan.textContent = tab.isNote ? getDisplayNoteTitle(tab.name) : tab.name;
+  nameSpan.title = tab.name;
+}
+
+function updateTabHeadingIcon(tab, content = null) {
+  const fileIcon = tab?.element?.querySelector(".file-icon");
+  if (!fileIcon) return;
+  const canShowHeadingIcon = Boolean(tab?.isNote) || /\.txt$/i.test(tab?.path || tab?.name || "");
+  const nextContent = content ?? tab?.model?.getValue() ?? tab?.content ?? "";
+  const hasHeadingIcon = canShowHeadingIcon && contentHasHeading(nextContent);
+  fileIcon.classList.toggle("has-heading", hasHeadingIcon);
+  if (hasHeadingIcon) fileIcon.title = i18next.t("sidePanel.foldableStructureIcon");
+  else fileIcon.removeAttribute("title");
+}
+
 function updateNoteTabTitle(tab, content = null) {
   if (!tab?.isNote) return;
   const title = truncateNoteTitle(getNoteTitleFromContent(content ?? tab.model?.getValue() ?? tab.content ?? ""));
   tab.name = title;
   tab.noteTitle = title;
-  const nameSpan = tab.element?.querySelector(".name");
-  if (nameSpan) {
-    nameSpan.textContent = title;
-    nameSpan.title = title;
-  }
+  updateTabTitleDisplay(tab);
+  updateTabHeadingIcon(tab, content);
 }
 
 function isTabModelDisposed(tab) {
@@ -1600,6 +1627,7 @@ function acceptSelfSaveFileChange(tab, content, fileInfo = null) {
   tab.isWarned = false;
   updateExternalFileSnapshot(tab, content, fileInfo);
   applyFileEncodingInfo(tab, fileInfo);
+  updateTabHeadingIcon(tab, content);
   clearPendingSelfSave(tab);
   tab.element.querySelector(".name")?.classList.remove("warn");
   tab.element.querySelector(".close")?.classList.remove("show-unsaved");
@@ -2369,6 +2397,7 @@ monacoEditor.onDidChangeModelContent(() => {
 
   const currentContent = monacoEditor.getValue();
   active.content = currentContent;
+  updateTabHeadingIcon(active, currentContent);
 
   // use active._ignoreUnsavedCheck = ture before monacoEditor.getValue() when this process is unnecessary
   if (active._ignoreUnsavedCheck) {
@@ -4551,6 +4580,7 @@ function createTab(name, content = "", path = null, insertIndex = null, options 
     tabs.appendChild(tab);
     tabData.push(data);
   }
+  updateTabHeadingIcon(data, content);
 
   close.onclick = async (e) => {
     e.stopPropagation();
@@ -5133,8 +5163,7 @@ async function reopenRecentlyClosedFile() {
 
         const nameSpan = restoredTab.element.querySelector(".name");
         if (nameSpan) {
-          nameSpan.textContent = restoredTab.name;
-          nameSpan.title = restoredTab.name;
+          updateTabTitleDisplay(restoredTab);
           nameSpan.classList.remove("warn");
         }
         reloadButton(restoredTab, null, "remove");
@@ -5684,8 +5713,7 @@ async function loadFileByPath(filePath, insertIndex = null, options = {}) {
 
       const nameSpan = singleTab.element.querySelector(".name");
       if (nameSpan) {
-        nameSpan.textContent = singleTab.name;
-        nameSpan.title = singleTab.name;
+        updateTabTitleDisplay(singleTab);
         nameSpan.classList.remove("warn");
       }
 
@@ -6213,8 +6241,7 @@ async function convertNoteToUntitled(noteId) {
     openTab.element.classList.remove("note", "preview");
     const nameSpan = openTab.element.querySelector(".name");
     if (nameSpan) {
-      nameSpan.textContent = openTab.name;
-      nameSpan.title = openTab.name;
+      updateTabTitleDisplay(openTab);
     }
     openTab.model.setValue(content);
   }
@@ -7318,8 +7345,7 @@ async function saveAsFile() {
   if (result.success) {
     active.path = filePath;
     active.name = filePath.split(/[\\/]/).pop();
-    active.element.querySelector(".name").textContent = active.name;
-    active.element.querySelector(".name").title = active.name;
+    updateTabTitleDisplay(active);
     active.originalContent = content;
     active.isFileSaved = true;
     active.draftId = null;
@@ -7410,6 +7436,7 @@ function hasUnsavedChanges(tab, content = null) {
 
 function syncTabSaveState(tab, content = null) {
   if (!tab) return false;
+  updateTabHeadingIcon(tab, content);
 
   if (tab.isNote) {
     const nextContent = content ?? tab?.content ?? tab?.model?.getValue() ?? "";

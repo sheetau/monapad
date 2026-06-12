@@ -940,6 +940,21 @@ function withFolderNoteCounts(index, entries) {
   return entries.map((entry) => (entry?.type === "folder" ? { ...entry, noteCount: getFolderNoteCount(index, entry.path) } : entry));
 }
 
+async function withNoteHeadingMeta(entries) {
+  const notesDir = await ensureNotesDir();
+  return Promise.all(
+    entries.map(async (entry) => {
+      if (entry?.type === "folder" || typeof entry?.hasHeadings === "boolean") return entry;
+      try {
+        const content = await fs.promises.readFile(getNoteDiskPath(notesDir, entry), "utf8");
+        return { ...entry, hasHeadings: contentHasHeading(content) };
+      } catch {
+        return { ...entry, hasHeadings: false };
+      }
+    }),
+  );
+}
+
 function sortEntriesForFolder(entries) {
   return [...entries].sort((a, b) => {
     if (Boolean(a?.pinned) !== Boolean(b?.pinned)) return a?.pinned ? -1 : 1;
@@ -992,6 +1007,7 @@ async function readNotesIndex() {
               pinned: Boolean(note.pinned),
               order: Number.isFinite(note.order) ? note.order : Number.MAX_SAFE_INTEGER,
               contentBytes: note.contentBytes,
+              hasHeadings: typeof note.hasHeadings === "boolean" ? note.hasHeadings : null,
             };
           })
       : [],
@@ -1037,6 +1053,18 @@ function getNoteTitleFromContent(content) {
   return truncateNoteTitle(firstTextLine || "New Note");
 }
 
+function contentHasHeading(content) {
+  let inCodeBlock = false;
+  for (const line of String(content || "").split(/\r\n|\r|\n/)) {
+    if (/^\s*```/.test(line)) {
+      inCodeBlock = !inCodeBlock;
+      continue;
+    }
+    if (!inCodeBlock && /^\s*#{1,3}\s[^#]/.test(line)) return true;
+  }
+  return false;
+}
+
 async function upsertNoteIndexEntry(noteId, content, extra = {}) {
   const notesDir = await ensureNotesDir();
   const index = await readNotesIndex();
@@ -1061,6 +1089,7 @@ async function upsertNoteIndexEntry(noteId, content, extra = {}) {
     pinned: Boolean(existing?.pinned),
     order: Number.isFinite(existing?.order) ? existing.order : extra.insertAtTop ? minUnpinnedOrder - 1 : maxOrder + 1,
     contentBytes,
+    hasHeadings: contentHasHeading(content),
   };
 
   if (existing) {
@@ -1446,9 +1475,10 @@ ipcMain.handle("notes:reorder", async (event, payload = {}) => {
 ipcMain.handle("notes:list", async (event, payload = {}) => {
   const index = await readNotesIndex();
   if (payload && Object.prototype.hasOwnProperty.call(payload, "folderPath")) {
-    return sortEntriesForFolder(withFolderNoteCounts(index, getDirectEntries(index, payload.folderPath)));
+    const entries = withFolderNoteCounts(index, getDirectEntries(index, payload.folderPath));
+    return sortEntriesForFolder(await withNoteHeadingMeta(entries));
   }
-  return index.notes;
+  return await withNoteHeadingMeta(index.notes);
 });
 
 ipcMain.handle("notes:refresh-index", async () => {
@@ -1500,6 +1530,7 @@ ipcMain.handle("notes:refresh-index", async () => {
         pinned: Boolean(existing?.pinned) && normalizeFolderPath(existing?.folderPath) === folderPath,
         order: Number.isFinite(existing?.order) ? existing.order : Number.MAX_SAFE_INTEGER,
         contentBytes: Buffer.byteLength(content, "utf8"),
+        hasHeadings: contentHasHeading(content),
       });
     } catch {
       // Missing or unreadable notes are dropped from the refreshed index.

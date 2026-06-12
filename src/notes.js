@@ -6,6 +6,12 @@ export function createFileIconElement(className = "") {
   return icon;
 }
 
+export function getDisplayNoteTitle(title) {
+  const value = String(title || "");
+  const displayTitle = value.replace(/^#\s+/, "");
+  return displayTitle || value;
+}
+
 export function sortNotesForPanel(entries = []) {
   return [...entries].sort((a, b) => {
     if (Boolean(a?.pinned) !== Boolean(b?.pinned)) return a?.pinned ? -1 : 1;
@@ -194,6 +200,7 @@ export function createNotesPanelController({
     item.dataset.entryKey = getEntryKey(folder);
 
     const fileIcon = createFileIconElement("note-list-file-icon");
+    fileIcon.title = i18next.t("sidePanel.folderIcon");
     const title = document.createElement("span");
     title.className = "note-list-title";
     title.textContent = folder.name || getFolderName(folder.path);
@@ -222,10 +229,13 @@ export function createNotesPanelController({
     item.dataset.entryKey = getEntryKey(note);
 
     const fileIcon = createFileIconElement("note-list-file-icon");
+    fileIcon.classList.toggle("has-heading", Boolean(note.hasHeadings));
+    if (note.hasHeadings) fileIcon.title = i18next.t("sidePanel.foldableStructureIcon");
     const title = document.createElement("span");
     title.className = "note-list-title";
-    title.textContent = truncateNoteTitle(note.title || getNoteTitleFromContent(""));
-    title.title = title.textContent;
+    const rawTitle = truncateNoteTitle(note.title || getNoteTitleFromContent(""));
+    title.textContent = getDisplayNoteTitle(rawTitle);
+    title.title = rawTitle;
 
     const pinButton = createPinButton(note);
     item.append(fileIcon, title, pinButton);
@@ -357,6 +367,7 @@ export function createNotesPanelController({
     draftFolderItem.className = "note-list-item folder-list-item editing";
 
     const fileIcon = createFileIconElement("note-list-file-icon");
+    fileIcon.title = i18next.t("sidePanel.folderIcon");
     const input = document.createElement("input");
     input.className = "note-list-rename-input";
     input.type = "text";

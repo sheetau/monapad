@@ -168,6 +168,8 @@
     "newNote": "新建笔记",
     "newFolder": "新建文件夹",
     "parentFolder": "上级文件夹",
+    "folderIcon": "文件夹",
+    "foldableStructureIcon": "标题结构",
     "closePanel": "关闭侧边面板",
     "copyText": "复制全文",
     "duplicate": "复制",

@@ -168,6 +168,8 @@
     "newNote": "Neue Notiz",
     "newFolder": "Neuer Ordner",
     "parentFolder": "Übergeordneter Ordner",
+    "folderIcon": "Ordner",
+    "foldableStructureIcon": "Überschriftenstruktur",
     "closePanel": "Seitenpanel schließen",
     "copyText": "Text kopieren",
     "duplicate": "Duplizieren",

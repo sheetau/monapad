@@ -168,6 +168,8 @@
     "newNote": "新規ノート",
     "newFolder": "新規フォルダ",
     "parentFolder": "上の階層",
+    "folderIcon": "フォルダ",
+    "foldableStructureIcon": "見出し構造",
     "closePanel": "サイドパネルを閉じる",
     "copyText": "全文コピー",
     "duplicate": "複製",

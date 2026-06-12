@@ -131,6 +131,8 @@
     "newNote": "Nova nota",
     "newFolder": "Nova pasta",
     "parentFolder": "Pasta superior",
+    "folderIcon": "Pasta",
+    "foldableStructureIcon": "Estrutura de títulos",
     "closePanel": "Fechar painel lateral",
     "copyText": "Copiar texto",
     "duplicate": "Duplicar",
