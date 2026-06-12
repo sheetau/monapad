@@ -89,6 +89,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   toggleMaximizeWindow: () => ipcRenderer.send("window:toggleMaximize"),
   isWindowMaximized: () => ipcRenderer.invoke("window:isMaximized"),
   closeWindow: () => ipcRenderer.send("window:close"),
+  setTitleBarOverlay: (options) => ipcRenderer.send("window:setTitleBarOverlay", options),
 
   // printContent: (text) => ipcRenderer.send("print-content", text),
 

@@ -38,6 +38,21 @@ const WINDOW_CONTROL_OVERLAY = {
   symbolColor: "#565b66",
 };
 
+function normalizeOverlayColor(value, fallback) {
+  const color = String(value || "").trim();
+  if (/^#[\da-f]{3}$/i.test(color) || /^#[\da-f]{6}$/i.test(color)) return color;
+  return fallback;
+}
+
+function setWindowTitleBarOverlay(window, options = {}) {
+  if (!window || window.isDestroyed() || typeof window.setTitleBarOverlay !== "function") return;
+  window.setTitleBarOverlay({
+    height: WINDOW_CONTROL_OVERLAY.height,
+    color: normalizeOverlayColor(options.color, WINDOW_CONTROL_OVERLAY.color),
+    symbolColor: normalizeOverlayColor(options.symbolColor, WINDOW_CONTROL_OVERLAY.symbolColor),
+  });
+}
+
 const mobileShareItems = new Map();
 const MOBILE_SHARE_CREATED_TTL_MS = 5 * 60 * 1000;
 const MOBILE_SHARE_OPENED_TTL_MS = 2 * 60 * 1000;
@@ -2196,6 +2211,11 @@ ipcMain.on("window:toggleMaximize", (event) => {
 ipcMain.handle("window:isMaximized", (event) => {
   const window = BrowserWindow.fromWebContents(event.sender);
   return Boolean(window?.isMaximized());
+});
+
+ipcMain.on("window:setTitleBarOverlay", (event, options = {}) => {
+  const window = BrowserWindow.fromWebContents(event.sender);
+  setWindowTitleBarOverlay(window, options);
 });
 
 // call window close from toolbar button

@@ -3512,6 +3512,24 @@ async function applyCustomThemeCSS(themeName, knownThemes = null) {
   return false;
 }
 
+function cssColorToHex(value) {
+  const color = String(value || "").trim();
+  if (/^#[\da-f]{3}$/i.test(color) || /^#[\da-f]{6}$/i.test(color)) return color;
+  const match = color.match(/^rgba?\((\d+),\s*(\d+),\s*(\d+)/i);
+  if (!match) return null;
+  return `#${match
+    .slice(1, 4)
+    .map((part) => Math.max(0, Math.min(255, Number(part))).toString(16).padStart(2, "0"))
+    .join("")}`;
+}
+
+function updateTitleBarOverlayColors() {
+  const styles = getComputedStyle(document.documentElement);
+  const color = cssColorToHex(styles.getPropertyValue("--color1")) || "#000000";
+  const symbolColor = cssColorToHex(styles.getPropertyValue("--grayOut")) || "#565b66";
+  window.electronAPI.setTitleBarOverlay?.({ color, symbolColor });
+}
+
 async function applyTheme(theme) {
   const root = document.documentElement;
   const isDefaultTheme = isDefaultThemeName(theme);
@@ -3532,6 +3550,7 @@ async function applyTheme(theme) {
     root.style.setProperty("--color3", "#242429");
     const success = await applyCustomThemeCSS(theme, themes);
     if (!success) {
+      updateTitleBarOverlayColors();
       root.classList.remove("booting-custom-theme");
       return;
     }
@@ -3559,6 +3578,7 @@ async function applyTheme(theme) {
 
   monaco.editor.defineTheme("custom-theme", createCustomTheme());
   monaco.editor.setTheme("custom-theme");
+  updateTitleBarOverlayColors();
   root.classList.remove("booting-custom-theme");
 }
 
