@@ -743,6 +743,12 @@
       body.tab-dragging #notes-list {
         pointer-events: none;
       }
+      .tab.tab-shift-prep {
+        transition: none !important;
+      }
+      .tab.tab-shift-animating {
+        transition: transform 120ms ease;
+      }
       /* tab with reload button */
       .tab.has-reload-button {
         padding-left: 10px;
@@ -1354,6 +1360,24 @@
         overflow-y: auto;
         flex: 1;
         min-height: 0;
+      }
+      #about-header {
+        display: flex;
+        align-items: center;
+        margin-bottom: 5px;
+        gap: 10px;
+        font-family: "Iosevka", "Migu 1M", monospace;
+      }
+      #about-header span:not(#version-text) {
+        font-size: 22px;
+      }
+      #about-header svg {
+        width: 20px;
+        aspect-ratio: 1;
+      }
+      #about-header #version-text {
+        font-size: 14px;
+        font-style: italic;
       }
       #about a,
       .settings-info a {
@@ -2239,6 +2263,12 @@
       }
       .note-list-item.dragging {
         opacity: 0.5;
+      }
+      .note-list-item.note-shift-prep {
+        transition: none !important;
+      }
+      .note-list-item.note-shift-animating {
+        transition: transform 120ms ease;
       }
       .note-list-item.active-note:not(.dragging) {
         background: color-mix(in srgb, var(--color3) 60%, transparent);
@@ -3340,11 +3370,19 @@
         <!-- about -->
         <div id="about">
           <div id="about-main" class="scrollable">
-            <div style="display: flex; align-items: center; gap: 1rem">
-              <img src="icon/favicon.ico" alt="App Icon" width="48" height="48" />
+            <div id="about-header">
+              <svg viewBox="0 0 22.91 22.91" fill="none" aria-hidden="true">
+                <path
+                  d="M7.37 15.54 21.41 1.5v19.91l-9.96-9.96M7.37 7.37 1.5 1.5v19.91"
+                  stroke="currentColor"
+                  stroke-width="3"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                ></path>
+              </svg>
               <div>
-                <div style="font-size: 20px; margin-bottom: 5px">Monapad</div>
-                <div id="version-text"></div>
+                <span>Monapad</span>
+                <span id="version-text"></span>
               </div>
             </div>
             <p style="margin-top: 12px" id="version-detail-text"></p>

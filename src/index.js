@@ -4026,6 +4026,55 @@ function setExternalPreviewTargetWindow(targetWindowId, dropScreenX, dropScreenY
 function enableTabDragging(tab, data) {
   let tabOrderChangedDuringDrag = false;
 
+  function getTabShiftRects() {
+    return new Map(
+      [...tabs.children]
+        .filter((node) => node.classList?.contains("tab") && node !== draggingTab)
+        .map((node) => [node, node.getBoundingClientRect().left]),
+    );
+  }
+
+  function animateTabShifts(previousLefts) {
+    const shiftedTabs = [];
+    for (const [node, previousLeft] of previousLefts) {
+      if (!node.isConnected) continue;
+      const deltaX = previousLeft - node.getBoundingClientRect().left;
+      if (!deltaX) continue;
+      if (node._tabShiftCleanup) node._tabShiftCleanup();
+      node.classList.remove("tab-shift-animating");
+      node.classList.add("tab-shift-prep");
+      node.style.transform = `translateX(${deltaX}px)`;
+      shiftedTabs.push(node);
+    }
+    if (!shiftedTabs.length) return;
+
+    void tabs.offsetWidth;
+    requestAnimationFrame(() => {
+      for (const node of shiftedTabs) {
+        node.classList.remove("tab-shift-prep");
+        node.classList.add("tab-shift-animating");
+        node.style.transform = "";
+        const cleanup = (event) => {
+          if (event.target !== node) return;
+          node.classList.remove("tab-shift-animating");
+          node.removeEventListener("transitionend", cleanup);
+          node._tabShiftCleanup = null;
+        };
+        node._tabShiftCleanup = () => {
+          node.classList.remove("tab-shift-animating", "tab-shift-prep");
+          node.removeEventListener("transitionend", cleanup);
+          node._tabShiftCleanup = null;
+        };
+        node.addEventListener("transitionend", cleanup);
+      }
+    });
+  }
+
+  function getTabLayoutCenter(tabElement) {
+    const tabsRect = tabs.getBoundingClientRect();
+    return tabsRect.left + tabElement.offsetLeft - tabs.scrollLeft + tabElement.offsetWidth / 2;
+  }
+
   tab.addEventListener("mousedown", async (e) => {
     if (e.button !== 0 || isTabControlTarget(e.target) || draggingTab) return;
     e.preventDefault();
@@ -4162,15 +4211,16 @@ function enableTabDragging(tab, data) {
       const targetTabData = tabData.find((candidate) => candidate.element === targetTab);
       if (targetTabData && Boolean(targetTabData.isPinned) !== Boolean(draggingTabData.isPinned)) continue;
 
-      const targetRect = targetTab.getBoundingClientRect();
-      const targetCenter = targetRect.left + targetRect.width / 2;
+      const targetCenter = getTabLayoutCenter(targetTab);
 
       if (currentX > 0 && currentRect.right > targetCenter && i > dragIndex) {
         const oldLeft = currentRect.left;
+        const tabShiftRects = getTabShiftRects();
 
         tabs.insertBefore(draggingTab, targetTab.nextSibling);
         monacoEditor.getDomNode()?.blur();
         switchTab(currentTab);
+        animateTabShifts(tabShiftRects);
 
         const newRect = draggingTab.getBoundingClientRect();
         const deltaX = oldLeft - newRect.left;
@@ -4188,10 +4238,12 @@ function enableTabDragging(tab, data) {
         break;
       } else if (currentX < 0 && currentRect.left < targetCenter && i < dragIndex) {
         const oldLeft = currentRect.left;
+        const tabShiftRects = getTabShiftRects();
 
         tabs.insertBefore(draggingTab, targetTab);
         monacoEditor.getDomNode()?.blur();
         switchTab(currentTab);
+        animateTabShifts(tabShiftRects);
 
         const newRect = draggingTab.getBoundingClientRect();
         const deltaX = oldLeft - newRect.left;
@@ -6528,6 +6580,75 @@ function applyNoteListDragItemStyle(item) {
   item.style.pointerEvents = "none";
 }
 
+function getElementTranslateY(element) {
+  const transform = getComputedStyle(element).transform;
+  if (!transform || transform === "none") return 0;
+  try {
+    return new DOMMatrixReadOnly(transform).m42 || 0;
+  } catch {
+    return 0;
+  }
+}
+
+function getNoteListItemLayoutRect(item) {
+  const rect = item.getBoundingClientRect();
+  const translateY = getElementTranslateY(item);
+  return {
+    top: rect.top - translateY,
+    bottom: rect.bottom - translateY,
+    height: rect.height,
+  };
+}
+
+function getNoteListItemLayoutCenter(item) {
+  const rect = getNoteListItemLayoutRect(item);
+  return rect.top + rect.height / 2;
+}
+
+function getNoteListShiftRects(excludeItem) {
+  return new Map(
+    [...notesList.querySelectorAll(".note-list-item")]
+      .filter((node) => node !== excludeItem)
+      .map((node) => [node, node.getBoundingClientRect().top]),
+  );
+}
+
+function animateNoteListShifts(previousTops) {
+  const shiftedItems = [];
+  for (const [node, previousTop] of previousTops) {
+    if (!node.isConnected) continue;
+    const deltaY = previousTop - node.getBoundingClientRect().top;
+    if (!deltaY) continue;
+    if (node._noteShiftCleanup) node._noteShiftCleanup();
+    node.classList.remove("note-shift-animating");
+    node.classList.add("note-shift-prep");
+    node.style.transform = `translateY(${deltaY}px)`;
+    shiftedItems.push(node);
+  }
+  if (!shiftedItems.length) return;
+
+  void notesList.offsetHeight;
+  requestAnimationFrame(() => {
+    for (const node of shiftedItems) {
+      node.classList.remove("note-shift-prep");
+      node.classList.add("note-shift-animating");
+      node.style.transform = "";
+      const cleanup = (event) => {
+        if (event.target !== node) return;
+        node.classList.remove("note-shift-animating");
+        node.removeEventListener("transitionend", cleanup);
+        node._noteShiftCleanup = null;
+      };
+      node._noteShiftCleanup = () => {
+        node.classList.remove("note-shift-animating", "note-shift-prep");
+        node.removeEventListener("transitionend", cleanup);
+        node._noteShiftCleanup = null;
+      };
+      node.addEventListener("transitionend", cleanup);
+    }
+  });
+}
+
 function clearNoteFolderDropTarget({ flash = false } = {}) {
   if (noteDragState?.folderDropArmTimer) {
     clearTimeout(noteDragState.folderDropArmTimer);
@@ -6594,7 +6715,7 @@ function getNoteFolderDropTarget(state) {
 
   const candidates = [...notesList.querySelectorAll(".note-list-item.folder-list-item")].filter((target) => target !== state.item);
   for (const target of candidates) {
-    const rect = target.getBoundingClientRect();
+    const rect = getNoteListItemLayoutRect(target);
     if (!isDraggedEdgeInMiddleBand(state, rect)) continue;
     return {
       key: target.dataset.entryKey,
@@ -6708,8 +6829,7 @@ function cleanupNoteExternalDrag() {
 function moveNoteListItemToCursor(item, clientY) {
   const siblings = [...notesList.querySelectorAll(".note-list-item")].filter((node) => node !== item);
   const before = siblings.find((node) => {
-    const rect = node.getBoundingClientRect();
-    return clientY < rect.top + rect.height / 2;
+    return clientY < getNoteListItemLayoutCenter(node);
   });
   if (before) notesList.insertBefore(item, before);
   else notesList.appendChild(item);
@@ -7140,12 +7260,13 @@ window.addEventListener("mousemove", (e) => {
     if (target === item) continue;
     if (target.classList.contains("pinned") !== isDraggingPinnedNote) continue;
 
-    const targetRect = target.getBoundingClientRect();
-    const targetCenter = targetRect.top + targetRect.height / 2;
+    const targetCenter = getNoteListItemLayoutCenter(target);
 
     if (noteDragState.currentY > 0 && currentRect.bottom > targetCenter && i > noteDragState.dragIndex) {
       const oldTop = currentRect.top;
+      const noteShiftRects = getNoteListShiftRects(item);
       notesList.insertBefore(item, target.nextSibling);
+      animateNoteListShifts(noteShiftRects);
       const newTop = item.getBoundingClientRect().top;
       noteDragState.currentY += oldTop - newTop;
       noteDragState.startY = e.clientY - noteDragState.currentY;
@@ -7156,7 +7277,9 @@ window.addEventListener("mousemove", (e) => {
 
     if (noteDragState.currentY < 0 && currentRect.top < targetCenter && i < noteDragState.dragIndex) {
       const oldTop = currentRect.top;
+      const noteShiftRects = getNoteListShiftRects(item);
       notesList.insertBefore(item, target);
+      animateNoteListShifts(noteShiftRects);
       const newTop = item.getBoundingClientRect().top;
       noteDragState.currentY += oldTop - newTop;
       noteDragState.startY = e.clientY - noteDragState.currentY;
