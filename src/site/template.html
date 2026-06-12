@@ -1,0 +1,496 @@
+<header class="flex">
+  <div class="header-wrapper w-full flex items-center">
+    <div class="logo flex items-center select-none" onclick="location.reload()">
+      <svg viewBox="0 0 22.91 22.91" fill="none" aria-hidden="true">
+        <path d="M7.37 15.54 21.41 1.5v19.91l-9.96-9.96M7.37 7.37 1.5 1.5v19.91" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />
+      </svg>
+      <span>Monapad</span>
+    </div>
+    <a href="#" class="app-download btn flex items-center justify-center">Download</a>
+  </div>
+</header>
+
+<main>
+  <!-- hero -->
+  <section>
+    <div class="container hero relative flex flex-col items-start">
+      <canvas class="hero-particles" aria-hidden="true"></canvas>
+      <div class="hero-text text-left">
+        <h1 class="hero-title">
+          Built to give you absolute control over your words, Monapad is the ultimate text editor.
+        </h1>
+        <div class="hero-buttons flex">
+          <a href="#" class="app-download download-main btn flex items-center justify-center">
+            Download for Windows
+          </a>
+          <a
+            href="https://github.com/sheetau/monapad/tree/main"
+            target="_blank"
+            class="hero-link btn flex items-center justify-center"
+          >
+            GitHub
+            <svg width="8" height="13" viewBox="0 0 8 13" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path
+                d="M1 12L7 6.5L1 1"
+                stroke="#F7F8F8"
+                stroke-width="1.5"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+            </svg>
+          </a>
+        </div>
+      </div>
+
+      <div class="editor-mockup relative overflow-hidden" aria-label="Monapad editor mockup">
+        <div class="editor-titlebar">
+          <div class="editor-menu-button" aria-hidden="true">
+            <svg viewBox="0 0 14 7.16" fill="none">
+              <path d="M1 1h12M1 6.16h6" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+            </svg>
+          </div>
+          <div class="editor-tab">
+            <span>Untitled.txt</span>
+            <button class="editor-tab-close" type="button" aria-label="Close tab">
+              <span class="editor-tab-dot" aria-hidden="true"></span>
+              <svg viewBox="60 0 7.5 7.5" fill="none" aria-hidden="true">
+                <path d="M66.72.5 60.22 7M66.72 7 60.22.5" stroke="currentColor" stroke-linecap="round" />
+              </svg>
+            </button>
+          </div>
+          <div class="editor-add-tab" aria-hidden="true">
+            <svg viewBox="0 0 10.27 10.27" fill="none">
+              <path d="M.5 5.14h9.27M5.14.5v9.27" stroke="currentColor" stroke-linecap="round" />
+            </svg>
+          </div>
+          <div class="editor-window-controls" aria-hidden="true">
+            <svg viewBox="0 0 67.22 7.5" fill="none">
+              <path d="M66.72.5 60.22 7M66.72 7 60.22.5M.5 3.75H7" stroke="currentColor" stroke-linecap="round" />
+              <rect x="30.36" y=".5" width="6.5" height="6.5" rx=".76" stroke="currentColor" />
+            </svg>
+          </div>
+        </div>
+        <div class="editor-canvas" aria-label="Monapad editor content">
+          <div class="editor-canvas-scroller">
+            <div class="editor-code" data-editor-code></div>
+          </div>
+        </div>
+        <div class="editor-statusbar">
+          <div class="editor-status-left">
+            <svg viewBox="0 0 9.24 9.24" fill="none" aria-hidden="true">
+              <path
+                d="M.5 2.04v-.51C.5.96.96.5 1.53.5h1.03M.5 7.19v.51c0 .57.46 1.03 1.03 1.03h1.03M6.68.5h1.03c.57 0 1.03.46 1.03 1.03v.51M6.68 8.74h1.03c.57 0 1.03-.46 1.03-1.03v-.51M1.01 4.62h7.21"
+                stroke="currentColor"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+            </svg>
+            <span class="editor-status-file">Untitled.txt</span>
+          </div>
+          <div class="editor-status-right">
+            <span>Modified</span>
+            <span class="editor-status-item">
+              <svg class="editor-backup-icon" viewBox="0 0 18.89 9.13" fill="none" aria-hidden="true">
+                <ellipse cx="3.25" cy="1.82" rx="2.75" ry="1.32" stroke="currentColor" />
+                <path
+                  d="M5.99 1.82V7.3c0 .73-1.23 1.32-2.75 1.32S.49 8.03.49 7.3V1.82M11.45 4.52l2.15 2.15 4.79-4.79"
+                  stroke="currentColor"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+              </svg>
+            </span>
+            <span data-editor-position-status>Ln 2, Col 17</span>
+            <span>100%</span>
+            <span>CRLF</span>
+            <span>UTF-8</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- language -->
+  <section class="language">
+    <div class="container feature-block relative flex flex-col items-start text-left">
+      <div class="feature-showcase media-panel-showcase items-center overflow-hidden">
+        <div class="feature-copy">
+          <h3>Language designed for text</h3>
+          <p>
+            Structured highlighting and heading-level folding give your writing shape. Navigate, scan, and manage
+            long documents the way developers manage code.
+          </p>
+        </div>
+        <figure class="feature-media relative">
+          <div class="feature-media-inner overflow-hidden">
+            <video src="media/language.mp4" muted loop autoplay playsinline preload="metadata"></video>
+          </div>
+        </figure>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="container feature-block relative flex flex-col items-start text-left">
+      <div class="feature-showcase media-panel-showcase media-left items-center overflow-hidden">
+        <figure class="feature-media relative">
+          <div class="feature-media-inner overflow-hidden">
+            <img src="media/note.png" alt="" />
+          </div>
+        </figure>
+        <div class="feature-copy">
+          <h3>Your notes, always there</h3>
+          <p>
+            Zero-file management. Pure writing. Everything saves itself, stays organized, and is ready the moment
+            you need it.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- shortcuts -->
+  <section class="shortcuts">
+    <div class="container feature-block relative flex flex-col items-start text-left">
+      <div class="shortcuts-demo flex flex-row items-center w-full">
+        <div class="shortcuts-copy">
+          <h3>Every shortcut developers use</h3>
+          <p>
+            Powered by the same Monaco Editor used in VSCode, Monapad brings the powerful shortcut ecosystem and
+            precise editing features directly to your writing workflow.<br />
+            <a href="https://github.com/sheetau/monapad/blob/main/README.md#shortcuts" target="_blank">
+              See all shortcuts
+              <svg width="8" height="13" viewBox="0 0 8 13" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path
+                  d="M1 12L7 6.5L1 1"
+                  stroke="#F7F8F8"
+                  stroke-width="1.5"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+              </svg>
+            </a>
+          </p>
+        </div>
+        <div class="command-list relative select-none overflow-hidden">
+          <div class="command-input" id="commandSearchInput"></div>
+          <div class="command-results" id="commandSearchResults" aria-hidden="true"></div>
+          <div class="command-list-overlay absolute"></div>
+        </div>
+      </div>
+      <div class="shortcuts-images-wrapper w-full overflow-visible">
+        <div class="shortcuts-images flex flex-row w-full">
+          <div class="shortcut-img relative flex flex-col items-start overflow-hidden">
+            <div class="shortcut-img-container relative overflow-hidden">
+              <img src="media/shortcuts_1.png" alt="Find and Replace" />
+            </div>
+            <div class="shortcut-label">Find and Replace</div>
+            <div class="shortcut-key">Ctrl + F/H</div>
+          </div>
+          <div class="shortcut-img relative flex flex-col items-start overflow-hidden">
+            <div class="shortcut-img-container relative overflow-hidden">
+              <img src="media/shortcuts_2.png" alt="Multi Cursor" />
+            </div>
+            <div class="shortcut-label">Multi Cursor</div>
+            <div class="shortcut-key">Alt + Click</div>
+          </div>
+          <div class="shortcut-img relative flex flex-col items-start overflow-hidden">
+            <div class="shortcut-img-container relative overflow-hidden">
+              <img src="media/shortcuts_3.png" alt="Go to Heading" />
+            </div>
+            <div class="shortcut-label">Go to Heading</div>
+            <div class="shortcut-key">Ctrl + Shift + O</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- workflow cards -->
+  <section class="card-slider">
+    <div class="container feature-block relative flex flex-col items-start text-left">
+      <div class="card-slider-shell relative w-full">
+        <div class="card-slider-viewport" id="workflowSlider">
+          <div class="card-slider-track flex items-stretch">
+            <article class="slider-card tabs-card relative flex flex-col overflow-hidden">
+              <div class="slider-card-copy relative">
+                <h3>Tabs that flow</h3>
+                <p>
+                  Monapad's tabs are smooth and fully fluid. Close, rearrange, reopen, pin, pop out, or merge across
+                  windows without missing a beat.
+                </p>
+              </div>
+              <div class="slider-card-media relative overflow-visible">
+                <div class="tabs-video relative flex items-start justify-center w-full h-full overflow-hidden">
+                  <div class="video-wrapper absolute w-full h-full overflow-hidden text-center">
+                    <video id="tabsVideo" src="media/tabs.mp4" muted loop playsinline preload="auto"></video>
+                  </div>
+                </div>
+              </div>
+            </article>
+
+            <article class="slider-card search-card relative flex flex-col overflow-hidden">
+              <div class="slider-card-copy relative">
+                <h3>Search everything, instantly</h3>
+                <p>Find any word across all open tabs and notes at once. Jump to any file by name, instantly.</p>
+              </div>
+              <figure class="slider-card-media relative overflow-visible">
+                <img src="media/search.png" alt="" />
+              </figure>
+            </article>
+
+            <article class="slider-card qr-card relative flex flex-col overflow-hidden">
+              <div class="slider-card-copy relative">
+                <h3>One click to your phone</h3>
+                <p>
+                  Generate a QR code over your local network and scan to send any text to your phone instantly. No
+                  cloud account required.
+                </p>
+              </div>
+              <figure class="slider-card-media relative flex items-end justify-center overflow-visible">
+                <img src="media/qr.png" alt="" />
+              </figure>
+            </article>
+          </div>
+        </div>
+        <div class="card-slider-controls flex items-center justify-center" aria-label="Workflow cards">
+          <button
+            class="card-slider-dot is-active inline-flex items-center justify-center"
+            type="button"
+            data-slider-index="0"
+            aria-label="Show tabs card"
+          >
+            <span class="sr-only">Tabs</span>
+          </button>
+          <button
+            class="card-slider-dot inline-flex items-center justify-center"
+            type="button"
+            data-slider-index="1"
+            aria-label="Show search card"
+          >
+            <span class="sr-only">Search</span>
+          </button>
+          <button
+            class="card-slider-dot inline-flex items-center justify-center"
+            type="button"
+            data-slider-index="2"
+            aria-label="Show QR card"
+          >
+            <span class="sr-only">QR</span>
+          </button>
+          <button
+            class="card-slider-toggle inline-flex items-center justify-center"
+            type="button"
+            aria-label="Pause slider"
+            aria-pressed="false"
+          >
+            <svg
+              class="pause-icon"
+              xmlns="http://www.w3.org/2000/svg"
+              width="24"
+              height="24"
+              viewBox="0 0 24 24"
+              fill="currentColor"
+              aria-hidden="true"
+            >
+              <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+              <path d="M9 4h-2a2 2 0 0 0 -2 2v12a2 2 0 0 0 2 2h2a2 2 0 0 0 2 -2v-12a2 2 0 0 0 -2 -2z" />
+              <path d="M17 4h-2a2 2 0 0 0 -2 2v12a2 2 0 0 0 2 2h2a2 2 0 0 0 2 -2v-12a2 2 0 0 0 -2 -2z" />
+            </svg>
+            <svg
+              class="play-icon hidden"
+              xmlns="http://www.w3.org/2000/svg"
+              width="24"
+              height="24"
+              viewBox="0 0 24 24"
+              fill="currentColor"
+              aria-hidden="true"
+            >
+              <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+              <path d="M6 4v16a1 1 0 0 0 1.524 .852l13 -8a1 1 0 0 0 0 -1.704l-13 -8a1 1 0 0 0 -1.524 .852z" />
+            </svg>
+          </button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- dark themes -->
+  <section class="themes">
+    <div class="container feature-block relative flex flex-col items-start text-left">
+      <div class="default-themes flex flex-row items-center w-full">
+        <div class="themes-text">
+          <h3>Focus in the dark</h3>
+          <p>Three dark themes ship by default. Clarity and comfort, from the first word to the last.</p>
+          <div class="theme-buttons flex flex-row">
+            <div class="theme-button ash flex flex-row items-center">
+              <div></div>
+              <span class="onyx">Ash</span>
+            </div>
+            <div class="theme-button dark flex flex-row items-center">
+              <div></div>
+              <span class="onyx">Dark</span>
+            </div>
+            <div class="theme-button onyx flex flex-row items-center">
+              <div></div>
+              <span class="onyx">Onyx</span>
+            </div>
+          </div>
+        </div>
+        <div class="themes-group relative flex flex-col overflow-hidden select-none">
+          <div class="themes-shadow">
+            <div class="themes-wrapper flex flex-row overflow-hidden">
+              <div class="line-number">
+                1<br />2<br />3<br /><br /><br />4<br />5<br />6<br />7<br />8<br />9<br />10<br />11
+              </div>
+              <div class="themes-content">
+                <span class="themes-h1"><span class="marker"># </span>Evening Notes</span><br /><br />
+                <span class="themes-h2"><span class="marker">## </span>Desk Routine</span><br /><br />
+                The room grows quieter after midnight, especially once the rain starts against the window and the
+                sound of traffic fades into the background. Revisiting old notes at this hour often reveals details
+                that felt insignificant during the day but suddenly seem worth preserving.<br /><br />
+                <span class="list-marker">1. </span>Finish the draft.<br /><span class="list-marker">2. </span
+                >Organize scattered notes.<br /><span class="list-marker">3. </span>Back up everything before
+                sleep.<br /><br />
+                <span class="subtext"
+                  ><span class="marker">-# </span>Reminder: unfinished thoughts are easier to lose than files.</span
+                >
+              </div>
+            </div>
+          </div>
+
+          <div class="themes-shadow">
+            <div class="themes-wrapper flex flex-row overflow-hidden">
+              <div class="line-number">
+                1<br />2<br />3<br /><br /><br />4<br />5<br />6<br />7<br />8<br />9<br />10<br />11
+              </div>
+              <div class="themes-content">
+                <span class="themes-h1"><span class="marker"># </span>Evening Notes</span><br /><br />
+                <span class="themes-h2"><span class="marker">## </span>Desk Routine</span><br /><br />
+                The room grows quieter after midnight, especially once the rain starts against the window and the
+                sound of traffic fades into the background. Revisiting old notes at this hour often reveals details
+                that felt insignificant during the day but suddenly seem worth preserving.<br /><br />
+                <span class="list-marker">1. </span>Finish the draft.<br /><span class="list-marker">2. </span
+                >Organize scattered notes.<br /><span class="list-marker">3. </span>Back up everything before
+                sleep.<br /><br />
+                <span class="subtext"
+                  ><span class="marker">-# </span>Reminder: unfinished thoughts are easier to lose than files.</span
+                >
+              </div>
+            </div>
+          </div>
+
+          <div class="themes-shadow">
+            <div class="themes-wrapper flex flex-row overflow-hidden">
+              <div class="line-number">
+                1<br />2<br />3<br /><br /><br />4<br />5<br />6<br />7<br />8<br />9<br />10<br />11
+              </div>
+              <div class="themes-content">
+                <span class="themes-h1"><span class="marker"># </span>Evening Notes</span><br /><br />
+                <span class="themes-h2"><span class="marker">## </span>Desk Routine</span><br /><br />
+                The room grows quieter after midnight, especially once the rain starts against the window and the
+                sound of traffic fades into the background. Revisiting old notes at this hour often reveals details
+                that felt insignificant during the day but suddenly seem worth preserving.<br /><br />
+                <span class="list-marker">1. </span>Finish the draft.<br /><span class="list-marker">2. </span
+                >Organize scattered notes.<br /><span class="list-marker">3. </span>Back up everything before
+                sleep.<br /><br />
+                <span class="subtext"
+                  ><span class="marker">-# </span>Reminder: unfinished thoughts are easier to lose than files.</span
+                >
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="feature-showcase custom-themes items-center overflow-hidden">
+        <div class="feature-copy custom-theme-text flex flex-col items-start">
+          <h3>Make it yours</h3>
+          <p>Bring your own theme via CSS, or build one from scratch. Monapad looks the way you want it to.</p>
+          <a
+            href="https://github.com/sheetau/monapad?tab=contributing-ov-file#how-to-setup-custom-theme"
+            target="_blank"
+          >
+            Learn about custom themes
+            <svg width="8" height="13" viewBox="0 0 8 13" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path
+                d="M1 12L7 6.5L1 1"
+                stroke="#F7F8F8"
+                stroke-width="1.5"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+            </svg>
+          </a>
+        </div>
+        <figure class="feature-media custom-theme-image relative overflow-visible">
+          <img src="media/ss_ayu.png" alt="ayu theme" />
+        </figure>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="container feature-block prefooter relative flex flex-col items-center text-left">
+      <h2 class="w-full text-center">Try Monapad now.</h2>
+      <div class="hero-buttons prefooter-buttons flex">
+        <a href="#" class="app-download download-main btn flex items-center justify-center">Download for Windows</a>
+        <a
+          href="https://github.com/sheetau/monapad/tree/main"
+          target="_blank"
+          class="hero-link btn flex items-center justify-center"
+        >
+          GitHub
+          <svg width="8" height="13" viewBox="0 0 8 13" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path
+              d="M1 12L7 6.5L1 1"
+              stroke="#F7F8F8"
+              stroke-width="1.5"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+          </svg>
+        </a>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="footer w-full">
+  <div class="footer-content w-full flex items-center">
+    <div class="footer-links flex items-center justify-center">
+      <span>© 2025 Sheeta.</span>
+      <a href="https://github.com/sheetau/monapad/releases" target="_blank">Releases</a>
+      <a href="https://github.com/sheetau/monapad/blob/main/CONTRIBUTING.md" target="_blank">Contributing</a>
+      <a href="https://github.com/sheetau/monapad/blob/main/LICENSE" target="_blank">License</a>
+      <a href="https://github.com/sheetau/monapad/blob/main/CODE_OF_CONDUCT.md" target="_blank">Code of Conduct</a>
+      <a href="https://github.com/sheetau/monapad/blob/main/PRIVACY.md" target="_blank">Privacy</a>
+    </div>
+    <div class="footer-icons flex items-center justify-center">
+      <a href="https://github.com/sheetau/monapad" target="_blank" aria-label="GitHub">
+        <svg height="32" width="32" viewBox="0 0 24 24" fill="none">
+          <path
+            d="M12 1C5.923 1 1 5.923 1 12c0 4.867 3.149 8.979 7.521 10.436.55.096.756-.233.756-.522 0-.262-.013-1.128-.013-2.049-2.764.509-3.479-.674-3.699-1.292-.124-.317-.66-1.293-1.127-1.554-.385-.207-.936-.715-.014-.729.866-.014 1.485.797 1.691 1.128.99 1.663 2.571 1.196 3.204.907.096-.715.385-1.196.701-1.471-2.448-.275-5.005-1.224-5.005-5.432 0-1.196.426-2.186 1.128-2.956-.111-.275-.496-1.402.11-2.915 0 0 .921-.288 3.024 1.128a10.193 10.193 0 0 1 2.75-.371c.936 0 1.871.123 2.75.371 2.104-1.43 3.025-1.128 3.025-1.128.605 1.513.221 2.64.111 2.915.701.77 1.127 1.747 1.127 2.956 0 4.222-2.571 5.157-5.019 5.432.399.344.743 1.004.743 2.035 0 1.471-.014 2.654-.014 3.025 0 .289.206.632.756.522C19.851 20.979 23 16.854 23 12c0-6.077-4.922-11-11-11Z"
+            fill="white"
+          />
+        </svg>
+      </a>
+      <a href="https://discord.gg/2dXs5HwXuW" target="_blank" aria-label="Discord">
+        <svg xmlns="http://www.w3.org/2000/svg" width="59" height="44" viewBox="0 0 59 44" fill="none">
+          <path
+            d="M37.1937 0C36.6265 1.0071 36.1172 2.04893 35.6541 3.11392C31.2553 2.45409 26.7754 2.45409 22.365 3.11392C21.9136 2.04893 21.3926 1.0071 20.8254 0C16.6928 0.70613 12.6644 1.94475 8.84436 3.69271C1.27372 14.9098 -0.775214 25.8374 0.243466 36.6146C4.67704 39.8906 9.6431 42.391 14.9333 43.9884C16.1256 42.391 17.179 40.6893 18.0819 38.9182C16.3687 38.2815 14.7133 37.4828 13.1274 36.5567C13.5442 36.2557 13.9493 35.9432 14.3429 35.6422C23.6384 40.0179 34.4039 40.0179 43.711 35.6422C44.1046 35.9663 44.5097 36.2789 44.9264 36.5567C43.3405 37.4943 41.6852 38.2815 39.9604 38.9298C40.8633 40.7009 41.9167 42.4025 43.109 44C48.3992 42.4025 53.3653 39.9137 57.7988 36.6377C59.0027 24.1358 55.7383 13.3007 49.1748 3.70429C45.3663 1.95633 41.3379 0.717706 37.2053 0.0231518L37.1937 0ZM19.3784 29.9816C16.5192 29.9816 14.1461 27.3886 14.1461 24.1821C14.1461 20.9755 16.4266 18.371 19.3669 18.371C22.3071 18.371 24.6455 20.9871 24.5992 24.1821C24.5529 27.377 22.2956 29.9816 19.3784 29.9816ZM38.6639 29.9816C35.7931 29.9816 33.4431 27.3886 33.4431 24.1821C33.4431 20.9755 35.7236 18.371 38.6639 18.371C41.6042 18.371 43.9309 20.9871 43.8846 24.1821C43.8383 27.377 41.581 29.9816 38.6639 29.9816Z"
+            fill="white"
+          />
+        </svg>
+      </a>
+      <a href="https://linktr.ee/sheetau" target="_blank" aria-label="Linktree">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 25" height="20" style="display: block; width: auto">
+          <path
+            d="M13.5108 5.85343L17.5158 1.73642L19.8404 4.11701L15.6393 8.12199H21.5488V11.4268H15.6113L19.8404 15.5345L17.5158 17.8684L11.7744 12.099L6.03299 17.8684L3.70842 15.5438L7.93745 11.4361H2V8.12199H7.90944L3.70842 4.11701L6.03299 1.73642L10.038 5.85343V0H13.5108V5.85343ZM10.038 16.16H13.5108V24.0019H10.038V16.16Z"
+            fill="white"
+          ></path>
+        </svg>
+      </a>
+    </div>
+  </div>
+</footer>

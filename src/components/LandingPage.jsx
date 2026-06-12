@@ -2,7 +2,7 @@ import Head from "next/head";
 import Script from "next/script";
 import { alternates, locales } from "../site/locales";
 import { localizeHtml } from "../site/localizeHtml";
-import { bodyTemplate } from "../site/template";
+import bodyTemplate from "../site/template.html";
 
 export function LandingPage({ locale }) {
   const content = locales[locale] ?? locales.en;
@@ -46,9 +46,7 @@ export function LandingPage({ locale }) {
         <meta name="twitter:description" content={content.description} />
         <meta name="twitter:image" content={`${alternates.en}media/ss_onyx.png`} />
         <meta name="twitter:image:alt" content="Monapad editor screenshot using the Onyx theme" />
-        <link rel="icon" href={`${assetBase}/media/favicon.ico?v=5`} sizes="any" />
-        <link rel="shortcut icon" href={`${assetBase}/media/favicon.ico?v=5`} />
-        <link rel="icon" type="image/png" sizes="48x48" href={`${assetBase}/media/favicon-48.png?v=5`} />
+        <link rel="icon" type="image/svg+xml" href={`${assetBase}/media/favicon.svg?v=6`} />
         <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }} />
       </Head>
       {locale === "en" && (
