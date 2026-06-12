@@ -2990,6 +2990,14 @@ function getQuickOpenNotePathLabel(note) {
   return folderPath ? `${root}\\${folderPath}` : root;
 }
 
+function getNoteStatusPath(tab) {
+  const folderParts = String(tab?.noteFolderPath || "")
+    .replace(/\\/g, "/")
+    .split("/")
+    .filter(Boolean);
+  return ["Notes", ...folderParts, tab?.name || getDefaultNoteTitle()].join("\\");
+}
+
 function createQuickOpenFileItem(filePath, sourceRank) {
   const label = getPathBasename(filePath);
   return {
@@ -3007,7 +3015,7 @@ function createQuickOpenNoteItem(note, sourceRank) {
   const title = getQuickOpenNoteTitle(note);
   const pathLabel = getQuickOpenNotePathLabel(note);
   return {
-    label: `$(notebook) ${title}`,
+    label: `$(list-flat) ${title}`,
     description: pathLabel,
     tooltip: `${title} ${pathLabel}`,
     ariaLabel: `${title} ${pathLabel}`,
@@ -3519,7 +3527,11 @@ function cssColorToHex(value) {
   if (!match) return null;
   return `#${match
     .slice(1, 4)
-    .map((part) => Math.max(0, Math.min(255, Number(part))).toString(16).padStart(2, "0"))
+    .map((part) =>
+      Math.max(0, Math.min(255, Number(part)))
+        .toString(16)
+        .padStart(2, "0"),
+    )
     .join("")}`;
 }
 
@@ -3828,9 +3840,10 @@ function updateStatusBar() {
 
   if (currentTab?.isNote) {
     const updated = formatNoteUpdatedAt(currentTab.noteUpdatedAt);
-    const noteStatus = updated ? `${updated} • Note: ${currentTab.name}` : `Note: ${currentTab.name}`;
+    const notePath = getNoteStatusPath(currentTab);
+    const noteStatus = updated ? `${updated} • ${notePath}` : notePath;
     if (statusPathEl) statusPathEl.textContent = noteStatus;
-    if (statusPathEl) statusPathEl.title = currentTab.name;
+    if (statusPathEl) statusPathEl.title = notePath;
   } else {
     if (statusPathEl) statusPathEl.textContent = currentFilePath;
     if (statusPathEl) statusPathEl.title = currentFilePath;
@@ -4732,7 +4745,10 @@ function getCurrentNotesFolderPath() {
 }
 
 function getParentNotesFolderPath(folderPath = getCurrentNotesFolderPath()) {
-  const value = String(folderPath || "").replace(/\\/g, "/").split("/").filter(Boolean);
+  const value = String(folderPath || "")
+    .replace(/\\/g, "/")
+    .split("/")
+    .filter(Boolean);
   value.pop();
   return value.join("/");
 }
@@ -4742,7 +4758,11 @@ async function createNoteTab(content = "", insertIndex = null, existingNote = nu
   let note = existingNote;
 
   if (!note && content.trim()) {
-    note = await window.electronAPI.createNote({ content, title, folderPath: options.folderPath || getCurrentNotesFolderPath() });
+    note = await window.electronAPI.createNote({
+      content,
+      title,
+      folderPath: options.folderPath || getCurrentNotesFolderPath(),
+    });
     if (!note?.success) {
       console.error("Failed to create note:", note?.error);
       return null;
@@ -4815,7 +4835,11 @@ async function saveAsNote() {
     return false;
   }
 
-  const note = await window.electronAPI.createNote({ content, title: getNoteTitleFromContent(content), folderPath: getCurrentNotesFolderPath() });
+  const note = await window.electronAPI.createNote({
+    content,
+    title: getNoteTitleFromContent(content),
+    folderPath: getCurrentNotesFolderPath(),
+  });
   if (!note?.success) {
     console.error("Failed to save as note:", note?.error);
     return false;
@@ -6078,7 +6102,9 @@ async function refreshGlobalSearchNow() {
 }
 
 function syncOpenNoteTabsWithNotesIndex(notes = notesIndexCache) {
-  const notesById = new Map((Array.isArray(notes) ? notes : []).filter((note) => note?.id).map((note) => [note.id, note]));
+  const notesById = new Map(
+    (Array.isArray(notes) ? notes : []).filter((note) => note?.id).map((note) => [note.id, note]),
+  );
   let changed = false;
   for (const tab of tabData) {
     if (!tab?.isNote || !tab.noteId) continue;
@@ -6260,7 +6286,9 @@ async function deleteFolderEverywhere(folderPath) {
   const result = await window.electronAPI.deleteFolder(folderPath);
   if (!result?.success) return false;
 
-  for (const tab of [...tabData].filter((item) => item.isNote && (item.noteFolderPath === folderPath || item.noteFolderPath?.startsWith(prefix)))) {
+  for (const tab of [...tabData].filter(
+    (item) => item.isNote && (item.noteFolderPath === folderPath || item.noteFolderPath?.startsWith(prefix)),
+  )) {
     removeTabAndAdjustUI(tab);
   }
   await renderNotesList();
@@ -6510,8 +6538,8 @@ let suppressNoteClick = false;
 let suppressGlobalSearchMatchClick = false;
 let notePreviewOpenSeq = 0;
 const pendingNoteOpens = new Map();
-const NOTE_FOLDER_HOVER_ARM_DELAY = 220;
-const NOTE_FOLDER_HOVER_OPEN_DELAY = 1500;
+const NOTE_FOLDER_HOVER_ARM_DELAY = 300;
+const NOTE_FOLDER_HOVER_OPEN_DELAY = 1000;
 const NOTE_FOLDER_DROP_FLASH_DURATION = 280;
 
 function beginNoteListDrag(e, item) {
@@ -6673,6 +6701,7 @@ function clearNoteFolderDropTarget({ flash = false } = {}) {
     noteDragState.folderDropElement = null;
     noteDragState.folderDropTargetPath = null;
     noteDragState.folderDropKind = null;
+    noteDragState.folderDropArmed = false;
   }
 }
 
@@ -6696,6 +6725,19 @@ function isDraggedEdgeInMiddleBand(state, targetRect) {
   return edge >= middleStart && edge <= middleEnd;
 }
 
+function isDraggedEdgeInFolderDropBand(state, target, targetRect) {
+  const draggedRect = getDraggedItemProjectedRect(state);
+  if (!draggedRect) return false;
+  if (!state.item?.classList.contains("pinned") && target.classList.contains("pinned")) {
+    const upperEnd = targetRect.top + (targetRect.height * 2) / 3;
+    const lowerStart = targetRect.top + targetRect.height / 3;
+    const topInUpperBand = draggedRect.top >= targetRect.top && draggedRect.top <= upperEnd;
+    const bottomInLowerBand = draggedRect.bottom >= lowerStart && draggedRect.bottom <= targetRect.bottom;
+    return topInUpperBand || bottomInLowerBand;
+  }
+  return isDraggedEdgeInMiddleBand(state, targetRect);
+}
+
 function getNoteFolderDropTarget(state) {
   if (!state?.dragging) return null;
   if (state.item?.classList.contains("pinned")) return null;
@@ -6703,7 +6745,7 @@ function getNoteFolderDropTarget(state) {
   if (heading) {
     const rect = heading.getBoundingClientRect();
     const draggedRect = getDraggedItemProjectedRect(state);
-    if (draggedRect && draggedRect.bottom >= rect.top && draggedRect.top <= rect.top + (rect.height * 2) / 3) {
+    if (draggedRect && draggedRect.bottom >= rect.top && draggedRect.top <= rect.bottom) {
       return {
         key: "parent",
         element: heading,
@@ -6713,10 +6755,12 @@ function getNoteFolderDropTarget(state) {
     }
   }
 
-  const candidates = [...notesList.querySelectorAll(".note-list-item.folder-list-item")].filter((target) => target !== state.item);
+  const candidates = [...notesList.querySelectorAll(".note-list-item.folder-list-item")].filter(
+    (target) => target !== state.item,
+  );
   for (const target of candidates) {
     const rect = getNoteListItemLayoutRect(target);
-    if (!isDraggedEdgeInMiddleBand(state, rect)) continue;
+    if (!isDraggedEdgeInFolderDropBand(state, target, rect)) continue;
     return {
       key: target.dataset.entryKey,
       element: target,
@@ -6757,6 +6801,7 @@ async function openNoteFolderDropTarget(state) {
   state.folderDropElement = null;
   state.folderDropTargetPath = null;
   state.folderDropKind = null;
+  state.folderDropArmed = false;
   state.folderDropOpening = false;
   if (targetKind === "parent") await notesController?.openParentFolder?.();
   else await notesController?.openFolder?.(targetPath);
@@ -6784,10 +6829,12 @@ function updateNoteFolderDropTarget(e) {
     noteDragState.folderDropElement = target.element;
     noteDragState.folderDropTargetPath = target.targetFolderPath;
     noteDragState.folderDropKind = target.kind;
+    noteDragState.folderDropArmed = false;
     const state = noteDragState;
     state.folderDropArmTimer = setTimeout(() => {
       if (noteDragState !== state || state.folderDropKey !== target.key) return;
       state.folderDropArmTimer = null;
+      state.folderDropArmed = true;
       target.element.classList.add("folder-drop-hover");
       state.folderDropTimer = setTimeout(() => openNoteFolderDropTarget(state), NOTE_FOLDER_HOVER_OPEN_DELAY);
     }, NOTE_FOLDER_HOVER_ARM_DELAY);
@@ -6797,7 +6844,9 @@ function updateNoteFolderDropTarget(e) {
 
 function restoreNoteListOrder(state) {
   if (!state?.originalOrder?.length) return;
-  const nodes = new Map([...notesList.querySelectorAll(".note-list-item")].map((node) => [node.dataset.entryKey, node]));
+  const nodes = new Map(
+    [...notesList.querySelectorAll(".note-list-item")].map((node) => [node.dataset.entryKey, node]),
+  );
   for (const entryKey of state.originalOrder) {
     const node = nodes.get(entryKey);
     if (node) notesList.appendChild(node);
@@ -6846,7 +6895,9 @@ function positionNoteListItemAtCursor(state, clientY) {
 
 function pickUpDraggedNoteListItemInCurrentFolder(state, clientY) {
   if (!state?.entryKey) return;
-  const existing = [...notesList.querySelectorAll(".note-list-item")].find((node) => node.dataset.entryKey === state.entryKey);
+  const existing = [...notesList.querySelectorAll(".note-list-item")].find(
+    (node) => node.dataset.entryKey === state.entryKey,
+  );
   if (existing && existing !== state.item) {
     resetNoteListDragItemStyle(state.item);
     if (state.item?.parentNode) state.item.remove();
@@ -7007,7 +7058,9 @@ async function cancelNoteDragByShortcut() {
     await notesController?.openFolder?.(state.sourceFolderPath || "");
   }
   if (noteDragState !== state) return;
-  const existing = [...notesList.querySelectorAll(".note-list-item")].find((node) => node.dataset.entryKey === state.entryKey);
+  const existing = [...notesList.querySelectorAll(".note-list-item")].find(
+    (node) => node.dataset.entryKey === state.entryKey,
+  );
   if (existing && existing !== state.item) {
     resetNoteListDragItemStyle(state.item);
     if (state.item?.parentNode) state.item.remove();
@@ -7313,7 +7366,7 @@ window.addEventListener("mouseup", async (e) => {
     await finishNoteExternalDrag(e);
     return;
   }
-  const dropFolderPath = state.folderDropTargetPath;
+  const dropFolderPath = state.folderDropArmed ? state.folderDropTargetPath : null;
   const pendingMoveFolderPath = state.pendingMoveFolderPath;
   clearNoteFolderDropTarget();
   noteDragState = null;
@@ -7323,8 +7376,14 @@ window.addEventListener("mouseup", async (e) => {
   setTimeout(() => {
     suppressNoteClick = false;
   }, 0);
-  resetNoteListDragItemStyle(item);
   const targetFolderPath = dropFolderPath ?? pendingMoveFolderPath ?? null;
+  const movingToDifferentFolder = targetFolderPath !== null && targetFolderPath !== state.folderPath;
+  if (movingToDifferentFolder && item?.parentNode) {
+    item.remove();
+    resetNoteListDragItemStyle(item);
+  } else {
+    resetNoteListDragItemStyle(item);
+  }
   if (targetFolderPath !== null && targetFolderPath !== state.folderPath) {
     await moveDraggedNoteEntryToFolder(state, targetFolderPath);
   }
