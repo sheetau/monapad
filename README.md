@@ -1,10 +1,11 @@
-<p align="center">
-  <img width="128" align="center" src="src/icon/favicon.ico">
+<p align="left">
+  <img width="50" align="center" src="src/icon/logo.ico">
+  <img width="50" align="center" src="src/icon/favicon.ico">
 </p>
-<h1 align="center">
+<h1 align="left">
   Monapad
 </h1>
-<p align="center">
+<p align="left">
   The text editor that thinks like a code editor
 </p>
 
