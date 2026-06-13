@@ -200,12 +200,17 @@ let transientStatusMessageTimer = null;
 let saveStatusFadeTimer = null;
 
 // tabs hover state, width handling
+const TAB_LAYOUT_ANIMATION_MS = 200;
+const TAB_MAX_WIDTH = 220;
+const TAB_MIN_WIDTH = 0;
 let tabAreaHovered = false;
-let fixedTabsWidth = null;
-let pendingTabsWidthAfterClose = null;
 let isHoveringLastTab = false;
 let mouseX = 0;
 let mouseY = 0;
+let closingTabSlots = [];
+let tabLayoutAnimations = new Map();
+let tabsWidthAnimation = null;
+let tabClosingModeAvailableWidth = null;
 
 // editor context menu
 let isWordWrapOn = true;
@@ -285,11 +290,19 @@ window.electronAPI.onOpenFile(async (filePath) => {
 });
 
 function getTabDropPlacementByClientX(clientX, excludeTab = null) {
-  const tabElements = Array.from(tabs.querySelectorAll(".tab")).filter((tab) => tab !== excludeTab);
+  const tabElements = tabData.map((tab) => tab.element).filter((tab) => tab !== excludeTab);
   const tabsRect = tabs.getBoundingClientRect();
   if (!tabElements.length) return { index: 0, left: 0, referenceTab: null };
 
-  const rects = tabElements.map((tab) => tab.getBoundingClientRect());
+  const rects = tabElements.map((tabElement) => {
+    const tab = tabData.find((candidate) => candidate.element === tabElement);
+    const bounds = tab?._tabBounds || getCurrentTabBounds(tab);
+    return {
+      left: tabsRect.left + bounds.x,
+      right: tabsRect.left + bounds.x + bounds.width,
+      width: bounds.width,
+    };
+  });
   const firstRect = rects[0];
   const lastRect = rects[rects.length - 1];
 
@@ -321,7 +334,7 @@ function clampDropPlacementAfterPinnedTabs(placement, excludeTab = null) {
   const pinnedCount = getPinnedTabCount();
   if (!placement || placement.index === null || placement.index >= pinnedCount) return placement;
 
-  const tabElements = Array.from(tabs.querySelectorAll(".tab")).filter((tab) => tab !== excludeTab);
+  const tabElements = tabData.map((tab) => tab.element).filter((tab) => tab !== excludeTab);
   const referenceTab = tabElements[pinnedCount] || null;
   const tabsRect = tabs.getBoundingClientRect();
   const left = referenceTab
@@ -335,7 +348,7 @@ function clampDropPlacementInsidePinnedTabs(placement, excludeTab = null) {
   const pinnedCount = getPinnedTabCount();
   if (!placement || placement.index === null || pinnedCount <= 0) return null;
 
-  const tabElements = Array.from(tabs.querySelectorAll(".tab")).filter((tab) => tab !== excludeTab);
+  const tabElements = tabData.map((tab) => tab.element).filter((tab) => tab !== excludeTab);
   const excludedTabData = excludeTab ? tabData.find((tab) => tab.element === excludeTab) : null;
   const effectivePinnedCount = pinnedCount - (excludedTabData?.isPinned ? 1 : 0);
   if (effectivePinnedCount <= 0) return null;
@@ -428,6 +441,7 @@ window.electronAPI.onLoadTabData(async (receivedTabData) => {
     tabs.removeChild(defaultTab.element);
     defaultTab.model?.dispose();
     tabData = [];
+    layoutTabs({ animate: false });
   }
 
   // create new tab
@@ -2047,6 +2061,7 @@ async function restoreAutosaveDrafts() {
       emptyTab.model?.dispose();
       tabData = [];
       currentTab = null;
+      layoutTabs({ animate: false });
     }
 
     for (const draft of drafts) {
@@ -2335,6 +2350,7 @@ function normalizePinnedTabs() {
     updatePinnedTabIcon(tab);
   }
   updateTabAdjacencyClasses();
+  layoutTabs({ animate: true });
   savePinnedTabsState();
 }
 
@@ -2376,6 +2392,7 @@ async function restorePinnedTabs() {
     initialEmptyTab.model?.dispose();
     tabData = tabData.filter((tab) => tab !== initialEmptyTab);
     if (currentTab === initialEmptyTab) currentTab = null;
+    layoutTabs({ animate: false });
   }
 
   normalizePinnedTabs();
@@ -3737,9 +3754,8 @@ tabsContainer.addEventListener("mouseover", (e) => {
 function handleTabsMouseLeave() {
   tabAreaHovered = false;
   isHoveringLastTab = false;
-  fixedTabsWidth = null;
-  pendingTabsWidthAfterClose = null;
-  tabs.style.maxWidth = "";
+  tabClosingModeAvailableWidth = null;
+  layoutTabs({ animate: true });
   updateTabsCompactClass();
 }
 function isMouseInsideTabsContainer() {
@@ -4038,58 +4054,19 @@ function setExternalPreviewTargetWindow(targetWindowId, dropScreenX, dropScreenY
 // tab dragging
 function enableTabDragging(tab, data) {
   let tabOrderChangedDuringDrag = false;
-
-  function getTabShiftRects() {
-    return new Map(
-      [...tabs.children]
-        .filter((node) => node.classList?.contains("tab") && node !== draggingTab)
-        .map((node) => [node, node.getBoundingClientRect().left]),
-    );
-  }
-
-  function animateTabShifts(previousLefts) {
-    const shiftedTabs = [];
-    for (const [node, previousLeft] of previousLefts) {
-      if (!node.isConnected) continue;
-      const deltaX = previousLeft - node.getBoundingClientRect().left;
-      if (!deltaX) continue;
-      if (node._tabShiftCleanup) node._tabShiftCleanup();
-      node.classList.remove("tab-shift-animating");
-      node.classList.add("tab-shift-prep");
-      node.style.transform = `translateX(${deltaX}px)`;
-      shiftedTabs.push(node);
-    }
-    if (!shiftedTabs.length) return;
-
-    void tabs.offsetWidth;
-    requestAnimationFrame(() => {
-      for (const node of shiftedTabs) {
-        node.classList.remove("tab-shift-prep");
-        node.classList.add("tab-shift-animating");
-        node.style.transform = "";
-        const cleanup = (event) => {
-          if (event.target !== node) return;
-          node.classList.remove("tab-shift-animating");
-          node.removeEventListener("transitionend", cleanup);
-          node._tabShiftCleanup = null;
-        };
-        node._tabShiftCleanup = () => {
-          node.classList.remove("tab-shift-animating", "tab-shift-prep");
-          node.removeEventListener("transitionend", cleanup);
-          node._tabShiftCleanup = null;
-        };
-        node.addEventListener("transitionend", cleanup);
-      }
-    });
-  }
+  let dragMouseOffsetX = 0;
+  let dragVisualX = null;
+  let lastTabReorderMouseX = 0;
 
   function getTabLayoutCenter(tabElement) {
-    const tabsRect = tabs.getBoundingClientRect();
-    return tabsRect.left + tabElement.offsetLeft - tabs.scrollLeft + tabElement.offsetWidth / 2;
+    const targetTabData = tabData.find((candidate) => candidate.element === tabElement);
+    const bounds = targetTabData?._tabBounds || getCurrentTabBounds(targetTabData);
+    return tabs.getBoundingClientRect().left + bounds.x + bounds.width / 2;
   }
 
   tab.addEventListener("mousedown", async (e) => {
     if (e.button !== 0 || isTabControlTarget(e.target) || draggingTab) return;
+    if (isTabLayoutAnimating()) return;
     e.preventDefault();
     // console.log("📌mousedown: start");
     isHandlingMouseDown = true;
@@ -4108,8 +4085,12 @@ function enableTabDragging(tab, data) {
     wasOnlyTab = tabData.length === 1;
     startX = e.clientX;
     currentX = 0;
+    const tabsRect = tabs.getBoundingClientRect();
+    const tabBounds = getCurrentTabBounds(data);
+    dragMouseOffsetX = e.clientX - (tabsRect.left + tabBounds.x);
+    dragVisualX = tabBounds.x;
+    lastTabReorderMouseX = e.clientX;
     tab.style.transition = "none";
-    tab.style.position = "relative";
     externalCancelDragging = handleCancelDraggingByShortcut;
     windowBoundsCache = await window.electronAPI.getMyBounds();
     cachedToolbarRect = toolbar.getBoundingClientRect();
@@ -4137,6 +4118,26 @@ function enableTabDragging(tab, data) {
       return true;
     }
     return false;
+  }
+
+  function commitDraggedTabVisualBounds() {
+    if (!draggingTab || !draggingTabData || dragVisualX === null) {
+      tab.style.removeProperty("--tab-drag-x");
+      return;
+    }
+    const width = draggingTab.getBoundingClientRect().width;
+    draggingTab.style.removeProperty("--tab-drag-x");
+    setTabBounds(draggingTabData, { x: dragVisualX, width });
+  }
+
+  function updateDraggedTabVisualPosition(clientX) {
+    const tabsRect = tabs.getBoundingClientRect();
+    const baseX = parseFloat(draggingTab.style.left || "0") || 0;
+    const dragAreaWidth = getTabDragAreaWidth();
+    const draggingWidth = draggingTab.getBoundingClientRect().width;
+    dragVisualX = Math.max(0, Math.min(clientX - tabsRect.left - dragMouseOffsetX, Math.max(0, dragAreaWidth - draggingWidth)));
+    currentX = dragVisualX - baseX;
+    draggingTab.style.setProperty("--tab-drag-x", `${currentX}px`);
   }
 
   function onMouseMove(e) {
@@ -4211,13 +4212,13 @@ function enableTabDragging(tab, data) {
       window.electronAPI.destroyCursorWindow();
       setExternalPreviewTargetWindow(null);
       hideDropIndicator();
-
-      currentX = mouseX - startX;
-      draggingTab.style.transform = `translateX(${currentX}px)`;
+      updateDraggedTabVisualPosition(mouseX);
     }
 
-    const tabsArray = Array.from(tabs.children).filter((el) => el.classList.contains("tab"));
-    const currentRect = draggingTab.getBoundingClientRect();
+    const tabsArray = tabData.map((tab) => tab.element);
+    const draggingWidth = draggingTab.getBoundingClientRect().width;
+    const draggingLeft = tabs.getBoundingClientRect().left + (dragVisualX ?? getCurrentTabBounds(draggingTabData).x);
+    const draggingRight = draggingLeft + draggingWidth;
     for (let i = 0; i < tabsArray.length; i++) {
       const targetTab = tabsArray[i];
       if (targetTab === draggingTab) continue;
@@ -4225,51 +4226,36 @@ function enableTabDragging(tab, data) {
       if (targetTabData && Boolean(targetTabData.isPinned) !== Boolean(draggingTabData.isPinned)) continue;
 
       const targetCenter = getTabLayoutCenter(targetTab);
+      const targetBounds = targetTabData?._tabBounds || getCurrentTabBounds(targetTabData);
+      const reorderThreshold = Math.max(1, Math.round((targetBounds.width / TAB_MAX_WIDTH) * 16));
+      if (Math.abs(mouseX - lastTabReorderMouseX) <= reorderThreshold) continue;
 
-      if (currentX > 0 && currentRect.right > targetCenter && i > dragIndex) {
-        const oldLeft = currentRect.left;
-        const tabShiftRects = getTabShiftRects();
-
+      if (i > dragIndex && draggingRight > targetCenter) {
         tabs.insertBefore(draggingTab, targetTab.nextSibling);
         monacoEditor.getDomNode()?.blur();
         switchTab(currentTab);
-        animateTabShifts(tabShiftRects);
-
-        const newRect = draggingTab.getBoundingClientRect();
-        const deltaX = oldLeft - newRect.left;
-
-        currentX += deltaX;
-        draggingTab.style.transform = `translateX(${currentX}px)`;
 
         [tabData[dragIndex], tabData[i]] = [tabData[i], tabData[dragIndex]];
+        layoutTabs({ animate: true, skipTabs: new Set([draggingTabData]) });
         updateTabAdjacencyClasses();
         scheduleAllUnsavedTabAutosaves();
         tabOrderChangedDuringDrag = true;
         dragIndex = i;
-        startX = e.clientX - currentX;
+        lastTabReorderMouseX = mouseX;
 
         break;
-      } else if (currentX < 0 && currentRect.left < targetCenter && i < dragIndex) {
-        const oldLeft = currentRect.left;
-        const tabShiftRects = getTabShiftRects();
-
+      } else if (i < dragIndex && draggingLeft < targetCenter) {
         tabs.insertBefore(draggingTab, targetTab);
         monacoEditor.getDomNode()?.blur();
         switchTab(currentTab);
-        animateTabShifts(tabShiftRects);
-
-        const newRect = draggingTab.getBoundingClientRect();
-        const deltaX = oldLeft - newRect.left;
-
-        currentX += deltaX;
-        draggingTab.style.transform = `translateX(${currentX}px)`;
 
         [tabData[dragIndex], tabData[i]] = [tabData[i], tabData[dragIndex]];
+        layoutTabs({ animate: true, skipTabs: new Set([draggingTabData]) });
         updateTabAdjacencyClasses();
         scheduleAllUnsavedTabAutosaves();
         tabOrderChangedDuringDrag = true;
         dragIndex = i;
-        startX = e.clientX - currentX;
+        lastTabReorderMouseX = mouseX;
 
         break;
       }
@@ -4300,9 +4286,8 @@ function enableTabDragging(tab, data) {
     const isWarn = draggingTabData.isWarned || draggingTabData.isPinned;
     const releasedTabData = tabData.find((t) => t.element === draggingTab);
 
+    commitDraggedTabVisualBounds();
     draggingTab.style.transition = "";
-    draggingTab.style.transform = "";
-    draggingTab.style.position = "";
     draggingTab.style.pointerEvents = "";
     draggingTab.style.opacity = "1";
     tabs.classList.remove("dragging");
@@ -4324,6 +4309,8 @@ function enableTabDragging(tab, data) {
     cachedToolbarRect = null;
     externalCancelDragging = null;
     dragIndex = -1;
+    dragMouseOffsetX = 0;
+    dragVisualX = null;
 
     if (isWarn || !releasedTabData || !windowBoundsCache) {
       dragStartClientPos = null;
@@ -4350,6 +4337,7 @@ function enableTabDragging(tab, data) {
 
     if (!isOutsideToolbar) {
       normalizePinnedTabs();
+      layoutTabs({ animate: true });
       if (tabOrderChangedDuringDrag) scheduleGlobalSearchAfterTabSetChange();
       dragStartClientPos = null;
       return;
@@ -4434,9 +4422,8 @@ function enableTabDragging(tab, data) {
       return;
     }
 
+    commitDraggedTabVisualBounds();
     draggingTab.style.transition = "";
-    draggingTab.style.transform = "";
-    draggingTab.style.position = "";
     draggingTab.style.pointerEvents = "";
     draggingTab.style.opacity = "1";
     if (tabDragOriginalOrder?.length) {
@@ -4445,6 +4432,7 @@ function enableTabDragging(tab, data) {
         if (item?.element) tabs.appendChild(item.element);
       }
       normalizePinnedTabs();
+      layoutTabs({ animate: true });
       updateTabAdjacencyClasses();
       if (tabDragOriginalActiveTab && tabData.includes(tabDragOriginalActiveTab)) switchTab(tabDragOriginalActiveTab);
     }
@@ -4469,6 +4457,8 @@ function enableTabDragging(tab, data) {
     dragStartClientPos = null;
     externalCancelDragging = null;
     dragIndex = -1;
+    dragMouseOffsetX = 0;
+    dragVisualX = null;
   }
 }
 
@@ -4522,6 +4512,7 @@ function removeTabAndAdjustUI(targetTabData) {
   clearAutosaveTimer(targetTabData);
   tabs.removeChild(targetTabData.element);
   tabData.splice(index, 1);
+  layoutTabs({ animate: true });
   scheduleAllUnsavedTabAutosaves();
   scheduleGlobalSearchAfterTabSetChange();
 
@@ -4540,48 +4531,316 @@ function removeTabAndAdjustUI(targetTabData) {
   } else {
     currentTab = null;
     createDefaultEmptyTab({ switchTo: false });
-    fixedTabsWidth = null;
-    tabs.style.maxWidth = "";
     switchTab(tabData[0]);
     setTimeout(() => monacoEditor?.focus(), 0);
   }
 }
 
-// add compact class to tabs when tab width is less than 50 px
+function getAddTabOuterWidth() {
+  const rect = addTabButton.getBoundingClientRect();
+  const style = getComputedStyle(addTabButton);
+  return rect.width + parseFloat(style.marginLeft || "0") + parseFloat(style.marginRight || "0");
+}
+
+function getAvailableWidthForTabs(options = {}) {
+  const { ignoreClosingMode = false } = options;
+  if (!ignoreClosingMode && tabClosingModeAvailableWidth !== null) return tabClosingModeAvailableWidth;
+  const maxWidth = parseFloat(getComputedStyle(tabsContainer).maxWidth);
+  const containerLimit = Number.isFinite(maxWidth) ? maxWidth : tabsContainer.getBoundingClientRect().width;
+  return Math.max(0, containerLimit - getAddTabOuterWidth());
+}
+
+function isTabLayoutAnimating() {
+  return Boolean(tabsWidthAnimation) || tabLayoutAnimations.size > 0;
+}
+
+function getTabDragAreaWidth() {
+  return Math.max(getAvailableWidthForTabs({ ignoreClosingMode: true }), tabs.getBoundingClientRect().width);
+}
+
+function getTabLayoutSlots() {
+  const slots = tabData.map((tab, index) => ({ tab, closing: false, index }));
+  for (const closingSlot of closingTabSlots) {
+    const index = Math.max(0, Math.min(closingSlot.index, slots.length));
+    slots.splice(index, 0, closingSlot);
+  }
+  return slots;
+}
+
+function calculateTabLayout(slots, availableWidth) {
+  const openSlots = slots.filter((slot) => !slot.closing);
+  const openCount = openSlots.length;
+  let openWidth = openCount ? Math.min(TAB_MAX_WIDTH, Math.floor(availableWidth / openCount)) : 0;
+  openWidth = Math.max(0, openWidth);
+  if (openCount && openWidth < TAB_MIN_WIDTH) openWidth = TAB_MIN_WIDTH;
+
+  let extraPixels = openCount ? Math.max(0, Math.min(availableWidth, openCount * TAB_MAX_WIDTH) - openWidth * openCount) : 0;
+  let x = 0;
+  const bounds = new Map();
+
+  for (const slot of slots) {
+    let width = 0;
+    if (!slot.closing) {
+      width = openWidth;
+      if (extraPixels > 0 && width < TAB_MAX_WIDTH) {
+        width += 1;
+        extraPixels -= 1;
+      }
+    }
+    bounds.set(slot.tab, { x, width });
+    x += width;
+  }
+
+  return { bounds, trailingX: x, compact: openWidth <= 60 };
+}
+
+function setTabBounds(tab, bounds) {
+  tab._tabBounds = bounds;
+  tab.element.style.left = `${bounds.x}px`;
+  tab.element.style.width = `${bounds.width}px`;
+}
+
+function getCurrentTabBounds(tab) {
+  const rect = tab.element.getBoundingClientRect();
+  const tabsRect = tabs.getBoundingClientRect();
+  if (tab.element.isConnected && (rect.width > 0 || rect.left !== 0)) {
+    return { x: rect.left - tabsRect.left, width: rect.width };
+  }
+  if (tab._tabBounds) return { ...tab._tabBounds };
+  return { x: rect.left - tabsRect.left, width: rect.width };
+}
+
+function finishTabLayoutAnimations() {
+  for (const animation of tabLayoutAnimations.values()) {
+    try {
+      animation.finish();
+    } catch {
+      animation.cancel();
+    }
+  }
+  tabLayoutAnimations.clear();
+  if (tabsWidthAnimation) {
+    try {
+      tabsWidthAnimation.finish();
+    } catch {
+      tabsWidthAnimation.cancel();
+    }
+    tabsWidthAnimation = null;
+  }
+}
+
+function animateTabsWidth(targetWidth, animate) {
+  const currentWidth = tabs.getBoundingClientRect().width;
+  if (tabsWidthAnimation) {
+    tabsWidthAnimation.cancel();
+    tabsWidthAnimation = null;
+  }
+  tabs.style.width = `${targetWidth}px`;
+  if (!animate || Math.abs(currentWidth - targetWidth) < 0.5) return Promise.resolve();
+
+  const animation = tabs.animate(
+    [{ width: `${currentWidth}px` }, { width: `${targetWidth}px` }],
+    { duration: TAB_LAYOUT_ANIMATION_MS, easing: "linear" },
+  );
+  tabsWidthAnimation = animation;
+  return animation.finished.catch(() => {}).finally(() => {
+    if (tabsWidthAnimation !== animation) return;
+    tabsWidthAnimation = null;
+    tabs.style.width = `${targetWidth}px`;
+  });
+}
+
+function getOpeningTabStartBounds(tab, target) {
+  const index = tabData.indexOf(tab);
+  if (index > 0) {
+    const previousTab = tabData[index - 1];
+    const previousBounds = getCurrentTabBounds(previousTab);
+    return { x: previousBounds.x + previousBounds.width, width: 0 };
+  }
+
+  const nextTab = tabData[index + 1];
+  if (nextTab) {
+    const nextBounds = getCurrentTabBounds(nextTab);
+    return { x: nextBounds.x, width: 0 };
+  }
+
+  return { x: target.x, width: target.width };
+}
+
+function animateTabBounds(tab, from, to, animate) {
+  const existing = tabLayoutAnimations.get(tab);
+  if (existing) {
+    existing.cancel();
+    tabLayoutAnimations.delete(tab);
+  }
+
+  setTabBounds(tab, to);
+  if (!animate || (Math.abs(from.x - to.x) < 0.5 && Math.abs(from.width - to.width) < 0.5)) {
+    return Promise.resolve();
+  }
+
+  const animation = tab.element.animate(
+    [
+      { left: `${from.x}px`, width: `${from.width}px` },
+      { left: `${to.x}px`, width: `${to.width}px` },
+    ],
+    { duration: TAB_LAYOUT_ANIMATION_MS, easing: "linear" },
+  );
+  tabLayoutAnimations.set(tab, animation);
+  return animation.finished.catch(() => {}).finally(() => {
+    if (tabLayoutAnimations.get(tab) !== animation) return;
+    tabLayoutAnimations.delete(tab);
+    setTabBounds(tab, to);
+  });
+}
+
+function layoutTabs(options = {}) {
+  const { animate = true, openingTab = null, skipTabs = new Set(), onComplete = null } = options;
+  const slots = getTabLayoutSlots();
+  const { bounds, trailingX, compact } = calculateTabLayout(slots, getAvailableWidthForTabs());
+  const animations = [animateTabsWidth(trailingX, animate)];
+
+  tabs.classList.toggle("compact", compact);
+
+  for (const slot of slots) {
+    const tab = slot.tab;
+    const target = bounds.get(tab);
+    if (!target) continue;
+
+    const isOpening = tab === openingTab;
+    const from = isOpening ? getOpeningTabStartBounds(tab, target) : getCurrentTabBounds(tab);
+    if (skipTabs.has(tab)) {
+      tab._tabBounds = target;
+      continue;
+    }
+    animations.push(animateTabBounds(tab, from, target, animate));
+    if (slot.closing && animate) scheduleClosingTabCleanup(tab);
+  }
+
+  const finished = Promise.all(animations).then(() => {
+    onComplete?.();
+  });
+  return finished;
+}
+
 function updateTabsCompactClass() {
-  const tabElements = tabs.querySelectorAll(".tab");
-  if (tabElements.length === 0) return;
-
-  const tabWidth = tabElements[0].offsetWidth;
-  tabs.classList.toggle("compact", tabWidth <= 60);
+  const slots = getTabLayoutSlots();
+  const { compact } = calculateTabLayout(slots, getAvailableWidthForTabs());
+  tabs.classList.toggle("compact", compact);
 }
 
-function prepareTabsWidthForClose(tab, keepCurrentWidth = false) {
-  const tabsWidth = tabs.getBoundingClientRect().width;
-  const tabWidth = tab.getBoundingClientRect().width;
-  pendingTabsWidthAfterClose = keepCurrentWidth ? tabsWidth : Math.max(0, tabsWidth - tabWidth);
+function enterTabClosingMode(overrideWidth = null) {
+  tabClosingModeAvailableWidth = overrideWidth ?? tabs.getBoundingClientRect().width;
 }
 
-function applyPendingTabsWidthAfterClose() {
-  if (pendingTabsWidthAfterClose === null) return;
-  fixedTabsWidth = pendingTabsWidthAfterClose;
-  tabs.style.maxWidth = `${fixedTabsWidth}px`;
-  pendingTabsWidthAfterClose = null;
+function exitTabClosingMode() {
+  tabClosingModeAvailableWidth = null;
+  layoutTabs({ animate: true });
 }
 
-function clearPendingTabsWidthAfterClose() {
-  pendingTabsWidthAfterClose = null;
+const tabsResizeObserver = new ResizeObserver(() => {
+  if (!tabs.isConnected) return;
+  if (isTabLayoutAnimating()) return;
+  if (tabClosingModeAvailableWidth !== null) return;
+  layoutTabs({ animate: true });
+});
+tabsResizeObserver.observe(tabsContainer);
+
+function maybeExitTabClosingModeAfterClose() {
+  if (tabClosingModeAvailableWidth === null) return;
+  if (tabData.length * TAB_MAX_WIDTH < tabClosingModeAvailableWidth) {
+    tabClosingModeAvailableWidth = null;
+  }
+}
+
+function removeClosingTabSlot(slot) {
+  closingTabSlots = closingTabSlots.filter((candidate) => candidate !== slot);
+  const tab = slot.tab;
+  if (tab._closingCleanupTimer) {
+    clearTimeout(tab._closingCleanupTimer);
+    tab._closingCleanupTimer = null;
+  }
+  tab._closingSlot = null;
+  tab.element.classList.remove("closing");
+  if (tab.element.parentElement === tabs) tabs.removeChild(tab.element);
+  if (tab.model) tab.model.dispose();
+  updateTabsCompactClass();
+}
+
+function scheduleClosingTabCleanup(tab) {
+  const slot = tab._closingSlot;
+  if (!slot) return;
+  if (tab._closingCleanupTimer) clearTimeout(tab._closingCleanupTimer);
+  tab._closingCleanupTimer = setTimeout(() => {
+    tab._closingCleanupTimer = null;
+    tab._closing = false;
+    tab._closingSlot = null;
+    removeClosingTabSlot(slot);
+    layoutTabs({ animate: false });
+  }, TAB_LAYOUT_ANIMATION_MS);
+}
+
+function ensureActiveTabAfterClose(preferredIndex) {
+  if (!tabData.length) return;
+  const active = tabData.find((tab) => tab.element.classList.contains("active"));
+  if (active) {
+    currentTab = active;
+    updateTabAdjacencyClasses();
+    return;
+  }
+  switchTab(tabData[Math.max(0, Math.min(preferredIndex, tabData.length - 1))]);
+}
+
+function finishClosedTabState(data, index, options = {}) {
+  const { source = "non-ui", resetWidthOnEmpty = false } = options;
+  if (!data || !tabData.includes(data) || data._closing) return;
+
+  const closeByMouse = source === "mouse";
+  const closingModeWidth = tabs.getBoundingClientRect().width;
+  const closedTabWidth = data.element.getBoundingClientRect().width;
+  const wasTrailingTab = index === tabData.length - 1;
+  const wasActive = data.element.classList.contains("active");
+  data._closing = true;
+  if (closeByMouse) enterTabClosingMode(closingModeWidth);
+
+  tabData = tabData.filter((tab) => tab !== data);
+  const closingSlot = { tab: data, closing: true, index };
+  data._closingSlot = closingSlot;
+  closingTabSlots.push(closingSlot);
+  if (closeByMouse && !wasTrailingTab) {
+    tabClosingModeAvailableWidth = Math.max(0, closingModeWidth - closedTabWidth);
+  }
+  maybeExitTabClosingModeAfterClose();
+
+  scheduleAllUnsavedTabAutosaves();
+  scheduleGlobalSearchAfterTabSetChange();
+  syncRecentlyClosedFilesState();
+
+  if (wasActive) {
+    if (tabData.length) {
+      const newIndex = index === tabData.length ? Math.max(index - 1, 0) : index;
+      switchTab(tabData[newIndex]);
+      setTimeout(() => monacoEditor?.focus(), 0);
+    } else {
+      currentTab = null;
+      createDefaultEmptyTab({ switchTo: false });
+      if (resetWidthOnEmpty) tabClosingModeAvailableWidth = null;
+      switchTab(tabData[0]);
+      setTimeout(() => monacoEditor?.focus(), 0);
+    }
+  } else {
+    ensureActiveTabAfterClose(index);
+    setTimeout(() => monacoEditor?.focus(), 0);
+  }
+
+  layoutTabs({ animate: true });
+  scheduleClosingTabCleanup(data);
 }
 
 // create tab
 function createTab(name, content = "", path = null, insertIndex = null, options = {}) {
   if (!name) name = `${i18next.t("file.untitled")}.txt`;
   const targetInsertIndex = clampUnpinnedTabInsertIndex(insertIndex);
-
-  // reset tabs max width
-  fixedTabsWidth = null;
-  pendingTabsWidthAfterClose = null;
-  tabs.style.maxWidth = "";
 
   const tab = document.createElement("div");
   tab.className = "tab";
@@ -4615,8 +4874,10 @@ function createTab(name, content = "", path = null, insertIndex = null, options 
   close.appendChild(unsavedDot);
   close.appendChild(closeSvg);
 
-  tab.appendChild(nameWrap);
-  tab.appendChild(close);
+  const tabContent = document.createElement("div");
+  tabContent.className = "tab-content";
+  tabContent.append(nameWrap, close);
+  tab.appendChild(tabContent);
 
   const model = monaco.editor.createModel(content, "monapad");
   const data = {
@@ -4650,6 +4911,8 @@ function createTab(name, content = "", path = null, insertIndex = null, options 
     tabs.appendChild(tab);
     tabData.push(data);
   }
+  syncTabDomOrderToData();
+  layoutTabs({ animate: true, openingTab: data });
   updateTabHeadingIcon(data, content);
 
   close.onclick = async (e) => {
@@ -4659,17 +4922,7 @@ function createTab(name, content = "", path = null, insertIndex = null, options 
       return;
     }
 
-    clearPendingTabsWidthAfterClose();
-    if (tabAreaHovered && !isHoveringLastTab) {
-      // set current tabs width - current tab width to tabs max width before closing tab
-      prepareTabsWidthForClose(tab);
-    } else if (tabAreaHovered && isHoveringLastTab) {
-      // keep max width when last tab is closed
-      prepareTabsWidthForClose(tab, true);
-    }
-
-    await attemptCloseTab(data);
-    clearPendingTabsWidthAfterClose();
+    await attemptCloseTab(data, { source: "mouse" });
 
     // update tabscontainer client rect
     if (tabAreaHovered && !isMouseInsideTabsContainer()) {
@@ -4688,15 +4941,7 @@ function createTab(name, content = "", path = null, insertIndex = null, options 
       e.preventDefault();
       e.stopPropagation();
 
-      clearPendingTabsWidthAfterClose();
-      if (tabAreaHovered && !isHoveringLastTab) {
-        prepareTabsWidthForClose(tab);
-      } else if (tabAreaHovered && isHoveringLastTab) {
-        prepareTabsWidthForClose(tab, true);
-      }
-
-      await attemptCloseTab(data);
-      clearPendingTabsWidthAfterClose();
+      await attemptCloseTab(data, { source: "mouse" });
 
       if (tabAreaHovered && !isMouseInsideTabsContainer()) {
         handleTabsMouseLeave();
@@ -4884,10 +5129,14 @@ async function saveAsNote() {
 }
 
 // close tab
-async function attemptCloseTab(data) {
+async function attemptCloseTab(data, options = {}) {
   return new Promise(async (resolve) => {
     if (data?.isPinned) {
       resolve("pinned");
+      return;
+    }
+    if (data?._closing || !tabData.includes(data)) {
+      resolve("closing");
       return;
     }
 
@@ -4906,35 +5155,7 @@ async function attemptCloseTab(data) {
       clearAutosaveTimer(data);
 
       const index = tabData.indexOf(data);
-      tabs.removeChild(tab);
-      applyPendingTabsWidthAfterClose();
-      updateTabsCompactClass();
-      if (data.model) data.model.dispose();
-      tabData = tabData.filter((t) => t !== data);
-      scheduleAllUnsavedTabAutosaves();
-      scheduleGlobalSearchAfterTabSetChange();
-      syncRecentlyClosedFilesState();
-
-      if (tab.classList.contains("active")) {
-        if (tabData.length) {
-          const newIndex = index === tabData.length ? Math.max(index - 1, 0) : index;
-          switchTab(tabData[newIndex]);
-          setTimeout(() => monacoEditor?.focus(), 0);
-        } else {
-          currentTab = null;
-          createDefaultEmptyTab({ switchTo: false });
-          fixedTabsWidth = null;
-          tabs.style.maxWidth = "";
-          switchTab(tabData[0]);
-          setTimeout(() => monacoEditor?.focus(), 0);
-        }
-      } else {
-        const currentActive = tabData.find((t) => t.element.classList.contains("active"));
-        if (currentActive) {
-          updateTabAdjacencyClasses();
-          setTimeout(() => monacoEditor?.focus(), 0);
-        }
-      }
+      finishClosedTabState(data, index, { ...options, resetWidthOnEmpty: true });
 
       resolve("closed");
       return;
@@ -4967,38 +5188,7 @@ async function attemptCloseTab(data) {
         clearAutosaveTimer(data);
 
         const index = tabData.indexOf(data);
-        tabs.removeChild(tab);
-        applyPendingTabsWidthAfterClose();
-        updateTabsCompactClass();
-        if (data.model) data.model.dispose();
-        tabData = tabData.filter((t) => t !== data);
-        scheduleAllUnsavedTabAutosaves();
-        scheduleGlobalSearchAfterTabSetChange();
-        syncRecentlyClosedFilesState();
-
-        if (tab.classList.contains("active")) {
-          if (tabData.length) {
-            const newIndex = index === tabData.length ? Math.max(index - 1, 0) : index;
-            switchTab(tabData[newIndex]);
-            setTimeout(() => monacoEditor?.focus(), 0);
-          } else {
-            currentTab = null;
-            createDefaultEmptyTab({ switchTo: false });
-
-            // reset max width when last tab is closed
-            fixedTabsWidth = null;
-            tabs.style.maxWidth = "";
-
-            switchTab(tabData[0]);
-            setTimeout(() => monacoEditor?.focus(), 0);
-          }
-        } else {
-          const currentActive = tabData.find((t) => t.element.classList.contains("active"));
-          if (currentActive) {
-            updateTabAdjacencyClasses();
-            setTimeout(() => monacoEditor?.focus(), 0);
-          }
-        }
+        finishClosedTabState(data, index, { ...options, resetWidthOnEmpty: true });
       };
 
       const removeListeners = () => {
@@ -5081,38 +5271,7 @@ async function attemptCloseTab(data) {
       await deleteTabAutosave(data);
     }
     const index = tabData.indexOf(data);
-    tabs.removeChild(tab);
-    applyPendingTabsWidthAfterClose();
-    updateTabsCompactClass();
-    if (data.model) data.model.dispose();
-    tabData = tabData.filter((t) => t !== data);
-    scheduleAllUnsavedTabAutosaves();
-    scheduleGlobalSearchAfterTabSetChange();
-    syncRecentlyClosedFilesState();
-
-    if (tab.classList.contains("active")) {
-      if (tabData.length) {
-        const newIndex = index === tabData.length ? Math.max(index - 1, 0) : index;
-        switchTab(tabData[newIndex]);
-        setTimeout(() => monacoEditor?.focus(), 0);
-      } else {
-        currentTab = null;
-        createDefaultEmptyTab({ switchTo: false });
-
-        // reset max width when last tab is closed
-        fixedTabsWidth = null;
-        tabs.style.maxWidth = "";
-
-        switchTab(tabData[0]);
-        setTimeout(() => monacoEditor?.focus(), 0);
-      }
-    } else {
-      const currentActive = tabData.find((t) => t.element.classList.contains("active"));
-      if (currentActive) {
-        updateTabAdjacencyClasses();
-        setTimeout(() => monacoEditor?.focus(), 0);
-      }
-    }
+    finishClosedTabState(data, index, { ...options, resetWidthOnEmpty: true });
 
     resolve("closed");
   });
@@ -5354,6 +5513,7 @@ async function attemptCloseWindow() {
         tabs.removeChild(tab.element);
         tabData.splice(index, 1);
         syncRecentlyClosedFilesState();
+        layoutTabs({ animate: false });
       }
     }
 
@@ -6249,6 +6409,7 @@ async function openTabPayloadInCurrentWindow(payload, placement = { index: null,
     tabs.removeChild(defaultTab.element);
     defaultTab.model?.dispose();
     tabData = [];
+    layoutTabs({ animate: false });
   }
 
   const tab = createTab(payload.name, payload.content, payload.path, insertIndex, payload);
@@ -6512,6 +6673,7 @@ function moveTabToIndex(tab, index) {
   if (oldIndex === finalIndex) {
     tabData.splice(oldIndex, 0, tab);
     syncTabDomOrderToData();
+    layoutTabs({ animate: true });
     updateTabAdjacencyClasses();
     return tab;
   }

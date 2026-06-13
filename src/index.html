@@ -633,12 +633,12 @@
       }
       #tabs {
         position: relative;
-        display: flex;
-        flex-grow: 1;
+        display: block;
+        flex: 0 1 auto;
+        width: 0;
         min-width: 0;
         height: 100%;
         overflow: visible;
-        align-items: center;
         user-select: none;
         -webkit-app-region: no-drag;
       }
@@ -673,22 +673,23 @@
       /* #tab-container > #tabs(.dragging) > .tab(.active, .has-reload-button) */
       .tab {
         -webkit-app-region: no-drag;
-        display: flex;
+        display: block;
         box-sizing: border-box;
-        align-items: center;
-        justify-content: space-between;
-        flex: 1 1 0;
+        flex: none;
         height: 34px;
         width: 220px;
-        max-width: 220px;
+        max-width: none;
         min-width: 0;
         text-overflow: ellipsis;
         white-space: nowrap;
-        overflow: visible;
+        overflow: hidden;
         background: var(--color1);
-        padding: 0 10px;
+        padding: 0;
         font-size: 13px;
-        position: relative;
+        position: absolute;
+        left: 0;
+        top: 50%;
+        transform: translate(var(--tab-drag-x, 0px), -50%);
         cursor: default;
         color: var(--grayOut);
         border-top: 1px solid #00000000;
@@ -698,7 +699,7 @@
       .tab:not(.active):not(.prev-active)::before {
         content: "";
         position: absolute;
-        right: -1px;
+        right: 0;
         top: 25%;
         height: 50%;
         width: 1px;
@@ -707,7 +708,7 @@
       .tab:first-of-type:not(.active)::after {
         content: "";
         position: absolute;
-        left: -1px;
+        left: 0;
         top: 25%;
         height: 50%;
         width: 1px;
@@ -743,14 +744,21 @@
       body.tab-dragging #notes-list {
         pointer-events: none;
       }
-      .tab.tab-shift-prep {
-        transition: none !important;
-      }
-      .tab.tab-shift-animating {
-        transition: transform 120ms ease;
-      }
       /* tab with reload button */
       .tab.has-reload-button {
+        padding-left: 0;
+      }
+      .tab-content {
+        display: flex;
+        box-sizing: border-box;
+        align-items: center;
+        justify-content: space-between;
+        width: 100%;
+        min-width: 0;
+        height: 100%;
+        padding: 0 10px;
+      }
+      .tab.has-reload-button .tab-content {
         padding-left: 10px;
       }
 
