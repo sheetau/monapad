@@ -1,4 +1,5 @@
 export const TAB_LAYOUT_ANIMATION_MS = 200;
+export const TAB_LAYOUT_EASING = "cubic-bezier(0.333333, 0.666667, 0.666667, 1)";
 export const TAB_MAX_WIDTH = 220;
 export const TAB_MIN_WIDTH = 0;
 export const TAB_VERTICAL_DETACH_MAGNETISM = 15;
@@ -278,7 +279,7 @@ export function createTabStripController({
 
     const animation = tabs.animate(
       [{ width: `${currentWidth}px` }, { width: `${targetWidth}px` }],
-      { duration: TAB_LAYOUT_ANIMATION_MS, easing: "linear" },
+      { duration: TAB_LAYOUT_ANIMATION_MS, easing: TAB_LAYOUT_EASING },
     );
     tabsWidthAnimation = animation;
     return animation.finished.catch(() => {}).finally(() => {
@@ -322,7 +323,7 @@ export function createTabStripController({
         { left: `${from.x}px`, width: `${from.width}px` },
         { left: `${to.x}px`, width: `${to.width}px` },
       ],
-      { duration: TAB_LAYOUT_ANIMATION_MS, easing: "linear" },
+      { duration: TAB_LAYOUT_ANIMATION_MS, easing: TAB_LAYOUT_EASING },
     );
     tabLayoutAnimations.set(tab, animation);
     return animation.finished.catch(() => {}).finally(() => {
