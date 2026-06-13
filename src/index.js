@@ -203,6 +203,7 @@ let saveStatusFadeTimer = null;
 const TAB_LAYOUT_ANIMATION_MS = 200;
 const TAB_MAX_WIDTH = 220;
 const TAB_MIN_WIDTH = 0;
+const TAB_VERTICAL_DETACH_MAGNETISM = 15;
 let tabAreaHovered = false;
 let isHoveringLastTab = false;
 let mouseX = 0;
@@ -3752,6 +3753,7 @@ tabsContainer.addEventListener("mouseover", (e) => {
   }
 });
 function handleTabsMouseLeave() {
+  if (draggingTab) return;
   tabAreaHovered = false;
   isHoveringLastTab = false;
   tabClosingModeAvailableWidth = null;
@@ -4057,6 +4059,8 @@ function enableTabDragging(tab, data) {
   let dragMouseOffsetX = 0;
   let dragVisualX = null;
   let lastTabReorderMouseX = 0;
+  let isDraggingOutsideToolbar = false;
+  let detachedTabState = null;
 
   function getTabLayoutCenter(tabElement) {
     const targetTabData = tabData.find((candidate) => candidate.element === tabElement);
@@ -4066,6 +4070,7 @@ function enableTabDragging(tab, data) {
 
   tab.addEventListener("mousedown", async (e) => {
     if (e.button !== 0 || isTabControlTarget(e.target) || draggingTab) return;
+    if (tabData.length === 1) return;
     if (isTabLayoutAnimating()) return;
     e.preventDefault();
     // console.log("📌mousedown: start");
@@ -4077,6 +4082,7 @@ function enableTabDragging(tab, data) {
     // console.log("📌mousedown: draggingTab set");
     draggingTabData = data;
     draggingTabWasPinned = Boolean(data.isPinned);
+    tab.classList.add("dragging-tab");
     tabDragOriginalOrder = [...tabData];
     tabDragOriginalActiveTab = currentTab;
     tabOrderChangedDuringDrag = false;
@@ -4131,13 +4137,140 @@ function enableTabDragging(tab, data) {
   }
 
   function updateDraggedTabVisualPosition(clientX) {
-    const tabsRect = tabs.getBoundingClientRect();
+    dragVisualX = calculateDraggedTabVisualX(clientX);
     const baseX = parseFloat(draggingTab.style.left || "0") || 0;
-    const dragAreaWidth = getTabDragAreaWidth();
-    const draggingWidth = draggingTab.getBoundingClientRect().width;
-    dragVisualX = Math.max(0, Math.min(clientX - tabsRect.left - dragMouseOffsetX, Math.max(0, dragAreaWidth - draggingWidth)));
     currentX = dragVisualX - baseX;
     draggingTab.style.setProperty("--tab-drag-x", `${currentX}px`);
+  }
+
+  function calculateDraggedTabVisualX(clientX) {
+    const tabsRect = tabs.getBoundingClientRect();
+    const dragAreaWidth = getTabDragAreaWidth();
+    const draggingWidth = draggingTab.getBoundingClientRect().width || draggingTabData?._tabBounds?.width || 0;
+    return Math.max(0, Math.min(clientX - tabsRect.left - dragMouseOffsetX, Math.max(0, dragAreaWidth - draggingWidth)));
+  }
+
+  function canDetachDraggedTab() {
+    return Boolean(draggingTabData) && !draggingTabData.isWarned && !draggingTabData.isPinned && !wasOnlyTab;
+  }
+
+  function detachDraggedTabFromStrip() {
+    if (!draggingTab || !draggingTabData || detachedTabState) return;
+    const index = tabData.indexOf(draggingTabData);
+    if (index === -1) return;
+
+    detachedTabState = { index };
+    draggingTab.style.removeProperty("--tab-drag-x");
+    currentX = 0;
+    dragVisualX = null;
+    tabData.splice(index, 1);
+    draggingTab.style.display = "none";
+    syncTabDomOrderToData();
+    layoutTabs({ animate: true });
+    updateTabAdjacencyClasses();
+    dragIndex = -1;
+  }
+
+  function calculateDraggedTabInsertionIndex() {
+    if (!draggingTabData || dragVisualX === null) return dragIndex;
+
+    const draggingPinned = Boolean(draggingTabData.isPinned);
+    const others = tabData.filter((candidate) => candidate !== draggingTabData);
+    const minIndex = draggingPinned ? 0 : others.findIndex((candidate) => !candidate.isPinned);
+    const domainStart = minIndex < 0 ? others.length : minIndex;
+    const domainEnd = draggingPinned
+      ? others.findIndex((candidate) => !candidate.isPinned)
+      : others.length;
+    const firstIndex = draggingPinned ? 0 : domainStart;
+    const lastIndex = (draggingPinned && domainEnd >= 0 ? domainEnd : others.length);
+
+    const availableWidth = getAvailableWidthForTabs();
+    let bestIndex = firstIndex;
+    let bestDistance = Infinity;
+
+    for (let candidateIndex = firstIndex; candidateIndex <= lastIndex; candidateIndex++) {
+      const candidateTabs = [...others];
+      candidateTabs.splice(candidateIndex, 0, draggingTabData);
+      const candidateSlots = candidateTabs.map((tab, index) => ({ tab, closing: false, index }));
+      const { bounds } = calculateTabLayout(candidateSlots, availableWidth);
+      const candidateBounds = bounds.get(draggingTabData);
+      if (!candidateBounds) continue;
+
+      const distance = Math.abs(dragVisualX - candidateBounds.x);
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        bestIndex = candidateIndex;
+      }
+    }
+
+    return bestIndex;
+  }
+
+  function insertDraggedTabAtIndex(index, clientX) {
+    if (!draggingTabData) return false;
+    const wasDetached = Boolean(detachedTabState);
+    const others = tabData.filter((candidate) => candidate !== draggingTabData);
+    const clampedIndex = Math.max(0, Math.min(index, others.length));
+    const nextTabData = [...others];
+    nextTabData.splice(clampedIndex, 0, draggingTabData);
+
+    const nextIndex = nextTabData.indexOf(draggingTabData);
+    if (!wasDetached && nextIndex === dragIndex && tabData[dragIndex] === draggingTabData) {
+      updateDraggedTabVisualPosition(clientX);
+      return false;
+    }
+
+    draggingTab.style.display = "";
+    tabData = nextTabData;
+    syncTabDomOrderToData();
+    layoutTabs({ animate: false });
+    updateTabAdjacencyClasses();
+    scheduleAllUnsavedTabAutosaves();
+    tabOrderChangedDuringDrag = true;
+    dragIndex = nextIndex;
+    detachedTabState = null;
+    updateDraggedTabVisualPosition(clientX);
+    return true;
+  }
+
+  function restoreDetachedTabToOriginalOrder(animate = true) {
+    if (!draggingTabData || !detachedTabState || !tabDragOriginalOrder?.length) return false;
+    draggingTab.style.display = "";
+    tabData = tabDragOriginalOrder.filter(Boolean);
+    syncTabDomOrderToData();
+    layoutTabs({ animate });
+    updateTabAdjacencyClasses();
+    dragIndex = tabData.indexOf(draggingTabData);
+    detachedTabState = null;
+    return true;
+  }
+
+  function finalizeDraggedTabRemovalAfterExternalDrop(targetTabData, fallbackIndex) {
+    const index = tabData.indexOf(targetTabData);
+    const switchIndex = index === -1 ? Math.max(0, Math.min(fallbackIndex, tabData.length - 1)) : index;
+
+    clearAutosaveTimer(targetTabData);
+    if (index !== -1) tabData.splice(index, 1);
+    if (targetTabData.element?.parentElement === tabs) tabs.removeChild(targetTabData.element);
+    layoutTabs({ animate: true });
+    scheduleAllUnsavedTabAutosaves();
+    scheduleGlobalSearchAfterTabSetChange();
+
+    const wasActive = targetTabData.element?.classList.contains("active") || currentTab === targetTabData;
+    if (!wasActive) {
+      updateTabAdjacencyClasses();
+      return;
+    }
+
+    if (tabData.length) {
+      switchTab(tabData[Math.max(0, Math.min(switchIndex, tabData.length - 1))]);
+      setTimeout(() => monacoEditor?.focus(), 0);
+    } else {
+      currentTab = null;
+      createDefaultEmptyTab({ switchTo: false });
+      switchTab(tabData[0]);
+      setTimeout(() => monacoEditor?.focus(), 0);
+    }
   }
 
   function onMouseMove(e) {
@@ -4146,13 +4279,13 @@ function enableTabDragging(tab, data) {
     const mouseX = e.clientX;
     const mouseY = e.clientY;
     const toolbarRect = cachedToolbarRect;
-    const isOutsideToolbar =
-      mouseX < toolbarRect.left ||
-      mouseX > toolbarRect.right - windowControls.offsetWidth ||
-      mouseY < toolbarRect.top ||
-      mouseY > toolbarRect.bottom + toolbarRect.height / 2;
+    const isOutsideToolbar = isOutsideTabDragContext(mouseX, mouseY, toolbarRect);
 
-    if (isOutsideToolbar) {
+    if (isOutsideToolbar && canDetachDraggedTab()) {
+      if (!isDraggingOutsideToolbar) {
+        isDraggingOutsideToolbar = true;
+        detachDraggedTabFromStrip();
+      }
       hideDropIndicator();
       tabs.classList.remove("dragging");
       draggingTab.style.opacity = "0.5";
@@ -4212,6 +4345,13 @@ function enableTabDragging(tab, data) {
       window.electronAPI.destroyCursorWindow();
       setExternalPreviewTargetWindow(null);
       hideDropIndicator();
+      if (isDraggingOutsideToolbar) {
+        isDraggingOutsideToolbar = false;
+        dragVisualX = calculateDraggedTabVisualX(mouseX);
+        insertDraggedTabAtIndex(calculateDraggedTabInsertionIndex(), mouseX);
+        lastTabReorderMouseX = mouseX;
+        return;
+      }
       updateDraggedTabVisualPosition(mouseX);
     }
 
@@ -4275,21 +4415,27 @@ function enableTabDragging(tab, data) {
 
     if (!draggingTab || !e) {
       console.warn("⚠️ onMouseUp called with invalid state", draggingTab, e);
+      draggingTab?.classList.remove("dragging-tab");
       document.body.classList.remove("tab-dragging");
       dragStartClientPos = null;
       externalCancelDragging = null;
       tabDragOriginalOrder = null;
       tabDragOriginalActiveTab = null;
+      isDraggingOutsideToolbar = false;
       return;
     }
 
-    const isWarn = draggingTabData.isWarned || draggingTabData.isPinned;
-    const releasedTabData = tabData.find((t) => t.element === draggingTab);
+    const releasedTabData = draggingTabData;
+    const isWarn = releasedTabData.isWarned || releasedTabData.isPinned;
+    const releasedDetachedState = detachedTabState;
+    const releasedOriginalOrder = tabDragOriginalOrder;
 
-    commitDraggedTabVisualBounds();
+    if (!releasedDetachedState) commitDraggedTabVisualBounds();
+    draggingTab.classList.remove("dragging-tab");
     draggingTab.style.transition = "";
     draggingTab.style.pointerEvents = "";
     draggingTab.style.opacity = "1";
+    if (!releasedDetachedState) draggingTab.style.display = "";
     tabs.classList.remove("dragging");
     document.body.classList.remove("tab-dragging");
 
@@ -4311,20 +4457,28 @@ function enableTabDragging(tab, data) {
     dragIndex = -1;
     dragMouseOffsetX = 0;
     dragVisualX = null;
+    isDraggingOutsideToolbar = false;
+    detachedTabState = null;
 
     if (isWarn || !releasedTabData || !windowBoundsCache) {
+      if (releasedDetachedState) {
+        releasedTabData.element.style.display = "";
+        tabData = releasedOriginalOrder?.filter(Boolean) || tabData;
+        syncTabDomOrderToData();
+        layoutTabs({ animate: true });
+        updateTabAdjacencyClasses();
+      } else if (releasedTabData) {
+        normalizePinnedTabs();
+        if (tabOrderChangedDuringDrag) scheduleGlobalSearchAfterTabSetChange();
+      }
       dragStartClientPos = null;
+      windowBoundsCache = null;
       return;
     }
 
     const mouseX = e.clientX;
     const mouseY = e.clientY;
-    const toolbarRect = toolbar.getBoundingClientRect();
-    const isOutsideToolbar =
-      mouseX < toolbarRect.left ||
-      mouseX > toolbarRect.right - windowControls.offsetWidth ||
-      mouseY < toolbarRect.top ||
-      mouseY > toolbarRect.bottom + toolbarRect.height / 2;
+    const isOutsideToolbar = isOutsideTabDragContext(mouseX, mouseY);
 
     const myBounds = windowBoundsCache;
     const isInMyWindow =
@@ -4336,6 +4490,11 @@ function enableTabDragging(tab, data) {
     windowBoundsCache = null;
 
     if (!isOutsideToolbar) {
+      if (releasedDetachedState) {
+        releasedTabData.element.style.display = "";
+        tabData = releasedOriginalOrder?.filter(Boolean) || tabData;
+        syncTabDomOrderToData();
+      }
       normalizePinnedTabs();
       layoutTabs({ animate: true });
       if (tabOrderChangedDuringDrag) scheduleGlobalSearchAfterTabSetChange();
@@ -4349,27 +4508,7 @@ function enableTabDragging(tab, data) {
       .then(async (targetWindowId) => {
         if (targetWindowId && targetWindowId !== myWindowId && !isInMyWindow) {
           if (releasedTabData.isNotePreview) keepOpenNoteTab(releasedTabData);
-          await writeTabAutosave(releasedTabData);
-          // send tab to window on drop
-          const tabInfo = {
-            name: releasedTabData.name,
-            content: releasedTabData.model.getValue(),
-            path: releasedTabData.path,
-            isNote: releasedTabData.isNote,
-            noteId: releasedTabData.noteId,
-            notePath: releasedTabData.notePath,
-            noteFolderPath: releasedTabData.noteFolderPath,
-            noteTitle: releasedTabData.noteTitle,
-            noteCreatedAt: releasedTabData.noteCreatedAt,
-            noteUpdatedAt: releasedTabData.noteUpdatedAt,
-            isFileSaved: releasedTabData.isFileSaved,
-            originalContent: releasedTabData.originalContent,
-            fontSize: releasedTabData.fontSize,
-            wordWrap: releasedTabData.wordWrap,
-            isMarkdown: releasedTabData.isMarkdown,
-            draftId: releasedTabData.draftId,
-            hasReloadButton: releasedTabData.element?.classList.contains("has-reload-button"),
-          };
+          const tabInfo = await getOpenTabPayload(releasedTabData);
           window.electronAPI
             .sendTabToWindow(targetWindowId, {
               tabInfo,
@@ -4380,13 +4519,22 @@ function enableTabDragging(tab, data) {
               window.electronAPI.focusWindow(targetWindowId);
             });
 
-          removeTabAndAdjustUI(releasedTabData);
+          finalizeDraggedTabRemovalAfterExternalDrop(releasedTabData, releasedDetachedState?.index ?? releasedOriginalOrder?.indexOf(releasedTabData) ?? 0);
 
           if (wasOnlyTab) {
             attemptCloseWindow();
           }
         } else if (isOutsideToolbar) {
-          if (wasOnlyTab) return;
+          if (wasOnlyTab) {
+            if (releasedDetachedState) {
+              releasedTabData.element.style.display = "";
+              tabData = releasedOriginalOrder?.filter(Boolean) || tabData;
+              syncTabDomOrderToData();
+              layoutTabs({ animate: true });
+              updateTabAdjacencyClasses();
+            }
+            return;
+          }
           if (releasedTabData.isNotePreview) keepOpenNoteTab(releasedTabData);
           const position = dragStartClientPos
             ? {
@@ -4394,7 +4542,13 @@ function enableTabDragging(tab, data) {
                 y: e.screenY - dragStartClientPos.y,
               }
             : { x: e.screenX, y: e.screenY };
-          openTabInNewWindow(releasedTabData, position);
+          if (releasedDetachedState) {
+            const tabInfo = await getOpenTabPayload(releasedTabData);
+            await window.electronAPI.createNewWindowWithTab(tabInfo, position);
+            finalizeDraggedTabRemovalAfterExternalDrop(releasedTabData, releasedDetachedState.index);
+          } else {
+            openTabInNewWindow(releasedTabData, position);
+          }
         }
       })
       .finally(() => {
@@ -4414,19 +4568,25 @@ function enableTabDragging(tab, data) {
     deferredMouseUpEvent = null;
 
     if (!draggingTab) {
+      tab.classList.remove("dragging-tab");
       document.body.classList.remove("tab-dragging");
       dragStartClientPos = null;
       externalCancelDragging = null;
       tabDragOriginalOrder = null;
       tabDragOriginalActiveTab = null;
+      isDraggingOutsideToolbar = false;
       return;
     }
 
-    commitDraggedTabVisualBounds();
+    if (!detachedTabState) commitDraggedTabVisualBounds();
+    draggingTab.classList.remove("dragging-tab");
     draggingTab.style.transition = "";
     draggingTab.style.pointerEvents = "";
     draggingTab.style.opacity = "1";
-    if (tabDragOriginalOrder?.length) {
+    draggingTab.style.display = "";
+    if (detachedTabState) {
+      restoreDetachedTabToOriginalOrder(true);
+    } else if (tabDragOriginalOrder?.length) {
       tabData = tabDragOriginalOrder.filter(Boolean);
       for (const item of tabData) {
         if (item?.element) tabs.appendChild(item.element);
@@ -4459,6 +4619,8 @@ function enableTabDragging(tab, data) {
     dragIndex = -1;
     dragMouseOffsetX = 0;
     dragVisualX = null;
+    isDraggingOutsideToolbar = false;
+    detachedTabState = null;
   }
 }
 
@@ -4479,28 +4641,7 @@ document.addEventListener("mouseup", (e) => {
 async function openTabInNewWindow(targetTabData, position) {
   if (!targetTabData) return;
   if (targetTabData.isPinned) return;
-  await writeTabAutosave(targetTabData);
-
-  const tabInfo = {
-    name: targetTabData.name,
-    content: targetTabData.model.getValue(),
-    path: targetTabData.path,
-    isNote: targetTabData.isNote,
-    noteId: targetTabData.noteId,
-    notePath: targetTabData.notePath,
-    noteFolderPath: targetTabData.noteFolderPath,
-    noteTitle: targetTabData.noteTitle,
-    noteCreatedAt: targetTabData.noteCreatedAt,
-    noteUpdatedAt: targetTabData.noteUpdatedAt,
-    isFileSaved: targetTabData.isFileSaved,
-    originalContent: targetTabData.originalContent,
-    fontSize: targetTabData.fontSize,
-    wordWrap: targetTabData.wordWrap,
-    isMarkdown: targetTabData.isMarkdown,
-    draftId: targetTabData.draftId,
-    hasReloadButton: targetTabData.element?.classList.contains("has-reload-button"),
-  };
-
+  const tabInfo = await getOpenTabPayload(targetTabData);
   await window.electronAPI.createNewWindowWithTab(tabInfo, position);
   removeTabAndAdjustUI(targetTabData);
 }
@@ -4556,6 +4697,16 @@ function isTabLayoutAnimating() {
 
 function getTabDragAreaWidth() {
   return Math.max(getAvailableWidthForTabs({ ignoreClosingMode: true }), tabs.getBoundingClientRect().width);
+}
+
+function isOutsideTabDragContext(clientX, clientY, horizontalRect = toolbar.getBoundingClientRect()) {
+  const dragRect = tabsContainer.getBoundingClientRect();
+  return (
+    clientX < horizontalRect.left ||
+    clientX > horizontalRect.right - windowControls.offsetWidth ||
+    clientY < dragRect.top - TAB_VERTICAL_DETACH_MAGNETISM ||
+    clientY > dragRect.bottom + TAB_VERTICAL_DETACH_MAGNETISM
+  );
 }
 
 function getTabLayoutSlots() {
@@ -4701,6 +4852,7 @@ function layoutTabs(options = {}) {
   const animations = [animateTabsWidth(trailingX, animate)];
 
   tabs.classList.toggle("compact", compact);
+  tabs.classList.toggle("single-tab", tabData.length === 1);
 
   for (const slot of slots) {
     const tab = slot.tab;
@@ -4727,6 +4879,7 @@ function updateTabsCompactClass() {
   const slots = getTabLayoutSlots();
   const { compact } = calculateTabLayout(slots, getAvailableWidthForTabs());
   tabs.classList.toggle("compact", compact);
+  tabs.classList.toggle("single-tab", tabData.length === 1);
 }
 
 function enterTabClosingMode(overrideWidth = null) {

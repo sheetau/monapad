@@ -744,6 +744,16 @@
       body.tab-dragging #notes-list {
         pointer-events: none;
       }
+      .tab.dragging-tab {
+        pointer-events: none;
+      }
+      #tabs.single-tab .tab {
+        -webkit-app-region: drag;
+      }
+      #tabs.single-tab .tab .close,
+      #tabs.single-tab .tab .reload-button {
+        -webkit-app-region: no-drag;
+      }
       /* tab with reload button */
       .tab.has-reload-button {
         padding-left: 0;
