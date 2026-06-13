@@ -388,6 +388,11 @@ ipcMain.handle("window:getMyBounds", (event) => {
   return win?.getBounds();
 });
 
+ipcMain.handle("window:getBounds", (event, windowId) => {
+  const win = BrowserWindow.fromId(windowId);
+  return win && !win.isDestroyed() ? win.getBounds() : null;
+});
+
 // small window when dragging tab outside toolbar
 ipcMain.on("createCursorWindow", () => {
   if (cursorWindow) return;

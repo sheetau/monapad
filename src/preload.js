@@ -30,6 +30,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   getWindowIdAt: (point) => ipcRenderer.invoke("window:getIdAt", point),
   // get window bounds
   getMyBounds: () => ipcRenderer.invoke("window:getMyBounds"),
+  getWindowBounds: (windowId) => ipcRenderer.invoke("window:getBounds", windowId),
   // get if window is minimized or not
   isWindowMinimized: (windowId) => ipcRenderer.invoke("isWindowMinimized", windowId),
   // send tab to different window

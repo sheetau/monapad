@@ -612,10 +612,9 @@
         position: relative;
         max-width: calc(100vw - 230px);
         flex-shrink: 1;
-        flex-grow: 0;
+        flex-grow: 1;
         align-items: center;
         overflow: visible;
-        transition: max-width 180ms ease;
       }
       body.side-panel-open #tabs-container:has(.tab)::before {
         content: "";
@@ -747,12 +746,9 @@
       .tab.dragging-tab {
         pointer-events: none;
       }
-      #tabs.single-tab .tab {
-        -webkit-app-region: drag;
-      }
-      #tabs.single-tab .tab .close,
-      #tabs.single-tab .tab .reload-button {
-        -webkit-app-region: no-drag;
+      body.tab-dragging #tabs .tab:not(.dragging-tab),
+      body.tab-dragging #tabs .tab:not(.dragging-tab) * {
+        pointer-events: none;
       }
       /* tab with reload button */
       .tab.has-reload-button {
