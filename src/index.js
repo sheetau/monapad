@@ -15,6 +15,7 @@ import { createFileIconElement, createNotesPanelController, getDisplayNoteTitle,
 import {
   createTabStripController,
   TAB_MAX_WIDTH,
+  TAB_VERTICAL_DETACH_MAGNETISM,
 } from "./tab-strip.js";
 import {
   clampNumber,
@@ -207,6 +208,8 @@ let tabAreaHovered = false;
 let isHoveringLastTab = false;
 let mouseX = 0;
 let mouseY = 0;
+let tabHoverMouseWatcherTimer = null;
+let tabHoverMouseWatcherBusy = false;
 
 // editor context menu
 let isWordWrapOn = true;
@@ -3698,6 +3701,7 @@ newNoteBtn.addEventListener("click", async (e) => {
 // tabs hover state
 tabsContainer.addEventListener("mouseover", (e) => {
   tabAreaHovered = true;
+  startTabHoverMouseWatcher();
 
   const hoveredTab = e.target.closest(".tab");
   if (hoveredTab) {
@@ -3711,16 +3715,51 @@ function handleTabsMouseLeave() {
   if (draggingTab) return;
   tabAreaHovered = false;
   isHoveringLastTab = false;
+  stopTabHoverMouseWatcher();
   clearTabClosingModeAvailableWidth();
   layoutTabs({ animate: true });
   updateTabsCompactClass();
 }
 function isMouseInsideTabsContainer() {
   const rect = tabsContainer.getBoundingClientRect();
-  return mouseX >= rect.left && mouseX <= rect.right && mouseY >= rect.top && mouseY <= rect.bottom;
+  const addTabRect = addTabButton.getBoundingClientRect();
+  return (
+    mouseX >= rect.left &&
+    mouseX <= addTabRect.right &&
+    mouseY >= rect.top &&
+    mouseY <= rect.bottom + TAB_VERTICAL_DETACH_MAGNETISM
+  );
 }
-tabsContainer.addEventListener("mouseleave", () => {
-  handleTabsMouseLeave();
+function updateMousePositionFromScreenPoint(point) {
+  if (!point || typeof point.x !== "number" || typeof point.y !== "number") return;
+  mouseX = point.x - window.screenX;
+  mouseY = point.y - window.screenY;
+}
+function startTabHoverMouseWatcher() {
+  if (tabHoverMouseWatcherTimer !== null) return;
+  tabHoverMouseWatcherTimer = setInterval(async () => {
+    if (!tabAreaHovered || draggingTab || tabHoverMouseWatcherBusy) return;
+    tabHoverMouseWatcherBusy = true;
+    try {
+      updateMousePositionFromScreenPoint(await window.electronAPI.getCursorScreenPoint());
+      if (tabAreaHovered && !isMouseInsideTabsContainer()) handleTabsMouseLeave();
+    } catch {
+      // Ignore transient native cursor lookup failures; renderer events still act as fallback.
+    } finally {
+      tabHoverMouseWatcherBusy = false;
+    }
+  }, 50);
+}
+function stopTabHoverMouseWatcher() {
+  if (tabHoverMouseWatcherTimer === null) return;
+  clearInterval(tabHoverMouseWatcherTimer);
+  tabHoverMouseWatcherTimer = null;
+  tabHoverMouseWatcherBusy = false;
+}
+tabsContainer.addEventListener("mouseleave", (e) => {
+  mouseX = e.clientX;
+  mouseY = e.clientY;
+  if (!isMouseInsideTabsContainer()) handleTabsMouseLeave();
 });
 // detect if cursor is in tabsContainer even without cursor movement
 document.addEventListener("mousemove", (e) => {

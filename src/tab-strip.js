@@ -20,6 +20,7 @@ export function createTabStripController({
   let tabClosingModeAvailableWidth = null;
   let tabDragExtendedWidth = null;
   let pendingTabsResizeLayout = false;
+  let lastObservedAvailableWidth = null;
 
   function getTabElements(excludeTab = null) {
     return getTabData().map((tab) => tab.element).filter((tab) => tab !== excludeTab);
@@ -384,7 +385,8 @@ export function createTabStripController({
 
   function maybeExitTabClosingModeAfterClose() {
     if (tabClosingModeAvailableWidth === null) return;
-    if (getTabData().length * TAB_MAX_WIDTH < tabClosingModeAvailableWidth) {
+    const { trailingX } = calculateTabLayout(getTabLayoutSlots(), tabClosingModeAvailableWidth);
+    if (getTabData().length > 0 && tabClosingModeAvailableWidth > trailingX) {
       tabClosingModeAvailableWidth = null;
     }
   }
@@ -455,6 +457,13 @@ export function createTabStripController({
   function observeTabsResize() {
     const tabsResizeObserver = new ResizeObserver(() => {
       if (!tabs.isConnected) return;
+      const availableWidth = getAvailableWidthForTabs({ ignoreClosingMode: true });
+      if (lastObservedAvailableWidth === null) {
+        lastObservedAvailableWidth = availableWidth;
+        return;
+      }
+      if (Math.abs(availableWidth - lastObservedAvailableWidth) < 0.5) return;
+      lastObservedAvailableWidth = availableWidth;
       if (isTabLayoutAnimating()) {
         pendingTabsResizeLayout = true;
         return;

@@ -28,6 +28,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   onAssignWindowId: (callback) => ipcRenderer.on("assign-window-id", (_, id) => callback(id)),
   // get window id
   getWindowIdAt: (point) => ipcRenderer.invoke("window:getIdAt", point),
+  getCursorScreenPoint: () => ipcRenderer.invoke("cursor:getScreenPoint"),
   // get window bounds
   getMyBounds: () => ipcRenderer.invoke("window:getMyBounds"),
   getWindowBounds: (windowId) => ipcRenderer.invoke("window:getBounds", windowId),

@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, shell } = require("electron");
+const { app, BrowserWindow, ipcMain, dialog, shell, screen } = require("electron");
 const { autoUpdater } = require("electron-updater");
 const { getFonts } = require("font-list");
 const path = require("path");
@@ -392,6 +392,8 @@ ipcMain.handle("window:getBounds", (event, windowId) => {
   const win = BrowserWindow.fromId(windowId);
   return win && !win.isDestroyed() ? win.getBounds() : null;
 });
+
+ipcMain.handle("cursor:getScreenPoint", () => screen.getCursorScreenPoint());
 
 // small window when dragging tab outside toolbar
 ipcMain.on("createCursorWindow", () => {
