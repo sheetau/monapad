@@ -6566,6 +6566,7 @@ const NOTE_FOLDER_DROP_FLASH_DURATION = 280;
 const NOTE_LIST_AUTO_SCROLL_MAX_OVERFLOW = 120;
 const NOTE_LIST_AUTO_SCROLL_MIN_SPEED = 0.18;
 const NOTE_LIST_AUTO_SCROLL_MAX_SPEED = 0.9;
+const NOTE_LIST_NATURAL_BOTTOM_EPSILON = 1;
 let noteListAutoScrollFrame = null;
 let noteListAutoScrollLastTime = 0;
 
@@ -6589,6 +6590,7 @@ function startSidePanelNoteDragFromItem(item, e, options = {}) {
     sourceFolderPath: getCurrentNotesFolderPath(),
     startY: e.clientY,
     currentY: 0,
+    rawCurrentY: 0,
     pointerOffsetY: e.clientY - item.getBoundingClientRect().top,
     lastScrollTop: notesList.scrollTop,
     naturalMaxScrollTop: getNoteListNaturalMaxScrollTop(),
@@ -6772,6 +6774,33 @@ function getNoteListNaturalMaxScrollTop(state = noteDragState) {
   return maxScrollTop;
 }
 
+function isNoteListAtNaturalScrollBottom(state = noteDragState) {
+  return notesList.scrollTop >= getNoteListMaxScrollTop() - NOTE_LIST_NATURAL_BOTTOM_EPSILON;
+}
+
+function clampNoteListDragY(state, rawY) {
+  if (!state?.item || rawY <= 0 || !isNoteListAtNaturalScrollBottom(state)) return rawY;
+  const listRect = notesList.getBoundingClientRect();
+  const itemRect = getNoteListItemLayoutRect(state.item);
+  const maxY = Math.max(0, listRect.bottom - itemRect.bottom);
+  return Math.min(rawY, maxY);
+}
+
+function applyNoteListDragY(state, rawY) {
+  if (!state?.item) return;
+  state.rawCurrentY = rawY;
+  state.currentY = clampNoteListDragY(state, rawY);
+  state.item.style.transform = `translateY(${state.currentY}px)`;
+}
+
+function reapplyNoteListDragY(state) {
+  applyNoteListDragY(state, state?.rawCurrentY ?? state?.currentY ?? 0);
+}
+
+function offsetNoteListDragY(state, deltaY) {
+  applyNoteListDragY(state, (state?.rawCurrentY ?? state?.currentY ?? 0) + deltaY);
+}
+
 function captureNoteListNaturalScrollMetrics(state = noteDragState) {
   if (!state) return;
   const item = state.dragging && state.mode === "panel" ? state.item : null;
@@ -6835,6 +6864,7 @@ function updateNoteListAutoScroll(state) {
   }
   const velocity = getNoteListAutoScrollVelocity(state);
   if (velocity === 0) {
+    reapplyNoteListDragY(state);
     stopNoteListAutoScroll();
     return;
   }
@@ -6857,6 +6887,7 @@ function runNoteListAutoScroll(timestamp) {
 
   const velocity = getNoteListAutoScrollVelocity(state);
   if (velocity === 0) {
+    reapplyNoteListDragY(state);
     stopNoteListAutoScroll();
     return;
   }
@@ -6876,16 +6907,19 @@ function syncNoteListDragAfterScroll(state = noteDragState, { updateAutoScroll =
   clampNoteListScrollTop(state);
   if (typeof state.lastScrollTop !== "number") {
     state.lastScrollTop = notesList.scrollTop;
+    reapplyNoteListDragY(state);
     return;
   }
   const scrollDelta = notesList.scrollTop - state.lastScrollTop;
-  if (!scrollDelta) return;
-  state.lastScrollTop = notesList.scrollTop;
-  state.currentY += scrollDelta;
-  if (typeof state.lastClientY === "number") {
-    state.startY = state.lastClientY - state.currentY;
+  if (!scrollDelta) {
+    reapplyNoteListDragY(state);
+    return;
   }
-  state.item.style.transform = `translateY(${state.currentY}px)`;
+  state.lastScrollTop = notesList.scrollTop;
+  offsetNoteListDragY(state, scrollDelta);
+  if (typeof state.lastClientY === "number") {
+    state.startY = state.lastClientY - state.rawCurrentY;
+  }
   if (updateAutoScroll) updateNoteListAutoScroll(state);
   updateNoteListDragPlacement(state);
 }
@@ -7042,28 +7076,28 @@ function updateNoteListDragPlacement(state) {
     const targetCenter = getNoteListItemLayoutCenter(target);
 
     if (state.currentY > 0 && currentRect.bottom > targetCenter && i > state.dragIndex) {
-      const oldTop = currentRect.top;
+      const oldLayoutTop = getNoteListItemLayoutRect(item).top;
       const noteShiftRects = getNoteListShiftRects(item);
+      item.style.transform = "";
       notesList.insertBefore(item, target.nextSibling);
       animateNoteListShifts(noteShiftRects);
-      const newTop = item.getBoundingClientRect().top;
-      state.currentY += oldTop - newTop;
-      state.startY = state.lastClientY - state.currentY;
+      const newLayoutTop = item.getBoundingClientRect().top;
+      offsetNoteListDragY(state, oldLayoutTop - newLayoutTop);
+      state.startY = state.lastClientY - state.rawCurrentY;
       state.dragIndex = i;
-      item.style.transform = `translateY(${state.currentY}px)`;
       break;
     }
 
     if (state.currentY < 0 && currentRect.top < targetCenter && i < state.dragIndex) {
-      const oldTop = currentRect.top;
+      const oldLayoutTop = getNoteListItemLayoutRect(item).top;
       const noteShiftRects = getNoteListShiftRects(item);
+      item.style.transform = "";
       notesList.insertBefore(item, target);
       animateNoteListShifts(noteShiftRects);
-      const newTop = item.getBoundingClientRect().top;
-      state.currentY += oldTop - newTop;
-      state.startY = state.lastClientY - state.currentY;
+      const newLayoutTop = item.getBoundingClientRect().top;
+      offsetNoteListDragY(state, oldLayoutTop - newLayoutTop);
+      state.startY = state.lastClientY - state.rawCurrentY;
       state.dragIndex = i;
-      item.style.transform = `translateY(${state.currentY}px)`;
       break;
     }
   }
@@ -7115,10 +7149,10 @@ function moveNoteListItemToCursor(item, clientY) {
 function positionNoteListItemAtCursor(state, clientY) {
   if (!state?.item) return;
   const rect = state.item.getBoundingClientRect();
-  state.currentY = clientY - (rect.top + rect.height / 2);
-  state.startY = clientY - state.currentY;
+  const rawY = clientY - (rect.top + rect.height / 2);
+  state.startY = clientY - rawY;
   state.lastClientY = clientY;
-  state.item.style.transform = `translateY(${state.currentY}px)`;
+  applyNoteListDragY(state, rawY);
 }
 
 function pickUpDraggedNoteListItemInCurrentFolder(state, clientY) {
@@ -7140,11 +7174,11 @@ function pickUpDraggedNoteListItemInCurrentFolder(state, clientY) {
   state.item.style.transform = "";
   captureNoteListNaturalScrollMetrics(state);
   const baseTop = state.item.getBoundingClientRect().top;
-  state.currentY = clientY - state.pointerOffsetY - baseTop;
-  state.startY = clientY - state.currentY;
+  const rawY = clientY - state.pointerOffsetY - baseTop;
+  state.startY = clientY - rawY;
   state.lastClientY = clientY;
   state.lastScrollTop = notesList.scrollTop;
-  state.item.style.transform = `translateY(${state.currentY}px)`;
+  applyNoteListDragY(state, rawY);
 }
 
 async function startNoteExternalDrag(e) {
@@ -7527,6 +7561,7 @@ window.addEventListener("mousemove", (e) => {
     if (Math.abs(e.clientY - startY) < 5) return;
     noteDragState.dragging = true;
     noteDragState.currentY = 0;
+    noteDragState.rawCurrentY = 0;
     applyNoteListDragItemStyle(item);
   }
 
@@ -7536,9 +7571,8 @@ window.addEventListener("mousemove", (e) => {
     return;
   }
 
-  noteDragState.currentY = e.clientY - noteDragState.startY;
   noteDragState.lastClientY = e.clientY;
-  item.style.transform = `translateY(${noteDragState.currentY}px)`;
+  applyNoteListDragY(noteDragState, e.clientY - noteDragState.startY);
   updateNoteListAutoScroll(noteDragState);
   updateNoteListDragPlacement(noteDragState);
 });
