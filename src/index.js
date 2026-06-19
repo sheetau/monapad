@@ -6623,6 +6623,7 @@ function startSidePanelNoteDragFromItem(item, e, options = {}) {
     noteId: item.dataset.noteId,
     folderPath: entryType === "folder" ? item.dataset.folderPath : getCurrentNotesFolderPath(),
     sourceFolderPath: getCurrentNotesFolderPath(),
+    sourceScrollTop: notesList.scrollTop,
     startY: e.clientY,
     currentY: 0,
     rawCurrentY: 0,
@@ -7349,6 +7350,7 @@ async function cancelNoteDragByShortcut() {
     await notesController?.openFolder?.(state.sourceFolderPath || "");
   }
   if (noteDragState !== state) return;
+  notesController?.setCurrentFolderScrollPosition?.(state.sourceScrollTop);
   const existing = getNoteListItemByEntryKey(state.entryKey);
   if (existing && existing !== state.item) {
     resetNoteListDragItemStyle(state.item);
@@ -7361,6 +7363,7 @@ async function cancelNoteDragByShortcut() {
   resetNoteListDragItem(state.item);
   noteDragState = null;
   await renderNotesList();
+  notesController?.setCurrentFolderScrollPosition?.(state.sourceScrollTop);
 }
 
 function beginGlobalSearchMatchDrag(e, row, match) {

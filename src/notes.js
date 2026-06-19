@@ -50,6 +50,8 @@ function isValidFolderName(name) {
 }
 
 const NOTES_FOLDER_STORAGE_KEY = "notesCurrentFolderPath";
+const NOTES_FOLDER_SCROLL_STORAGE_KEY = "notesFolderScrollPositions";
+const ROOT_FOLDER_SCROLL_KEY = "__root__";
 
 export function createNotesPanelController({
   i18next,
@@ -82,6 +84,7 @@ export function createNotesPanelController({
   let currentFolderPath = normalizeFolderPath(localStorage.getItem(NOTES_FOLDER_STORAGE_KEY));
   let draftFolderItem = null;
   let activeFolderEdit = null;
+  let pendingScrollSave = false;
 
   function getEntryMeta(entry) {
     if (!entry) return null;
@@ -109,6 +112,62 @@ export function createNotesPanelController({
   function saveCurrentFolderPath() {
     if (currentFolderPath) localStorage.setItem(NOTES_FOLDER_STORAGE_KEY, currentFolderPath);
     else localStorage.removeItem(NOTES_FOLDER_STORAGE_KEY);
+  }
+
+  function getFolderScrollKey(folderPath = currentFolderPath) {
+    return normalizeFolderPath(folderPath) || ROOT_FOLDER_SCROLL_KEY;
+  }
+
+  function readFolderScrollPositions() {
+    try {
+      const positions = JSON.parse(localStorage.getItem(NOTES_FOLDER_SCROLL_STORAGE_KEY) || "{}");
+      return positions && typeof positions === "object" ? positions : {};
+    } catch {
+      return {};
+    }
+  }
+
+  function writeFolderScrollPositions(positions) {
+    localStorage.setItem(NOTES_FOLDER_SCROLL_STORAGE_KEY, JSON.stringify(positions));
+  }
+
+  function rememberFolderScrollPosition(folderPath = currentFolderPath, scrollTop = notesList?.scrollTop || 0) {
+    if (!notesList) return;
+    const positions = readFolderScrollPositions();
+    positions[getFolderScrollKey(folderPath)] = Math.max(0, Math.round(Number(scrollTop) || 0));
+    writeFolderScrollPositions(positions);
+  }
+
+  function getStoredFolderScrollPosition(folderPath = currentFolderPath) {
+    const value = Number(readFolderScrollPositions()[getFolderScrollKey(folderPath)]);
+    return Number.isFinite(value) ? Math.max(0, value) : 0;
+  }
+
+  function restoreFolderScrollPosition(folderPath = currentFolderPath) {
+    if (!notesList) return;
+    const normalizedFolderPath = normalizeFolderPath(folderPath);
+    const scrollTop = getStoredFolderScrollPosition(normalizedFolderPath);
+    notesList.scrollTop = scrollTop;
+    requestAnimationFrame(() => {
+      if (currentFolderPath === normalizedFolderPath) notesList.scrollTop = scrollTop;
+    });
+  }
+
+  function setCurrentFolderScrollPosition(scrollTop) {
+    if (!notesList) return;
+    const nextScrollTop = Math.max(0, Number(scrollTop) || 0);
+    rememberFolderScrollPosition(currentFolderPath, nextScrollTop);
+    notesList.scrollTop = nextScrollTop;
+  }
+
+  function scheduleRememberCurrentFolderScrollPosition() {
+    if (!notesList || pendingScrollSave) return;
+    const folderPath = currentFolderPath;
+    pendingScrollSave = true;
+    requestAnimationFrame(() => {
+      pendingScrollSave = false;
+      if (currentFolderPath === folderPath) rememberFolderScrollPosition(folderPath);
+    });
   }
 
   async function ensureCurrentFolderExists() {
@@ -186,6 +245,7 @@ export function createNotesPanelController({
       else if (entry?.id) fragment.appendChild(createNoteItem(entry));
     }
     notesList.replaceChildren(fragment);
+    restoreFolderScrollPosition();
 
     updateActiveNoteListItem();
     updateGlobalSearchActionState();
@@ -347,6 +407,7 @@ export function createNotesPanelController({
   }
 
   async function openFolder(folderPath) {
+    rememberFolderScrollPosition();
     currentFolderPath = normalizeFolderPath(folderPath);
     saveCurrentFolderPath();
     await renderNotesList();
@@ -354,6 +415,7 @@ export function createNotesPanelController({
 
   async function openParentFolder() {
     if (!currentFolderPath) return;
+    rememberFolderScrollPosition();
     currentFolderPath = getParentFolderPath(currentFolderPath);
     saveCurrentFolderPath();
     await renderNotesList();
@@ -490,6 +552,7 @@ export function createNotesPanelController({
   }
 
   notesList?.addEventListener("mousedown", continueListMouseDownAfterEdit, true);
+  notesList?.addEventListener("scroll", scheduleRememberCurrentFolderScrollPosition);
   notesListHeading?.addEventListener("click", () => {
     if (currentFolderPath) openParentFolder();
   });
@@ -506,6 +569,7 @@ export function createNotesPanelController({
     createFolderDraft,
     openFolder,
     openParentFolder,
+    setCurrentFolderScrollPosition,
     getCurrentFolderPath() {
       return currentFolderPath;
     },
