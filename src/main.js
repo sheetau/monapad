@@ -15,6 +15,7 @@ const kuromoji = require("kuromoji");
 const store = new Store();
 const watchers = new Map();
 const watcherRefCounts = new Map();
+const watcherOwnersBySender = new Map();
 const watchTimeouts = new Map();
 const watchEvents = new Map();
 const watchedCssFiles = new Map();
@@ -70,6 +71,69 @@ function bindWindowMaximizeState(window) {
   window.on("unmaximize", () => sendWindowMaximizeState(window));
   window.on("enter-full-screen", () => sendWindowMaximizeState(window));
   window.on("leave-full-screen", () => sendWindowMaximizeState(window));
+}
+
+function closeFileWatcher(filePath) {
+  const watcher = watchers.get(filePath);
+  if (watcher) {
+    if (typeof watcher.close === "function") {
+      watcher.close();
+    } else {
+      watcher.fileWatcher?.close();
+      watcher.dirWatcher?.close();
+    }
+    watchers.delete(filePath);
+  }
+
+  watcherRefCounts.delete(filePath);
+
+  const timeout = watchTimeouts.get(filePath);
+  if (timeout) {
+    clearTimeout(timeout);
+    watchTimeouts.delete(filePath);
+  }
+
+  watchEvents.delete(filePath);
+}
+
+function releaseFileWatchOwner(senderId, filePath) {
+  const ownedPaths = watcherOwnersBySender.get(senderId);
+  if (!ownedPaths?.has(filePath)) return false;
+
+  ownedPaths.delete(filePath);
+  if (ownedPaths.size === 0) watcherOwnersBySender.delete(senderId);
+
+  const refCount = watcherRefCounts.get(filePath) || 0;
+  if (refCount > 1) {
+    watcherRefCounts.set(filePath, refCount - 1);
+  } else {
+    closeFileWatcher(filePath);
+  }
+
+  return true;
+}
+
+function cleanupFileWatchOwners(senderId) {
+  const ownedPaths = watcherOwnersBySender.get(senderId);
+  if (!ownedPaths) return;
+
+  for (const filePath of [...ownedPaths]) {
+    releaseFileWatchOwner(senderId, filePath);
+  }
+}
+
+function addFileWatchOwner(sender, filePath) {
+  const senderId = sender.id;
+  let ownedPaths = watcherOwnersBySender.get(senderId);
+  if (!ownedPaths) {
+    ownedPaths = new Set();
+    watcherOwnersBySender.set(senderId, ownedPaths);
+    sender.once("destroyed", () => cleanupFileWatchOwners(senderId));
+  }
+
+  if (ownedPaths.has(filePath)) return false;
+  ownedPaths.add(filePath);
+  return true;
 }
 
 fs.readdirSync(logDir).forEach((file) => {
@@ -1643,10 +1707,17 @@ async function cleanupEmptyNotes() {
 }
 
 ipcMain.handle("file:watch", (event, filePath) => {
+  if (!addFileWatchOwner(event.sender, filePath)) {
+    return { success: true };
+  }
+
   if (watchers.has(filePath)) {
     watcherRefCounts.set(filePath, (watcherRefCounts.get(filePath) || 0) + 1);
     return { success: true };
   }
+
+  let fileWatcher = null;
+  let dirWatcher = null;
 
   try {
     const scheduleChange = (eventType) => {
@@ -1712,12 +1783,11 @@ ipcMain.handle("file:watch", (event, filePath) => {
       }
     };
 
-    let fileWatcher = null;
     fileWatcher = attachFileWatcher();
 
     const dirPath = path.dirname(filePath);
     const baseName = path.basename(filePath);
-    const dirWatcher = fs.watch(dirPath, (eventType, filename) => {
+    dirWatcher = fs.watch(dirPath, (eventType, filename) => {
       if (filename && filename.toString() !== baseName) return;
       const record = watchers.get(filePath);
       if (record && !record.fileWatcher && fs.existsSync(filePath)) {
@@ -1730,6 +1800,9 @@ ipcMain.handle("file:watch", (event, filePath) => {
     watcherRefCounts.set(filePath, 1);
     return { success: true };
   } catch (err) {
+    fileWatcher?.close();
+    dirWatcher?.close();
+    releaseFileWatchOwner(event.sender.id, filePath);
     log.error("watch error:", err);
     return { success: false, error: err.message };
   }
@@ -2042,34 +2115,7 @@ function ensureMobileShareServer() {
 }
 
 ipcMain.handle("file:unwatch", (event, filePath) => {
-  const refCount = watcherRefCounts.get(filePath) || 0;
-  if (refCount > 1) {
-    watcherRefCounts.set(filePath, refCount - 1);
-    return;
-  }
-
-  const watcher = watchers.get(filePath);
-  if (watcher) {
-    if (typeof watcher.close === "function") {
-      watcher.close();
-    } else {
-      watcher.fileWatcher?.close();
-      watcher.dirWatcher?.close();
-    }
-    watchers.delete(filePath);
-  }
-
-  watcherRefCounts.delete(filePath);
-
-  // clear pending debounce timeout
-  const timeout = watchTimeouts.get(filePath);
-  if (timeout) {
-    clearTimeout(timeout);
-    watchTimeouts.delete(filePath);
-  }
-
-  // clear merged event state
-  watchEvents.delete(filePath);
+  releaseFileWatchOwner(event.sender.id, filePath);
 });
 
 ipcMain.handle("open-path", async (event, path) => {

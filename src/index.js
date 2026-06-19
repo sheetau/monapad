@@ -271,6 +271,12 @@ let currentWatchedFilePath = null;
 // watch css file used as current theme
 let currentWatchedCssFile = null;
 
+function releaseWatchedFileForTab(tab) {
+  if (!tab?.path || currentWatchedFilePath !== tab.path) return;
+  window.electronAPI.unwatchFile(currentWatchedFilePath);
+  currentWatchedFilePath = null;
+}
+
 // get window id
 let myWindowId = null;
 let resolveWindowIdReady = null;
@@ -1799,6 +1805,7 @@ function keepOpenNoteTab(tab = currentTab) {
 
 function applyNoteDataToTab(tab, note, content, options = {}) {
   const title = truncateNoteTitle(note?.meta?.title || getNoteTitleFromContent(content));
+  releaseWatchedFileForTab(tab);
   tab.isNote = true;
   tab.noteId = note.id;
   tab.notePath = note.path;
@@ -1826,6 +1833,7 @@ function applyNoteDataToTab(tab, note, content, options = {}) {
 
 function applyPendingNoteDataToTab(tab, content = "", options = {}) {
   const title = getNoteTitleFromContent(content);
+  releaseWatchedFileForTab(tab);
   tab.isNote = true;
   tab.noteId = null;
   tab.notePath = null;
@@ -4256,6 +4264,7 @@ function enableTabDragging(tab, data) {
     const index = tabData.indexOf(targetTabData);
     const switchIndex = index === -1 ? Math.max(0, Math.min(fallbackIndex, tabData.length - 1)) : index;
 
+    releaseWatchedFileForTab(targetTabData);
     clearAutosaveTimer(targetTabData);
     if (index !== -1) tabData.splice(index, 1);
     if (targetTabData.element?.parentElement === tabs) tabs.removeChild(targetTabData.element);
@@ -4609,6 +4618,7 @@ function removeTabAndAdjustUI(targetTabData) {
   const index = tabData.indexOf(targetTabData);
   if (index === -1) return;
 
+  releaseWatchedFileForTab(targetTabData);
   clearAutosaveTimer(targetTabData);
   tabs.removeChild(targetTabData.element);
   tabData.splice(index, 1);
@@ -4657,6 +4667,7 @@ function finishClosedTabState(data, index, options = {}) {
   const { source = "non-ui", resetWidthOnEmpty = false } = options;
   if (!data || !tabData.includes(data) || data._closing) return;
 
+  releaseWatchedFileForTab(data);
   const closeByMouse = source === "mouse";
   const closingModeWidth = tabs.getBoundingClientRect().width;
   const closedTabWidth = data.element.getBoundingClientRect().width;
@@ -5370,6 +5381,7 @@ async function attemptCloseWindow() {
       if (index !== -1) {
         addTabToRecentlyClosed(tab, index);
         await deleteTabAutosave(tab);
+        releaseWatchedFileForTab(tab);
         tabs.removeChild(tab.element);
         tabData.splice(index, 1);
         syncRecentlyClosedFilesState();
@@ -5402,6 +5414,7 @@ async function attemptCloseWindow() {
         } else {
           await deleteNoteTabStorage(tab);
         }
+        releaseWatchedFileForTab(tab);
         tabs.removeChild(tab.element);
         continue;
       }
@@ -5421,6 +5434,7 @@ async function attemptCloseWindow() {
       } else {
         await deleteTabAutosave(tab);
       }
+      releaseWatchedFileForTab(tab);
       tabs.removeChild(tab.element);
     }
     tabData = [];
