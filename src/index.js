@@ -6588,6 +6588,22 @@ const NOTE_LIST_NATURAL_BOTTOM_EPSILON = 1;
 let noteListAutoScrollFrame = null;
 let noteListAutoScrollLastTime = 0;
 
+function getNoteListItems(selector = ".note-list-item") {
+  return Array.from(notesList.querySelectorAll(selector));
+}
+
+function getNoteListEntryKeys(excludeItem = null, { filterEmpty = false } = {}) {
+  const keys = getNoteListItems()
+    .filter((node) => node !== excludeItem)
+    .map((node) => node.dataset.entryKey);
+  return filterEmpty ? keys.filter(Boolean) : keys;
+}
+
+function getNoteListItemByEntryKey(entryKey) {
+  if (!entryKey) return null;
+  return getNoteListItems().find((node) => node.dataset.entryKey === entryKey) || null;
+}
+
 function beginNoteListDrag(e, item) {
   if (e.button === 1) {
     e.preventDefault();
@@ -6599,6 +6615,7 @@ function beginNoteListDrag(e, item) {
 
 function startSidePanelNoteDragFromItem(item, e, options = {}) {
   const entryType = item.dataset.entryType || "note";
+  const items = getNoteListItems();
   noteDragState = {
     item,
     entryType,
@@ -6612,8 +6629,8 @@ function startSidePanelNoteDragFromItem(item, e, options = {}) {
     pointerOffsetY: e.clientY - item.getBoundingClientRect().top,
     lastScrollTop: notesList.scrollTop,
     naturalMaxScrollTop: getNoteListNaturalMaxScrollTop(),
-    dragIndex: [...notesList.querySelectorAll(".note-list-item")].indexOf(item),
-    originalOrder: [...notesList.querySelectorAll(".note-list-item")].map((node) => node.dataset.entryKey),
+    dragIndex: items.indexOf(item),
+    originalOrder: items.map((node) => node.dataset.entryKey),
     dragging: false,
     mode: "panel",
     payloadPromise: entryType === "note" ? getNoteTabPayload(item.dataset.noteId) : null,
@@ -6684,11 +6701,11 @@ function getNoteListItemLayoutCenter(item) {
 }
 
 function getNoteListShiftRects(excludeItem) {
-  return new Map(
-    [...notesList.querySelectorAll(".note-list-item")]
-      .filter((node) => node !== excludeItem)
-      .map((node) => [node, node.getBoundingClientRect().top]),
-  );
+  const rects = new Map();
+  for (const node of getNoteListItems()) {
+    if (node !== excludeItem) rects.set(node, node.getBoundingClientRect().top);
+  }
+  return rects;
 }
 
 function animateNoteListShifts(previousTops) {
@@ -6989,10 +7006,8 @@ function getNoteFolderDropTarget(state) {
     }
   }
 
-  const candidates = [...notesList.querySelectorAll(".note-list-item.folder-list-item")].filter(
-    (target) => target !== state.item,
-  );
-  for (const target of candidates) {
+  for (const target of getNoteListItems(".note-list-item.folder-list-item")) {
+    if (target === state.item) continue;
     const rect = getNoteListItemLayoutRect(target);
     if (!isDraggedEdgeInFolderDropBand(state, target, rect)) continue;
     return {
@@ -7043,9 +7058,7 @@ async function openNoteFolderDropTarget(state) {
   const clientY = state.lastClientY || state.startY;
   state.pendingMoveFolderPath = getCurrentNotesFolderPath();
   pickUpDraggedNoteListItemInCurrentFolder(state, clientY);
-  state.originalOrder = [...notesList.querySelectorAll(".note-list-item")]
-    .filter((node) => node !== state.item)
-    .map((node) => node.dataset.entryKey);
+  state.originalOrder = getNoteListEntryKeys(state.item);
   state.originalOrder.push(state.entryKey);
 }
 
@@ -7082,7 +7095,7 @@ function updateNoteListDragPlacement(state) {
   if (!item) return;
   if (updateNoteFolderDropTarget()) return;
 
-  const items = [...notesList.querySelectorAll(".note-list-item")];
+  const items = getNoteListItems();
   const currentRect = getDraggedItemProjectedRect(state);
   if (!currentRect) return;
   const isDraggingPinnedNote = item.classList.contains("pinned");
@@ -7123,9 +7136,7 @@ function updateNoteListDragPlacement(state) {
 
 function restoreNoteListOrder(state) {
   if (!state?.originalOrder?.length) return;
-  const nodes = new Map(
-    [...notesList.querySelectorAll(".note-list-item")].map((node) => [node.dataset.entryKey, node]),
-  );
+  const nodes = new Map(getNoteListItems().map((node) => [node.dataset.entryKey, node]));
   for (const entryKey of state.originalOrder) {
     const node = nodes.get(entryKey);
     if (node) notesList.appendChild(node);
@@ -7155,13 +7166,11 @@ function cleanupNoteExternalDrag() {
 }
 
 function moveNoteListItemToCursor(item, clientY) {
-  const siblings = [...notesList.querySelectorAll(".note-list-item")].filter((node) => node !== item);
-  const before = siblings.find((node) => {
-    return clientY < getNoteListItemLayoutCenter(node);
-  });
+  const siblings = getNoteListItems().filter((node) => node !== item);
+  const before = siblings.find((node) => clientY < getNoteListItemLayoutCenter(node));
   if (before) notesList.insertBefore(item, before);
   else notesList.appendChild(item);
-  return [...notesList.querySelectorAll(".note-list-item")].indexOf(item);
+  return before ? siblings.indexOf(before) : siblings.length;
 }
 
 function positionNoteListItemAtCursor(state, clientY) {
@@ -7175,9 +7184,7 @@ function positionNoteListItemAtCursor(state, clientY) {
 
 function pickUpDraggedNoteListItemInCurrentFolder(state, clientY) {
   if (!state?.entryKey) return;
-  const existing = [...notesList.querySelectorAll(".note-list-item")].find(
-    (node) => node.dataset.entryKey === state.entryKey,
-  );
+  const existing = getNoteListItemByEntryKey(state.entryKey);
   if (existing && existing !== state.item) {
     resetNoteListDragItemStyle(state.item);
     if (state.item?.parentNode) state.item.remove();
@@ -7342,9 +7349,7 @@ async function cancelNoteDragByShortcut() {
     await notesController?.openFolder?.(state.sourceFolderPath || "");
   }
   if (noteDragState !== state) return;
-  const existing = [...notesList.querySelectorAll(".note-list-item")].find(
-    (node) => node.dataset.entryKey === state.entryKey,
-  );
+  const existing = getNoteListItemByEntryKey(state.entryKey);
   if (existing && existing !== state.item) {
     resetNoteListDragItemStyle(state.item);
     if (state.item?.parentNode) state.item.remove();
@@ -7640,9 +7645,7 @@ window.addEventListener("mouseup", async (e) => {
   if (targetFolderPath !== null && targetFolderPath !== state.folderPath) {
     await moveDraggedNoteEntryToFolder(state, targetFolderPath);
   }
-  const orderedKeys = [...notesList.querySelectorAll(".note-list-item")]
-    .map((node) => node.dataset.entryKey)
-    .filter(Boolean);
+  const orderedKeys = getNoteListEntryKeys(null, { filterEmpty: true });
   await window.electronAPI.reorderNotes({ folderPath: getCurrentNotesFolderPath(), orderedKeys });
   await renderNotesList();
   await populateRecentMenu();
