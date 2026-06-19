@@ -84,6 +84,7 @@ let scrollAdjustQueue = []; // what scroll adjusting process to run after preven
 
 // font size
 let wheelListener = null;
+let wheelListenerElement = null;
 const fontSizeValue = document.getElementById("font-size-value");
 const fontSizeDecrease = document.getElementById("font-size-decrease");
 const fontSizeIncrease = document.getElementById("font-size-increase");
@@ -127,6 +128,8 @@ const confirmWindow = document.getElementById("confirm-save-window");
 const saveAllBtn = document.getElementById("confirm-save-all");
 const discardAllBtn = document.getElementById("confirm-discard-all");
 const cancelAllBtn = document.getElementById("confirm-cancel-all");
+const wordWrapCheckmark = document.querySelector('button[data-action="wordWrap"] .checkmark');
+const markdownCheckmark = document.querySelector('button[data-action="toggleMarkdown"] .checkmark');
 const autosaveRestore = document.getElementById("autosave-restore");
 const autosaveRestoreMessage = document.getElementById("autosave-restore-message");
 const autosaveRestoreYes = document.getElementById("autosave-restore-yes");
@@ -2734,10 +2737,11 @@ function attachCtrlWheelListener() {
   if (!editorDomNode) return;
   const scrollElement = editorDomNode.querySelector(".monaco-scrollable-element");
   if (!scrollElement) return;
+  if (wheelListenerElement === scrollElement && wheelListener) return;
 
   // remove last listner
-  if (wheelListener) {
-    scrollElement.removeEventListener("wheel", wheelListener);
+  if (wheelListener && wheelListenerElement) {
+    wheelListenerElement.removeEventListener("wheel", wheelListener);
   }
 
   wheelListener = (e) => {
@@ -2748,6 +2752,7 @@ function attachCtrlWheelListener() {
   };
 
   scrollElement.addEventListener("wheel", wheelListener, { passive: false });
+  wheelListenerElement = scrollElement;
 }
 
 // Ctrl + + / -
@@ -5469,24 +5474,24 @@ async function attemptCloseWindow() {
 }
 
 // switch tab
-function switchTab(data) {
-  if (!monacoEditor) return;
+function saveCurrentTabViewState() {
+  const activeTab =
+    currentTab && monacoEditor.getModel() === currentTab.model
+      ? currentTab
+      : tabData.find((tab) => tab.element.classList.contains("active"));
+  if (!activeTab?.model || monacoEditor.getModel() !== activeTab.model) return;
+  activeTab.content = activeTab.model.getValue();
+  activeTab.viewState = monacoEditor.saveViewState();
+  activeTab.fontSize = fontSize;
+  activeTab.wordWrap = isWordWrapOn;
+}
 
-  const currentActive = tabData.find((t) => t.element.classList.contains("active"));
-  if (currentActive) {
-    // save tab data
-    currentActive.content = currentActive.model.getValue();
-    currentActive.viewState = monacoEditor.saveViewState();
-    currentActive.fontSize = fontSize;
-    currentActive.wordWrap = isWordWrapOn;
-  }
+function getTabEditorOptions(tab) {
+  fontSize = tab.fontSize || persistentFontSize; // font size for each tabs
+  isWordWrapOn = tab.wordWrap ?? true;
+  isMarkdownOn = tab.isMarkdown ?? false;
 
-  // load tab-specific settings
-  fontSize = data.fontSize || persistentFontSize; // font size for each tabs
-  isWordWrapOn = data.wordWrap ?? true;
-  isMarkdownOn = data.isMarkdown ?? false;
-
-  const editorOptions = {
+  return {
     fontSize,
     wordWrap: isWordWrapOn ? "on" : "off",
     ...WRAP_MEASURE_OPTIONS,
@@ -5495,23 +5500,47 @@ function switchTab(data) {
     },
     autoClosingBrackets: isMarkdownOn ? "always" : "never",
   };
+}
 
-  // apply settings before model switch
-  monacoEditor.updateOptions(editorOptions);
-  monaco.editor.setModelLanguage(data.model, isMarkdownOn ? "markdown" : "monapad");
+function updateActiveTabElement(data) {
+  const activeElement = currentTab?.element || tabs.querySelector(".tab.active");
+  activeElement?.classList.remove("active");
+  data.element.classList.add("active");
+  updateTabAdjacencyClasses(data);
+}
 
-  // update tab style
-  document.querySelectorAll(".tab").forEach((tab) => {
-    tab.classList.remove("active", "prev-active");
-  });
+function updateEditorModeUi() {
+  updateWordWrapMenuState();
+  if (markdownCheckmark) markdownCheckmark.style.display = isMarkdownOn ? "inline-flex" : "none";
+}
 
-  const newActive = data.element;
-  newActive.classList.add("active");
+function syncActiveFileWatcher(data) {
+  // stop watching previously active file
+  if (currentWatchedFilePath && currentWatchedFilePath !== data.path) {
+    window.electronAPI.unwatchFile(currentWatchedFilePath);
+    currentWatchedFilePath = null;
+  }
 
-  updateTabAdjacencyClasses();
+  // watch active file
+  if (data.path && currentWatchedFilePath !== data.path) {
+    window.electronAPI.watchFile(data.path);
+    currentWatchedFilePath = data.path;
+  }
+}
+
+function switchTab(data) {
+  if (!monacoEditor || !data?.model) return;
+
+  saveCurrentTabViewState();
+
+  const editorOptions = getTabEditorOptions(data);
+  const languageId = isMarkdownOn ? "markdown" : "monapad";
+  monaco.editor.setModelLanguage(data.model, languageId);
+  updateActiveTabElement(data);
 
   // update tab content
   monacoEditor.setModel(data.model);
+  monacoEditor.updateOptions(editorOptions);
   attachCtrlWheelListener();
 
   currentTab = data;
@@ -5525,41 +5554,16 @@ function switchTab(data) {
   monacoEditor.focus();
 
   updateStatusBar();
-
-  // re-apply tab-specific settings after model switch
-  monacoEditor.updateOptions(editorOptions);
-  monaco.editor.setModelLanguage(data.model, isMarkdownOn ? "markdown" : "monapad");
-
-  // update WordWrap toggle button UI
-  updateWordWrapMenuState();
-
-  // update Markdown toggle button UI
-  const mdBtn = document.querySelector('button[data-action="toggleMarkdown"] .checkmark');
-  if (mdBtn) mdBtn.style.display = isMarkdownOn ? "inline-flex" : "none";
-
+  updateEditorModeUi();
   applyDecorations();
-
-  // stop watching previously active file
-  if (currentWatchedFilePath && currentWatchedFilePath !== data.path) {
-    window.electronAPI.unwatchFile(currentWatchedFilePath);
-    currentWatchedFilePath = null;
-  }
-
-  // watch active file
-  if (data.path && currentWatchedFilePath !== data.path) {
-    window.electronAPI.watchFile(data.path);
-    currentWatchedFilePath = data.path;
-  }
-
+  syncActiveFileWatcher(data);
   refreshFileTabStateOnActivate(data);
 }
 
-function updateTabAdjacencyClasses() {
-  document.querySelectorAll(".tab").forEach((tab) => {
-    tab.classList.remove("prev-active");
-  });
+function updateTabAdjacencyClasses(activeTab = currentTab) {
+  tabs.querySelector(".tab.prev-active")?.classList.remove("prev-active");
 
-  const activeIndex = tabData.findIndex((tab) => tab.element.classList.contains("active"));
+  const activeIndex = activeTab ? tabData.indexOf(activeTab) : tabData.findIndex((tab) => tab.element.classList.contains("active"));
   const prev = activeIndex > 0 ? tabData[activeIndex - 1]?.element : null;
   prev?.classList.add("prev-active");
 }
@@ -8204,8 +8208,7 @@ tabContextMenu.addEventListener("click", async (e) => {
 });
 
 function updateWordWrapMenuState() {
-  const wrapBtn = document.querySelector('button[data-action="wordWrap"] .checkmark');
-  if (wrapBtn) wrapBtn.style.display = isWordWrapOn ? "inline-flex" : "none";
+  if (wordWrapCheckmark) wordWrapCheckmark.style.display = isWordWrapOn ? "inline-flex" : "none";
 }
 
 function toggleWordWrap() {
@@ -8345,13 +8348,7 @@ customContextMenu.addEventListener("click", async (e) => {
       monaco.editor.setModelLanguage(model, isMarkdownOn ? "markdown" : "monapad");
       monacoEditor.updateOptions({ autoClosingBrackets: isMarkdownOn ? "always" : "never" });
       applyDecorations();
-      {
-        const btn = e.target.closest('button[data-action="toggleMarkdown"]');
-        if (btn) {
-          const svg = btn.querySelector(".checkmark");
-          if (svg) svg.style.display = isMarkdownOn ? "inline-flex" : "none";
-        }
-      }
+      updateEditorModeUi();
       break;
   }
 
