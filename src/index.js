@@ -2475,9 +2475,46 @@ let fontPreviewFrameId = null;
 let fontPreviewScrollTimer = null;
 let fontPreviewSearchTimer = null;
 const loadedFontPreviewNames = new Set();
+const bundledFontNames = ["Iosevka", "Migu 1M", "Figtree"];
+let fontChoicesSignature = "";
 
 function getFontPreviewFamily(fontName) {
   return `"${fontName.replace(/"/g, '\\"')}", "Figtree", sans-serif`;
+}
+
+function createFontChoices(fonts) {
+  const cleanedFonts = (Array.isArray(fonts) ? fonts : []).map((f) => f.trim().replace(/^"|"$/g, ""));
+
+  bundledFontNames.forEach((font) => {
+    if (!cleanedFonts.includes(font)) cleanedFonts.push(font);
+  });
+
+  return cleanedFonts
+    .sort((a, b) => a.localeCompare(b, "en", { sensitivity: "base" }))
+    .map((fontName) => ({
+      value: fontName,
+      label: fontName,
+    }));
+}
+
+function getFontChoicesSignature(choices) {
+  return choices.map((choice) => choice.value).join("\u0001");
+}
+
+async function refreshFontChoices() {
+  const choices = createFontChoices(await window.electronAPI.getFonts().catch(() => []));
+  const nextSignature = getFontChoicesSignature(choices);
+  const choicesChanged = nextSignature !== fontChoicesSignature;
+
+  if (choicesChanged) {
+    fontDropdown.setChoices(choices, "value", "label", true, { silent: true });
+    fontChoicesSignature = nextSignature;
+  }
+
+  if (choicesChanged || fontDropdown.getValue(true) !== selectedFontFamily) {
+    fontDropdown.setChoiceByValue(selectedFontFamily);
+  }
+  applyFontToMonaco();
 }
 
 // scroll to bottom of settings menu whenever langSwitcher dropdown is shown
@@ -2629,30 +2666,7 @@ fontFamilySelect.addEventListener("hideDropdown", () => {
 langSwitcher.addEventListener("showDropdown", onDropdownShown);
 
 // get font using font-list and apply on launch
-window.electronAPI.getFonts().then((fonts) => {
-  const bundledFonts = ["Iosevka", "Migu 1M", "Figtree"];
-  const cleanedFonts = fonts.map((f) => f.trim().replace(/^"|"$/g, ""));
-
-  bundledFonts.forEach((font) => {
-    if (!cleanedFonts.includes(font)) cleanedFonts.push(font);
-  });
-
-  const sortedFonts = cleanedFonts.sort((a, b) => a.localeCompare(b, "en", { sensitivity: "base" }));
-
-  // apply to custom select
-  fontDropdown.setChoices(
-    sortedFonts.map((fontName) => ({
-      value: fontName,
-      label: fontName,
-    })),
-    "value",
-    "label",
-    true,
-  );
-
-  fontDropdown.setChoiceByValue(selectedFontFamily);
-  applyFontToMonaco();
-});
+refreshFontChoices();
 
 // apply font on change
 fontFamilySelect.addEventListener("change", () => {
@@ -2713,14 +2727,13 @@ fontSizeIncrease.addEventListener("click", () => {
 });
 
 // font settings reset button
-document.querySelector("#settings-menu .font .reset").addEventListener("click", () => {
+document.querySelector("#settings-menu .font .reset").addEventListener("click", async () => {
   // reset persistentFontSize, selectedFontFamily
   updatePersistentFontSize(16);
   selectedFontFamily = "Iosevka";
   localStorage.setItem("selectedFontFamily", selectedFontFamily);
-  fontDropdown.setChoiceByValue(selectedFontFamily);
+  await refreshFontChoices();
   updateSettingsTooltips();
-  applyFontToMonaco();
 });
 
 // update font size with ctrl + mouse wheel / + - (temporary)
