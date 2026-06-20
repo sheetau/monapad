@@ -275,8 +275,16 @@ export class CustomSelect {
 
     this.value = found.value;
     this.element.value = found.value;
+    const previousScrollTop = options.preserveScroll ? this.list.scrollTop : null;
     this.renderSelection();
+    if (options.updateInput && this.config.combobox) this.trigger.value = found.label;
     this.renderOptions();
+    if (previousScrollTop !== null) {
+      this.list.scrollTop = previousScrollTop;
+      requestAnimationFrame(() => {
+        this.list.scrollTop = previousScrollTop;
+      });
+    }
 
     if (!options.silent) {
       this.element.dispatchEvent(new Event("change", { bubbles: true }));
@@ -388,7 +396,9 @@ export class CustomSelect {
 
       item.addEventListener("mouseenter", () => this.highlightOption(index));
       item.addEventListener("mousedown", (event) => event.preventDefault());
-      item.addEventListener("click", () => this.chooseOption(index));
+      item.addEventListener("click", () =>
+        this.chooseOption(index, { keepOpen: true, preserveScroll: true, updateInput: true }),
+      );
       fragment.appendChild(item);
     });
 
@@ -406,12 +416,14 @@ export class CustomSelect {
     if (scroll) this.scrollHighlightedIntoView();
   }
 
-  chooseOption(index = this.highlightIndex) {
+  chooseOption(index = this.highlightIndex, options = {}) {
     const choice = this.filteredOptions[index];
     if (!choice) return;
-    this.setChoiceByValue(choice.value);
-    this.hideDropdown();
-    this.trigger.focus({ preventScroll: true });
+    this.setChoiceByValue(choice.value, { preserveScroll: options.preserveScroll, updateInput: options.updateInput });
+    if (!options.keepOpen) {
+      this.hideDropdown();
+      this.trigger.focus({ preventScroll: true });
+    }
   }
 
   syncActiveDescendant() {

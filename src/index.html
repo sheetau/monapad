@@ -2718,8 +2718,7 @@
         background-color: var(--color3);
       }
       .font-select-row .custom-select.is-open .custom-select__dropdown {
-        height: calc(100vh - (36px + 28px + 25px + 10px));
-        max-height: 300px;
+        max-height: min(300px, calc(100vh - (36px + 28px + 25px + 10px)));
       }
       .font-select-row .custom-select__list {
         height: 100%;
