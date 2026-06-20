@@ -50,7 +50,7 @@ export function localizeHtml(template, locale) {
   }
 
   return html.replace(
-    "</div>\n      </div>\n    </footer>",
-    `${createLanguageSwitcher(locale, assetBase)}\n        </div>\n      </div>\n    </footer>`,
+    /(\s*)<\/div>(\s*)<\/div>(\s*)<\/footer>\s*$/,
+    `$1${createLanguageSwitcher(locale, assetBase)}$1</div>$2</div>$3</footer>`,
   );
 }
