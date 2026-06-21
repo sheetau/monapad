@@ -1,6 +1,6 @@
 {
   "name": "monapad",
-  "version": "1.4.1",
+  "version": "1.4.2",
   "description": "notepad app",
   "main": "src/main.js",
   "build": {
