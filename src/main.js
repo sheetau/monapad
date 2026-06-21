@@ -1,5 +1,4 @@
 const { app, BrowserWindow, ipcMain, dialog, shell, screen } = require("electron");
-const { autoUpdater } = require("electron-updater");
 const { getFonts } = require("font-list");
 const path = require("path");
 const fs = require("fs");
@@ -52,6 +51,26 @@ function setWindowTitleBarOverlay(window, options = {}) {
     color: normalizeOverlayColor(options.color, WINDOW_CONTROL_OVERLAY.color),
     symbolColor: normalizeOverlayColor(options.symbolColor, WINDOW_CONTROL_OVERLAY.symbolColor),
   });
+}
+
+function showWindow(window, reason) {
+  if (!window || window.isDestroyed() || window.isVisible()) return;
+  log.info(`[window] showing window (${reason})`);
+  window.show();
+}
+
+function bindWindowLoadDiagnostics(window, label) {
+  window.once("ready-to-show", () => showWindow(window, "ready-to-show"));
+  window.webContents.on("did-fail-load", (_event, errorCode, errorDescription, validatedURL) => {
+    log.error(`[${label}] did-fail-load:`, errorCode, errorDescription, validatedURL);
+    showWindow(window, "did-fail-load");
+  });
+  window.webContents.on("render-process-gone", (_event, details) => {
+    log.error(`[${label}] render-process-gone:`, details);
+    showWindow(window, "render-process-gone");
+  });
+  window.webContents.once("did-finish-load", () => showWindow(window, "did-finish-load"));
+  setTimeout(() => showWindow(window, "startup-timeout"), 3000);
 }
 
 const mobileShareItems = new Map();
@@ -170,10 +189,7 @@ function createWindow() {
 
   mainWindow.loadFile(path.join(__dirname, "index.html"));
   bindWindowMaximizeState(mainWindow);
-
-  mainWindow.once("ready-to-show", () => {
-    mainWindow.show();
-  });
+  bindWindowLoadDiagnostics(mainWindow, "mainWindow");
 
   mainWindow.on("focus", () => {
     mainWindow.webContents.send("window-focus", true);
@@ -252,10 +268,7 @@ function createNewWindow(parentWindow, position) {
 
   win.loadFile(path.join(__dirname, "index.html"));
   bindWindowMaximizeState(win);
-
-  win.once("ready-to-show", () => {
-    win.show();
-  });
+  bindWindowLoadDiagnostics(win, "window");
 
   win.on("focus", () => {
     win.webContents.send("window-focus", true);
@@ -2418,8 +2431,19 @@ if (!gotTheLock) {
     });
 
     // Updater
+    let autoUpdater = null;
+    if (app.isPackaged) {
+      try {
+        autoUpdater = require("electron-updater").autoUpdater;
+      } catch (error) {
+        log.warn("autoUpdater init failed:", error.message);
+      }
+    }
+
     if (autoUpdater) {
-      autoUpdater.checkForUpdates();
+      autoUpdater.checkForUpdates().catch((error) => {
+        log.warn("autoUpdater check failed:", error.message);
+      });
 
       autoUpdater.on("update-downloaded", async () => {
         const { response } = await dialog.showMessageBox(mainWindow, {
