@@ -12,6 +12,7 @@ import {
 import { updateSettingsTooltipsUi, updateStaticUiText } from "./i18next.js";
 import { createGlobalSearchController } from "./search.js";
 import { createFileIconElement, createNotesPanelController, getDisplayNoteTitle, sortNotesForPanel } from "./notes.js";
+import { createVSCodeThemePresentation } from "./vscode-theme-adapter.js";
 import {
   createTabStripController,
   TAB_MAX_WIDTH,
@@ -172,6 +173,7 @@ let currentTab = { content: "", selection: null, fontSize: persistentFontSize };
 let tabData = [];
 let recentlyClosedFiles = [];
 let currentTheme = localStorage.getItem("theme") || "dark";
+let activeVSCodeThemePresentation = null;
 let currentFilePath = `${i18next.t("file.untitled")}.txt`;
 const SESSION_RESTORE_MODES = new Set(["all", "one", "none"]);
 
@@ -968,16 +970,22 @@ function createCustomTheme() {
   const isDefaultTheme = isDefaultThemeName(currentTheme);
 
   // vscode css vars
-  const colors = Object.create(null);
+  const colors = activeVSCodeThemePresentation
+    ? { ...activeVSCodeThemePresentation.monacoColors }
+    : Object.create(null);
   // isDefaultTheme: search first style tag, !isDefaultTheme: search last style tag
-  const vscodeVars = isDefaultTheme ? getAllCSSVars("--vscode-", false) : getAllCSSVars("--vscode-", true);
-  // --vscode-editor-background: #hex / var(--color) → editor.background = #hex
-  Object.entries(vscodeVars).forEach(([token, value]) => {
-    colors[token] = value;
-  });
+  if (!activeVSCodeThemePresentation) {
+    const vscodeVars = isDefaultTheme ? getAllCSSVars("--vscode-", false) : getAllCSSVars("--vscode-", true);
+    // --vscode-editor-background: #hex / var(--color) → editor.background = #hex
+    Object.entries(vscodeVars).forEach(([token, value]) => {
+      colors[token] = value;
+    });
+  }
 
   // monapad, markdown css vars
-  const rules = [];
+  const rules = settings.syntaxHighlight && activeVSCodeThemePresentation
+    ? [...activeVSCodeThemePresentation.monacoRules]
+    : [];
 
   if (settings.syntaxHighlight) {
     function makeRule(token, colorVarBase) {
@@ -1002,7 +1010,7 @@ function createCustomTheme() {
     );
   }
 
-  if (!isDefaultTheme) {
+  if (!isDefaultTheme && !activeVSCodeThemePresentation) {
     // search last style tag since default theme doesn't specify markdwon color
     const markdownVars = getAllCSSVars("--md-", true);
     // --strong-md: #hex / var(--color) → { token: "strong.md", foreground: #hex },
@@ -1011,7 +1019,7 @@ function createCustomTheme() {
   }
 
   return {
-    base: "vs-dark",
+    base: activeVSCodeThemePresentation?.monacoBase || "vs-dark",
     inherit: true,
     rules,
     colors,
@@ -3767,19 +3775,36 @@ document.addEventListener("contextmenu", (e) => {
 });
 
 // update theme & recent menu y position
+const SUBMENU_VIEWPORT_MARGIN = 5;
+
+function positionSubmenu(submenu, preferredTop) {
+  if (getComputedStyle(submenu).display === "none") return;
+
+  const submenuStyle = getComputedStyle(submenu);
+  const borderHeight = parseFloat(submenuStyle.borderTopWidth) + parseFloat(submenuStyle.borderBottomWidth);
+  const naturalHeight = submenu.scrollHeight + borderHeight;
+  const viewportHeight = window.innerHeight;
+  const minimumTop = Math.max(SUBMENU_VIEWPORT_MARGIN, toolbar.getBoundingClientRect().bottom + SUBMENU_VIEWPORT_MARGIN);
+  const maximumHeight = Math.max(0, viewportHeight - minimumTop - SUBMENU_VIEWPORT_MARGIN);
+  const displayedHeight = Math.min(naturalHeight, maximumHeight);
+  const defaultTop = Math.max(preferredTop, minimumTop);
+  const fitsBelow = defaultTop + naturalHeight <= viewportHeight - SUBMENU_VIEWPORT_MARGIN;
+  const top = fitsBelow
+    ? defaultTop
+    : Math.max(minimumTop, viewportHeight - SUBMENU_VIEWPORT_MARGIN - displayedHeight);
+
+  submenu.style.top = `${top}px`;
+  submenu.style.maxHeight = naturalHeight > maximumHeight ? `${maximumHeight}px` : "none";
+}
+
 function updateMenuPositions() {
   const changeBtnRect = changeThemeBtn.getBoundingClientRect();
   const recentBtnRect = openRecentBtn.getBoundingClientRect();
 
-  const topTheme = changeBtnRect.top - 5;
-  const topRecent = recentBtnRect.top - 5;
-
-  themeMenu.style.top = `${topTheme}px`;
-  themeMenu.style.maxHeight = `${window.innerHeight - topTheme}px`;
-
-  recentMenu.style.top = `${topRecent}px`;
-  recentMenu.style.maxHeight = `${window.innerHeight - topRecent}px`;
+  positionSubmenu(themeMenu, changeBtnRect.top - 5);
+  positionSubmenu(recentMenu, recentBtnRect.top - 5);
 }
+menu.addEventListener("scroll", updateMenuPositions, { passive: true });
 window.addEventListener("resize", () => {
   updateMenuPositions();
   updateTabsCompactClass();
@@ -3795,7 +3820,6 @@ window.addEventListener("resize", () => {
     },
   });
 });
-window.addEventListener("wheel", updateMenuPositions, { passive: true });
 
 // recent menu display
 let recentMenuHoverSeq = 0;
@@ -3831,8 +3855,20 @@ recentMenu.addEventListener("mouseleave", () => {
 
 // theme menu display
 changeThemeBtn.addEventListener("mouseenter", () => {
+  const wasClosed = getComputedStyle(themeMenu).display === "none";
   themeMenu.style.display = "block";
   updateMenuPositions();
+  if (wasClosed) {
+    if (themeMenu.contains(document.activeElement)) {
+      changeThemeBtn.focus({ preventScroll: true });
+    }
+    requestAnimationFrame(() => {
+      const activeThemeButton = themeMenu.querySelector("button.active[data-theme]");
+      if (activeThemeButton && getComputedStyle(themeMenu).display !== "none") {
+        themeMenu.scrollTop = Math.max(0, activeThemeButton.offsetTop - themeMenu.clientTop);
+      }
+    });
+  }
 });
 changeThemeBtn.addEventListener("mouseleave", () => {
   setTimeout(() => {
@@ -3883,6 +3919,34 @@ async function applyCustomThemeCSS(themeName, knownThemes = null) {
   return false;
 }
 
+function isVSCodeThemeName(themeName) {
+  return typeof themeName === "string" && themeName.startsWith("vscode:");
+}
+
+function clearAppliedThemeStyle() {
+  const existingStyle = document.getElementById("custom-theme-style");
+  if (existingStyle) existingStyle.remove();
+  if (currentWatchedCssFile) {
+    window.electronAPI.unwatchCssFile(currentWatchedCssFile);
+    currentWatchedCssFile = null;
+  }
+}
+
+async function applyVSCodeTheme(themeId) {
+  const result = await window.electronAPI.getVSCodeTheme(themeId);
+  if (!result?.success || !result.theme) return false;
+
+  const presentation = createVSCodeThemePresentation(result.theme);
+  const declarations = Object.entries(presentation.cssVariables).map(([name, value]) => `${name}: ${value} !important;`);
+  clearAppliedThemeStyle();
+  const styleTag = document.createElement("style");
+  styleTag.id = "custom-theme-style";
+  styleTag.textContent = `:root { ${declarations.join(" ")} }`;
+  document.head.appendChild(styleTag);
+  activeVSCodeThemePresentation = presentation;
+  return true;
+}
+
 function cssColorToHex(value) {
   const color = String(value || "").trim();
   if (/^#[\da-f]{3}$/i.test(color) || /^#[\da-f]{6}$/i.test(color)) return color;
@@ -3908,18 +3972,29 @@ function updateTitleBarOverlayColors() {
 async function applyTheme(theme) {
   const root = document.documentElement;
   const isDefaultTheme = isDefaultThemeName(theme);
-  const themes = isDefaultTheme ? null : await window.electronAPI.getCustomThemes();
+  const isVSCodeTheme = isVSCodeThemeName(theme);
+  const themes = !isDefaultTheme && !isVSCodeTheme ? await window.electronAPI.getCustomThemes() : null;
 
   // set to dark if custom theme file doesn't exist
-  if (!isDefaultTheme && !themes[theme]) {
+  if (!isDefaultTheme && !isVSCodeTheme && !themes[theme]) {
     theme = "dark";
     currentTheme = "dark";
     localStorage.setItem("theme", theme);
   }
 
-  // override with custom theme if selected
-  if (!isDefaultThemeName(theme)) {
+  if (isVSCodeTheme) {
+    const success = await applyVSCodeTheme(theme);
+    if (!success) {
+      theme = "dark";
+      currentTheme = "dark";
+      localStorage.setItem("theme", theme);
+      activeVSCodeThemePresentation = null;
+      clearAppliedThemeStyle();
+    }
+  } else if (!isDefaultThemeName(theme)) {
     // Set default fallback colors (dark) for custom themes. hence !important is required in css.
+    activeVSCodeThemePresentation = null;
+    clearAppliedThemeStyle();
     root.style.setProperty("--color1", "#121214");
     root.style.setProperty("--color2", "#1a1a1e");
     root.style.setProperty("--color3", "#242429");
@@ -3930,11 +4005,8 @@ async function applyTheme(theme) {
       return;
     }
   } else {
-    // delete style tag
-    const existingStyle = document.getElementById("custom-theme-style");
-    if (existingStyle) {
-      existingStyle.remove();
-    }
+    activeVSCodeThemePresentation = null;
+    clearAppliedThemeStyle();
   }
 
   if (theme === "dark") {
@@ -3985,13 +4057,35 @@ async function handleThemeButtonClick(event) {
 
 // load custom theme and add to menu
 async function addCustomThemesToMenu() {
-  const customThemes = await window.electronAPI.getCustomThemes();
+  const [customThemes, vscodeThemes] = await Promise.all([
+    window.electronAPI.getCustomThemes(),
+    window.electronAPI.getVSCodeThemes(),
+  ]);
   const themeNames = Object.keys(customThemes);
+  themeMenu.querySelectorAll("[data-dynamic-theme]").forEach((element) => element.remove());
 
-  if (themeNames.length > 0) {
+  function appendSeparator() {
     const hr = document.createElement("div");
     hr.className = "hr";
+    hr.dataset.dynamicTheme = "true";
     themeMenu.appendChild(hr);
+  }
+
+  function appendThemeButton(theme, displayName, title) {
+    const button = document.createElement("button");
+    button.dataset.theme = theme;
+    button.dataset.dynamicTheme = "true";
+    button.title = title;
+    const label = document.createElement("span");
+    label.textContent = displayName;
+    const checkmark = document.createElement("span");
+    checkmark.className = "checkmark codicon codicon-check";
+    button.append(label, checkmark);
+    themeMenu.appendChild(button);
+  }
+
+  if (themeNames.length > 0) {
+    appendSeparator();
 
     themeNames.forEach((themeName) => {
       // snake-case -> "Title Case"
@@ -4001,15 +4095,26 @@ async function addCustomThemesToMenu() {
         .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
         .join(" ");
 
-      const button = document.createElement("button");
-      button.dataset.theme = themeName;
-      button.innerHTML = `<span>${displayName}</span><span class="checkmark codicon codicon-check"></span>`;
-      themeMenu.appendChild(button);
+      appendThemeButton(themeName, displayName, themeName);
     });
-
-    attachThemeButtonEvents();
-    updateActiveButton();
   }
+
+  if (vscodeThemes.length > 0) {
+    appendSeparator();
+    const duplicateLabels = new Map();
+    for (const theme of vscodeThemes) {
+      const key = theme.label.toLocaleLowerCase();
+      duplicateLabels.set(key, (duplicateLabels.get(key) || 0) + 1);
+    }
+    for (const theme of vscodeThemes) {
+      const duplicate = duplicateLabels.get(theme.label.toLocaleLowerCase()) > 1;
+      const displayName = duplicate ? `${theme.label} — ${theme.extensionName}` : theme.label;
+      appendThemeButton(theme.id, displayName, `${theme.label} — ${theme.extensionName} (${theme.extensionId})`);
+    }
+  }
+
+  attachThemeButtonEvents();
+  updateActiveButton();
 }
 
 await applyTheme(currentTheme);

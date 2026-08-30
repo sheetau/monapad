@@ -153,7 +153,7 @@
     "monacoRestartWarning": "需要重启 Monapad 才能将此语言应用到 Monaco 编辑器界面。",
     "customTheme": "自定义主题",
     "openThemeFolder": "打开主题文件夹",
-    "customThemeDescription": "在此文件夹中创建 CSS 文件，即可从主题菜单添加和应用自定义主题。详细说明请 <a href=\"https://github.com/sheetau/monapad/blob/main/CONTRIBUTING.md#how-to-setup-custom-theme\" target=\"_blank\">查看此处</a>。",
+    "customThemeDescription": "此文件夹中的 CSS 主题和自动检测到的 VS Code 扩展主题会显示在主题菜单中。若要添加其他扩展文件夹，请编辑 vscode-theme-paths.txt 并重启 Monapad。CSS 主题的详细说明请<a href=\"https://github.com/sheetau/monapad/blob/main/CONTRIBUTING.md#how-to-setup-custom-theme\" target=\"_blank\">查看此处</a>。",
     "resetTooltip": "重置设置"
   },
   "modal": {

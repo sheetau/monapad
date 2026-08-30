@@ -26,3 +26,6 @@ _temp_backup/
 # Webpack dev server artifacts
 *.cache
 
+# Local browser test artifacts
+/output/playwright/
+

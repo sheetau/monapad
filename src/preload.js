@@ -113,6 +113,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
 
   // theme
   getCustomThemes: () => ipcRenderer.invoke("get-custom-themes"),
+  getVSCodeThemes: () => ipcRenderer.invoke("get-vscode-themes"),
+  getVSCodeTheme: (themeId) => ipcRenderer.invoke("get-vscode-theme", themeId),
   getUserDataPath: () => ipcRenderer.invoke("get-user-data-path"),
   readCssFile: (filePath) => ipcRenderer.invoke("read-css-file", filePath),
   watchCssFile: (filePath) => ipcRenderer.send("watch-css-file", filePath),

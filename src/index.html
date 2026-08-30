@@ -104,6 +104,7 @@
         --side-panel-width: 240px;
         --editor-line-number-offset: 0px;
         --editor-side-panel-offset: 0px;
+        --editor-gutter-background: var(--vscode-editorGutter-background, var(--color1));
 
         /* You can specify one or more fonts to be used in the editor in order of priority */
         /* If this field is not empty, the font setting in the app will be ignored */
@@ -350,6 +351,7 @@
         padding-top: var(--window-top-safe-area);
         box-sizing: border-box;
         overflow: visible;
+        z-index: 1;
         -webkit-app-region: drag;
         transition: left 180ms ease;
       }
@@ -372,6 +374,7 @@
         height: 100%;
       }
       /* add border top to left margin of #editor */
+      /*
       #menu-button::before {
         content: "";
         position: absolute;
@@ -381,6 +384,7 @@
         height: 1px;
         background-color: var(--color3);
       }
+      */
       #menu-button svg line {
         stroke: var(--grayOut) !important;
         stroke-width: 2px;
@@ -472,6 +476,10 @@
       }
 
       /* theme menu */
+      #theme-menu,
+      #recent-menu {
+        -webkit-app-region: no-drag;
+      }
       #theme-menu {
         position: absolute;
         left: 254px;
@@ -501,7 +509,8 @@
         justify-content: space-between;
         align-items: center;
       }
-      #theme-menu button[data-theme="custom-theme"] span:not(.checkmark) {
+      #theme-menu button span:first-child {
+        min-width: 0;
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
@@ -616,6 +625,7 @@
         align-items: center;
         overflow: visible;
       }
+      /*
       body.side-panel-open #tabs-container:has(.tab)::before {
         content: "";
         position: absolute;
@@ -627,6 +637,7 @@
         pointer-events: none;
         z-index: 0;
       }
+      */
       body.side-panel-open #tabs-container {
         max-width: calc(100vw - 230px - var(--side-panel-width) + 41px);
       }
@@ -1023,6 +1034,7 @@
         outline: none;
       }
       #editor {
+        position: relative;
         flex: 1;
         box-sizing: border-box;
         background: var(--color1);
@@ -1032,6 +1044,18 @@
         margin-top: calc(var(--toolbar-height) + var(--window-top-safe-area));
         border-top: 1px solid var(--color3);
         transition: margin-left 180ms ease;
+      }
+      #editor::before {
+        content: "";
+        position: absolute;
+        top: -1px;
+        bottom: 0;
+        left: calc(-1 * var(--editor-line-number-offset));
+        width: var(--editor-line-number-offset);
+        background: var(--editor-gutter-background);
+        border-top: 1px solid var(--color3);
+        box-sizing: border-box;
+        pointer-events: none;
       }
 
       /* status bar */

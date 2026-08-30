@@ -186,7 +186,7 @@
     "monacoRestartWarning": "Restart Monapad to apply this language to Monaco editor UI.",
     "customTheme": "Custom Theme",
     "openThemeFolder": "Open Theme Folder",
-    "customThemeDescription": "Create a CSS file in this folder to add and apply custom themes from the theme menu. Details <a href=\"https://github.com/sheetau/monapad/blob/main/CONTRIBUTING.md#how-to-setup-custom-theme\" target=\"_blank\">here</a>.",
+    "customThemeDescription": "CSS themes in this folder and themes from detected VS Code extensions appear in the theme menu. Edit vscode-theme-paths.txt and restart Monapad to add another extension folder. CSS theme details are <a href=\"https://github.com/sheetau/monapad/blob/main/CONTRIBUTING.md#how-to-setup-custom-theme\" target=\"_blank\">here</a>.",
     "resetTooltip": "Reset Settings"
   },
   "modal": {

@@ -186,7 +186,7 @@
     "monacoRestartWarning": "Reinicie o Monapad para aplicar este idioma à interface do editor Monaco.",
     "customTheme": "Tema personalizado",
     "openThemeFolder": "Abrir pasta de temas",
-    "customThemeDescription": "Crie um arquivo CSS nesta pasta para adicionar e aplicar temas personalizados pelo menu de temas. Detalhes <a href=\"https://github.com/sheetau/monapad/blob/main/CONTRIBUTING.md#how-to-setup-custom-theme\" target=\"_blank\">aqui</a>.",
+    "customThemeDescription": "Temas CSS nesta pasta e temas de extensões detectadas do VS Code aparecem no menu de temas. Edite vscode-theme-paths.txt e reinicie o Monapad para adicionar outra pasta de extensões. Detalhes sobre temas CSS estão <a href=\"https://github.com/sheetau/monapad/blob/main/CONTRIBUTING.md#how-to-setup-custom-theme\" target=\"_blank\">aqui</a>.",
     "resetTooltip": "Redefinir configurações"
   },
   "modal": {

@@ -153,7 +153,7 @@
     "monacoRestartWarning": "Starte Monapad neu, um diese Sprache auf die Monaco-Editor-Oberfläche anzuwenden.",
     "customTheme": "Eigenes Design",
     "openThemeFolder": "Design-Ordner öffnen",
-    "customThemeDescription": "Erstelle in diesem Ordner eine CSS-Datei, um eigene Designs hinzuzufügen und sie über das Design-Menü anzuwenden. Details <a href=\"https://github.com/sheetau/monapad/blob/main/CONTRIBUTING.md#how-to-setup-custom-theme\" target=\"_blank\">hier</a>.",
+    "customThemeDescription": "CSS-Designs in diesem Ordner und Designs aus erkannten VS-Code-Erweiterungen erscheinen im Design-Menü. Bearbeite vscode-theme-paths.txt und starte Monapad neu, um einen weiteren Erweiterungsordner hinzuzufügen. Details zu CSS-Designs findest du <a href=\"https://github.com/sheetau/monapad/blob/main/CONTRIBUTING.md#how-to-setup-custom-theme\" target=\"_blank\">hier</a>.",
     "resetTooltip": "Einstellungen zurücksetzen"
   },
   "modal": {

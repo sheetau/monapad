@@ -19,6 +19,11 @@ const {
   getUtf8ByteLength,
   planRecoveryCapacity,
 } = require("./recovery-policy");
+const {
+  discoverVSCodeThemes,
+  ensureVSCodeThemePathsFile,
+  loadVSCodeTheme,
+} = require("./vscode-theme-loader");
 const log = require("electron-log");
 const logDir = path.dirname(log.transports.file.getFile().path);
 const kuromoji = require("kuromoji");
@@ -45,6 +50,7 @@ let mobileShareStartPromise = null;
 let autosaveDraftRecoveryClaimed = false;
 let autosaveReadyPromise = Promise.resolve();
 let autosaveWriteQueue = Promise.resolve();
+let vscodeThemeCatalogPromise = null;
 let sessionManager = null;
 let sessionRestoreMode = "none";
 let sessionSettingQueue = Promise.resolve();
@@ -747,6 +753,45 @@ ipcMain.handle("dialog:openFile", async () => {
 ipcMain.handle("dialog:saveFile", async (event, defaultName) => {
   const { canceled, filePath } = await dialog.showSaveDialog({ defaultPath: defaultName });
   return canceled || !filePath ? {} : { filePath };
+});
+
+function getVSCodeThemeCatalog() {
+  if (!vscodeThemeCatalogPromise) {
+    const userThemesDir = path.join(app.getPath("userData"), "themes");
+    vscodeThemeCatalogPromise = discoverVSCodeThemes(userThemesDir).catch((error) => {
+      vscodeThemeCatalogPromise = null;
+      throw error;
+    });
+  }
+  return vscodeThemeCatalogPromise;
+}
+
+ipcMain.handle("get-vscode-themes", async () => {
+  try {
+    const catalog = await getVSCodeThemeCatalog();
+    return catalog.themes.map(({ id, label, extensionId, extensionName, uiTheme }) => ({
+      id,
+      label,
+      extensionId,
+      extensionName,
+      uiTheme,
+    }));
+  } catch (error) {
+    log.warn("[theme] failed to discover VS Code themes:", error.message);
+    return [];
+  }
+});
+
+ipcMain.handle("get-vscode-theme", async (event, themeId) => {
+  try {
+    const catalog = await getVSCodeThemeCatalog();
+    const record = catalog.records.get(themeId);
+    if (!record) return { success: false, error: "Unknown VS Code theme." };
+    return { success: true, theme: await loadVSCodeTheme(record) };
+  } catch (error) {
+    log.warn("[theme] failed to load VS Code theme:", error.message);
+    return { success: false, error: error.message };
+  }
 });
 
 ipcMain.handle("show-message-box", async (event, options = {}) => {
@@ -2750,6 +2795,9 @@ if (!gotTheLock) {
       fs.mkdirSync(userThemesPath, { recursive: true });
       console.log("[INIT] Created themes folder:", userThemesPath);
     }
+    await ensureVSCodeThemePathsFile(userThemesPath).catch((error) =>
+      log.warn("[theme] failed to create VS Code theme path file:", error.message),
+    );
     autosaveReadyPromise = rotateAutosaveTrash().then(() => cleanupAutosaveStorage());
     autosaveReadyPromise.catch((error) => log.warn("[autosave] init failed:", error.message));
     cleanupEmptyNotes().catch((error) => log.warn("[notes] cleanup failed:", error.message));
