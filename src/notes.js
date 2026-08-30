@@ -1,5 +1,8 @@
 import { truncateNoteTitle } from "./app-utils.js";
 
+// Keep the rendering path available for a future option while the note-list heading icon is hidden.
+const NOTE_LIST_HEADING_ICON_ENABLED = false;
+
 export function createFileIconElement(className = "") {
   const icon = document.createElement("span");
   icon.className = ["file-icon", className].filter(Boolean).join(" ");
@@ -289,8 +292,9 @@ export function createNotesPanelController({
     item.dataset.entryKey = getEntryKey(note);
 
     const fileIcon = createFileIconElement("note-list-file-icon");
-    fileIcon.classList.toggle("has-heading", Boolean(note.hasHeadings));
-    if (note.hasHeadings) fileIcon.title = i18next.t("sidePanel.foldableStructureIcon");
+    const hasHeadingIcon = NOTE_LIST_HEADING_ICON_ENABLED && Boolean(note.hasHeadings);
+    fileIcon.classList.toggle("has-heading", hasHeadingIcon);
+    if (hasHeadingIcon) fileIcon.title = i18next.t("sidePanel.foldableStructureIcon");
     const title = document.createElement("span");
     title.className = "note-list-title";
     const rawTitle = truncateNoteTitle(note.title || getNoteTitleFromContent(""));

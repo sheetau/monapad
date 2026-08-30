@@ -85,6 +85,8 @@ const MOBILE_SHARE_OPENED_TTL_MS = 2 * 60 * 1000;
 const MOBILE_SHARE_MAX_TEXT_BYTES = 2 * 1024 * 1024;
 const AUTOSAVE_MAX_ITEM_BYTES = 5 * 1024 * 1024;
 const AUTOSAVE_MAX_TOTAL_BYTES = 100 * 1024 * 1024;
+// Preserve note heading metadata support without reading or scanning note content while the sidebar icon is hidden.
+const NOTE_LIST_HEADING_ICON_ENABLED = false;
 
 function sendWindowMaximizeState(window) {
   if (!window || window.webContents.isDestroyed()) return;
@@ -1237,6 +1239,7 @@ function withFolderNoteCounts(index, entries) {
 }
 
 async function withNoteHeadingMeta(entries) {
+  if (!NOTE_LIST_HEADING_ICON_ENABLED) return entries;
   const notesDir = await ensureNotesDir();
   return Promise.all(
     entries.map(async (entry) => {
@@ -1388,7 +1391,7 @@ async function upsertNoteIndexEntry(noteId, content, extra = {}) {
     pinned: Boolean(existing?.pinned),
     order: Number.isFinite(existing?.order) ? existing.order : extra.insertAtTop ? minUnpinnedOrder - 1 : maxOrder + 1,
     contentBytes,
-    hasHeadings: contentHasHeading(content),
+    hasHeadings: NOTE_LIST_HEADING_ICON_ENABLED && contentHasHeading(content),
   };
 
   if (existing) {
@@ -1840,7 +1843,7 @@ ipcMain.handle("notes:refresh-index", async () => {
         pinned: Boolean(existing?.pinned) && normalizeFolderPath(existing?.folderPath) === folderPath,
         order: Number.isFinite(existing?.order) ? existing.order : Number.MAX_SAFE_INTEGER,
         contentBytes: Buffer.byteLength(content, "utf8"),
-        hasHeadings: contentHasHeading(content),
+        hasHeadings: NOTE_LIST_HEADING_ICON_ENABLED && contentHasHeading(content),
       });
     } catch {
       // Missing or unreadable notes are dropped from the refreshed index.

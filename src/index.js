@@ -1570,6 +1570,9 @@ function contentHasHeading(content) {
   return false;
 }
 
+// Keep the implementation available for a future UI option without scanning tab content while the icon is hidden.
+const TAB_HEADING_ICON_ENABLED = false;
+
 function updateTabTitleDisplay(tab) {
   const nameSpan = tab?.element?.querySelector(".name");
   if (!nameSpan) return;
@@ -1578,6 +1581,7 @@ function updateTabTitleDisplay(tab) {
 }
 
 function updateTabHeadingIcon(tab, content = null) {
+  if (!TAB_HEADING_ICON_ENABLED) return;
   const fileIcon = tab?.element?.querySelector(".file-icon");
   if (!fileIcon) return;
   const canShowHeadingIcon = Boolean(tab?.isNote) || /\.txt$/i.test(tab?.path || tab?.name || "");
