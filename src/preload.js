@@ -5,11 +5,12 @@ contextBridge.exposeInMainWorld("electronAPI", {
   getAppVersion: () => ipcRenderer.invoke("get-app-version"),
   getAppSessionId: () => ipcRenderer.invoke("get-app-session-id"),
   getSessionWindowState: () => ipcRenderer.invoke("session:get-window-state"),
-  setSessionRestoreEnabled: (enabled) => ipcRenderer.invoke("session:set-enabled", enabled),
+  setSessionRestoreMode: (mode) => ipcRenderer.invoke("session:set-mode", mode),
+  prepareSessionWindowClose: () => ipcRenderer.invoke("session:prepare-window-close"),
   saveSessionWindow: (payload) => ipcRenderer.invoke("session:save-window", payload),
   abortSessionWindowClose: () => ipcRenderer.send("session:close-aborted"),
-  onSessionRestoreEnabledChanged: (callback) =>
-    ipcRenderer.on("session-enabled-changed", (_event, enabled) => callback(Boolean(enabled))),
+  onSessionRestoreModeChanged: (callback) =>
+    ipcRenderer.on("session-mode-changed", (_event, mode) => callback(mode)),
   openExternal: (url) => shell.openExternal(url),
   sendMessage: (msg) => ipcRenderer.send("message", msg),
   onReceive: (callback) => ipcRenderer.on("reply", callback),

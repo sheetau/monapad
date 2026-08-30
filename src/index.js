@@ -173,8 +173,14 @@ let tabData = [];
 let recentlyClosedFiles = [];
 let currentTheme = localStorage.getItem("theme") || "dark";
 let currentFilePath = `${i18next.t("file.untitled")}.txt`;
+const SESSION_RESTORE_MODES = new Set(["all", "one", "none"]);
+
+function normalizeSessionRestoreMode(value, legacyEnabled = false) {
+  return SESSION_RESTORE_MODES.has(value) ? value : legacyEnabled === true ? "all" : "none";
+}
+
 const defaultSettings = {
-  sessionRestore: false,
+  sessionRestoreMode: "none",
   lineHighlight: true,
   lineNumbers: false,
   minimap: true,
@@ -190,6 +196,11 @@ try {
 } catch {
   storedSettings = {};
 }
+storedSettings.sessionRestoreMode = normalizeSessionRestoreMode(
+  storedSettings.sessionRestoreMode,
+  storedSettings.sessionRestore === true,
+);
+delete storedSettings.sessionRestore;
 const settings = { ...defaultSettings, ...storedSettings };
 let selectedFontFamily = localStorage.getItem("selectedFontFamily") || "Iosevka";
 let monacoEditor = null;
@@ -200,7 +211,6 @@ const WRAP_MEASURE_OPTIONS = {
 
 const AUTOSAVE_DEBOUNCE_MS = 3000;
 const AUTOSAVE_FORCE_MS = 30000;
-const AUTOSAVE_MAX_ITEM_BYTES = 5 * 1024 * 1024;
 const autosaveTimers = new Map();
 let isRestoringAutosaveDrafts = false;
 let stableSessionWindowId = null;
@@ -299,11 +309,11 @@ window.electronAPI.onAssignWindowId((id) => {
   resolveWindowIdReady?.(id);
 });
 
-window.electronAPI.onSessionRestoreEnabledChanged((enabled) => {
-  settings.sessionRestore = enabled;
+window.electronAPI.onSessionRestoreModeChanged((mode) => {
+  settings.sessionRestoreMode = normalizeSessionRestoreMode(mode);
   localStorage.setItem("editorSettings", JSON.stringify(settings));
   applySettings();
-  if (enabled) scheduleSessionSnapshot({ immediate: true });
+  if (settings.sessionRestoreMode !== "none") scheduleSessionSnapshot({ immediate: true });
   else if (sessionSnapshotTimer) {
     clearTimeout(sessionSnapshotTimer);
     sessionSnapshotTimer = null;
@@ -479,6 +489,45 @@ window.electronAPI.onLoadTabData(async (receivedTabData) => {
 });
 
 // language
+const sessionRestoreModeSelect = document.getElementById("session-restore-mode");
+const sessionRestoreDropdown = new CustomSelect(sessionRestoreModeSelect, {
+  searchEnabled: false,
+  position: "bottom",
+  onBeforeOpen() {
+    closeContextMenus({ focus: false });
+  },
+});
+sessionRestoreDropdown.setChoiceByValue(settings.sessionRestoreMode, { silent: true });
+
+function updateSessionRestoreChoices() {
+  const selectedMode = settings.sessionRestoreMode;
+  sessionRestoreModeSelect.setAttribute("aria-label", i18next.t("settings.sessionRestore"));
+  sessionRestoreDropdown.setChoices(
+    [
+      {
+        value: "all",
+        label: i18next.t("settings.sessionRestoreAll"),
+        customProperties: { title: i18next.t("settings.sessionRestoreAllTooltip") },
+      },
+      {
+        value: "one",
+        label: i18next.t("settings.sessionRestoreOne"),
+        customProperties: { title: i18next.t("settings.sessionRestoreOneTooltip") },
+      },
+      {
+        value: "none",
+        label: i18next.t("settings.sessionRestoreNone"),
+        customProperties: { title: i18next.t("settings.sessionRestoreNoneTooltip") },
+      },
+    ],
+    "value",
+    "label",
+    true,
+    { silent: true },
+  );
+  sessionRestoreDropdown.setChoiceByValue(selectedMode, { silent: true });
+}
+
 const langSwitcher = document.getElementById("langSwitcher");
 const savedLang = localStorage.getItem("lang") || "en";
 const initialMonacoNlsLang = globalThis.__MONAPAD_INITIAL_MONACO_NLS_LANG__ || savedLang;
@@ -558,6 +607,7 @@ function getI18nUiContext() {
       updateGlobalSearchResultHeaderLabels,
       updateMainMenuState,
       updateNewTabShortcutLabels,
+      updateSessionRestoreChoices,
       updateTabContextMenuState,
     },
   };
@@ -1880,7 +1930,7 @@ function applyPendingNoteDataToTab(tab, content = "", options = {}) {
   tab.isWarned = false;
   tab.isMarkdown = false;
   tab._lastExternalContent = null;
-  tab.isAutoPlaceholder = false;
+  tab.isAutoPlaceholder = Boolean(options.isAutoPlaceholder);
   tab.element.classList.add("note");
   setNoteTabPreview(tab, Boolean(options.preview));
   tab.element.querySelector(".name")?.classList.remove("warn");
@@ -1908,24 +1958,26 @@ function shouldAutosaveTab(tab, content = null) {
     if (!nextContent.trim()) return false;
     return !tab.noteId || !isNoteContentSaved(tab, nextContent);
   }
-  if (!nextContent.trim()) return false;
+  if (!tab.path && !nextContent.trim()) return false;
   if (!hasUnsavedChanges(tab, nextContent)) return false;
-  return new Blob([nextContent]).size <= AUTOSAVE_MAX_ITEM_BYTES;
+  return true;
 }
 
-async function writeTabAutosave(tab, content = null) {
+async function writeTabAutosave(tab, content = null, options = {}) {
   if (!tab || isTabModelDisposed(tab)) {
     clearAutosaveTimer(tab);
-    return;
+    return { success: false, error: "The tab is no longer available." };
   }
   const nextContent = content ?? tab.model?.getValue() ?? tab.content ?? "";
-  if (!shouldAutosaveTab(tab, nextContent)) return;
+  if (!shouldAutosaveTab(tab, nextContent)) return { success: true, skipped: true, reason: "not-needed" };
 
   try {
+    let result = null;
     if (tab.isNote) {
-      await writeNoteTab(tab, nextContent, true);
+      const success = await writeNoteTab(tab, nextContent, true);
+      result = success ? { success: true } : { success: false, error: "Failed to save the note." };
     } else if (tab.path) {
-      await window.electronAPI.writeAutosave({
+      result = await window.electronAPI.writeAutosave({
         kind: "file",
         filePath: tab.path,
         name: tab.name,
@@ -1933,23 +1985,28 @@ async function writeTabAutosave(tab, content = null) {
         ownerId: myWindowId,
         tabId: tab.sessionTabId,
         content: nextContent,
+        verify: Boolean(options.verify),
       });
     } else {
       if (!tab.draftId) tab.draftId = createAutosaveId();
-      await window.electronAPI.writeAutosave({
+      result = await window.electronAPI.writeAutosave({
         kind: "draft",
         draftId: tab.draftId,
         name: tab.name,
         index: tabData.indexOf(tab),
         ownerId: myWindowId,
         content: nextContent,
+        verify: Boolean(options.verify),
       });
     }
+    if (!result?.success) throw new Error(result?.error || `Failed to back up ${tab.name}.`);
     tab._autosaveStatus = "saved";
     tab._autosaveBackedUpContent = nextContent;
+    return result;
   } catch (error) {
     tab._autosaveStatus = "error";
     console.warn("Failed to write autosave:", error);
+    return { success: false, error: error.message };
   } finally {
     if (tab === currentTab) updateStatusBar();
   }
@@ -2832,9 +2889,7 @@ function applySettings() {
   });
   updateEditorLeftMargin();
 
-  document.querySelector("#session-restore .checkmark").style.display = settings.sessionRestore
-    ? "inline-flex"
-    : "none";
+  sessionRestoreDropdown.setChoiceByValue(settings.sessionRestoreMode, { silent: true });
   document.querySelector("#line-highlight .checkmark").style.display = settings.lineHighlight ? "inline-flex" : "none";
   document.querySelector("#line-num .checkmark").style.display = settings.lineNumbers ? "inline-flex" : "none";
   document
@@ -2882,25 +2937,29 @@ function toggleSetting(key) {
 applySettings();
 
 document.getElementById("line-highlight").onclick = () => toggleSetting("lineHighlight");
-document.getElementById("session-restore").onclick = async () => {
-  const nextEnabled = !settings.sessionRestore;
-  settings.sessionRestore = nextEnabled;
+sessionRestoreModeSelect.addEventListener("change", async () => {
+  const previousMode = settings.sessionRestoreMode;
+  const nextMode = normalizeSessionRestoreMode(sessionRestoreDropdown.getValue(true));
+  settings.sessionRestoreMode = nextMode;
   localStorage.setItem("editorSettings", JSON.stringify(settings));
   applySettings();
   let result = null;
   try {
-    result = await window.electronAPI.setSessionRestoreEnabled(nextEnabled);
+    result = await window.electronAPI.setSessionRestoreMode(nextMode);
   } catch (error) {
     console.warn("Failed to change session restore setting:", error);
   }
   if (!result?.success) {
-    settings.sessionRestore = !nextEnabled;
+    settings.sessionRestoreMode = previousMode;
     localStorage.setItem("editorSettings", JSON.stringify(settings));
     applySettings();
     return;
   }
-  if (nextEnabled) scheduleSessionSnapshot({ immediate: true });
-};
+  settings.sessionRestoreMode = normalizeSessionRestoreMode(result.mode);
+  localStorage.setItem("editorSettings", JSON.stringify(settings));
+  applySettings();
+  if (settings.sessionRestoreMode !== "none") scheduleSessionSnapshot({ immediate: true });
+});
 document.getElementById("line-num").onclick = () => toggleSetting("lineNumbers");
 document.getElementById("minimap").onclick = () => toggleSetting("minimap");
 document.getElementById("toggleSyntaxHighlight").onclick = () => {
@@ -2924,17 +2983,17 @@ document.getElementById("default-new-tab-note").onclick = () => {
 // editor settings reset button
 document.querySelector("#settings-menu #settingsLayout .reset").addEventListener("click", async () => {
   // reset settings, tabSize
-  const wasSessionRestoreEnabled = settings.sessionRestore;
+  const previousSessionRestoreMode = settings.sessionRestoreMode;
   Object.assign(settings, defaultSettings);
   localStorage.setItem("editorSettings", JSON.stringify(settings));
-  if (wasSessionRestoreEnabled) {
+  if (previousSessionRestoreMode !== "none") {
     let result = null;
     try {
-      result = await window.electronAPI.setSessionRestoreEnabled(false);
+      result = await window.electronAPI.setSessionRestoreMode("none");
     } catch (error) {
       console.warn("Failed to reset session restore setting:", error);
     }
-    if (!result?.success) settings.sessionRestore = true;
+    if (!result?.success) settings.sessionRestoreMode = previousSessionRestoreMode;
   }
 
   tabSize = 4;
@@ -3237,7 +3296,7 @@ function createSessionWindowSnapshot({ closing = false } = {}) {
     closing &&
       onlyTab?.isAutoPlaceholder &&
       !onlyTab.path &&
-      !onlyTab.isNote &&
+      !onlyTab.noteId &&
       !onlyContent &&
       !onlyTab.isPinned,
   );
@@ -3260,13 +3319,15 @@ async function flushSessionTabsBeforeClose() {
         await deleteNoteTabStorage(tab);
       }
     } else if (hasUnsavedChanges(tab, content)) {
-      await writeTabAutosave(tab, content);
+      if (!tab.path && !content.trim()) continue;
+      const result = await writeTabAutosave(tab, content, { verify: true });
+      if (!result?.success) throw new Error(result?.error || `Failed to back up ${tab.name}.`);
     }
   }
 }
 
 async function saveSessionWindow({ closing = false } = {}) {
-  if (!settings.sessionRestore || !stableSessionWindowId || isRestoringSession) {
+  if (settings.sessionRestoreMode === "none" || !stableSessionWindowId || isRestoringSession) {
     return { success: false, disabled: true };
   }
   if (closing) await flushSessionTabsBeforeClose();
@@ -3281,7 +3342,7 @@ function queueSessionSnapshot(options = {}) {
 }
 
 function scheduleSessionSnapshot({ immediate = false } = {}) {
-  if (!settings.sessionRestore || !stableSessionWindowId || isRestoringSession || isClosingForSession) return;
+  if (settings.sessionRestoreMode === "none" || !stableSessionWindowId || isRestoringSession || isClosingForSession) return;
   if (sessionSnapshotTimer) clearTimeout(sessionSnapshotTimer);
   sessionSnapshotTimer = null;
   if (immediate) {
@@ -3416,7 +3477,7 @@ async function initializeSessionRestore() {
   const state = await window.electronAPI.getSessionWindowState();
   stableSessionWindowId = state?.windowId || null;
   sessionStartupSnapshot = state?.snapshot || null;
-  settings.sessionRestore = Boolean(state?.enabled);
+  settings.sessionRestoreMode = normalizeSessionRestoreMode(state?.mode, state?.enabled === true);
   localStorage.setItem("editorSettings", JSON.stringify(settings));
   applySettings();
 }
@@ -3429,10 +3490,10 @@ setTimeout(() => monacoEditor?.focus(), 0);
 sessionInitializationPromise = (async () => {
   await windowIdReady;
   await initializeSessionRestore();
-  const restoredSession = settings.sessionRestore && (await restoreSessionWindow(sessionStartupSnapshot));
+  const restoredSession = settings.sessionRestoreMode !== "none" && (await restoreSessionWindow(sessionStartupSnapshot));
   if (!restoredSession) await restorePinnedTabs();
   await restoreAutosaveDrafts();
-  if (settings.sessionRestore) scheduleSessionSnapshot({ immediate: true });
+  if (settings.sessionRestoreMode !== "none") scheduleSessionSnapshot({ immediate: true });
 })();
 
 function getStoredSidePanelOpen() {
@@ -5634,7 +5695,7 @@ async function reopenRecentlyClosedFile() {
 
 // close window
 async function attemptCloseWindow(options = {}) {
-  if (options.sessionRestore || settings.sessionRestore) {
+  if (options.sessionRestore || settings.sessionRestoreMode !== "none") {
     if (isClosingForSession) return;
     isClosingForSession = true;
     if (sessionSnapshotTimer) {
@@ -5643,6 +5704,7 @@ async function attemptCloseWindow(options = {}) {
     }
 
     try {
+      await window.electronAPI.prepareSessionWindowClose();
       await sessionSnapshotInFlight.catch(() => {});
       const result = await saveSessionWindow({ closing: true });
       if (!result?.success) throw new Error(result?.error || "Session storage is unavailable.");

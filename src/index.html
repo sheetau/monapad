@@ -2509,6 +2509,18 @@
       #settings-menu .row.font-select-row {
         margin-bottom: 5px;
       }
+      #settings-menu .session-restore-select-row .custom-select {
+        flex: 1 1 auto;
+        min-width: 0;
+        width: 100%;
+      }
+      #settings-menu .session-restore-select-row .custom-select__trigger,
+      #settings-menu .session-restore-select-row .custom-select__item {
+        display: block;
+        overflow: hidden;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+      }
       #settings-menu .row:has(.custom-select) {
         padding: 0 17px 0 15px;
       }
@@ -3188,10 +3200,6 @@
           <span class="h1">Editor</span>
           <span class="reset side-panel-action codicon codicon-refresh" title="Reset Settings"></span>
         </h1>
-        <button id="session-restore">
-          <span>Restore Previous Session</span>
-          <span class="checkmark codicon codicon-check"></span>
-        </button>
         <button id="default-new-tab-note">
           <span>Use Notes by Default</span>
           <span class="checkmark codicon codicon-check"></span>
@@ -3265,6 +3273,25 @@
               </svg>
             </div>
           </div>
+        </div>
+        <div class="row select-row session-restore-select-row">
+          <select id="session-restore-mode" aria-label="Restore Windows">
+            <option
+              value="all"
+              title="Restores every window still open when the previous session ended. Windows closed individually are not restored."
+            >
+              Restore Windows: All
+            </option>
+            <option value="one" title="Restores only the window that was active most recently in the previous session.">
+              Restore Windows: One
+            </option>
+            <option
+              value="none"
+              title="Does not restore the previous session. Closing a window with unsaved changes asks whether to save them."
+            >
+              Restore Windows: None
+            </option>
+          </select>
         </div>
 
         <!-- Font -->

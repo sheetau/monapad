@@ -7,7 +7,18 @@ const os = require("os");
 const crypto = require("crypto");
 const { TextDecoder } = require("util");
 const Store = require("electron-store").default;
-const { SessionManager } = require("./session-manager");
+const {
+  SessionManager,
+  normalizeSessionRestoreMode,
+  shouldRetainSessionWindowOnClose,
+} = require("./session-manager");
+const {
+  RECOVERY_MAX_TOTAL_BYTES,
+  assertRecoveryItemSize,
+  createRecoveryLimitError,
+  getUtf8ByteLength,
+  planRecoveryCapacity,
+} = require("./recovery-policy");
 const log = require("electron-log");
 const logDir = path.dirname(log.transports.file.getFile().path);
 const kuromoji = require("kuromoji");
@@ -32,11 +43,15 @@ let mobileShareHost = null;
 let mobileSharePort = null;
 let mobileShareStartPromise = null;
 let autosaveDraftRecoveryClaimed = false;
+let autosaveReadyPromise = Promise.resolve();
+let autosaveWriteQueue = Promise.resolve();
 let sessionManager = null;
-let sessionRestoreEnabled = false;
+let sessionRestoreMode = "none";
 let sessionSettingQueue = Promise.resolve();
 const sessionWindowIds = new Map();
 const sessionClosePending = new Set();
+const sessionCloseRetention = new Map();
+let appQuitRequested = false;
 
 const WINDOW_CONTROL_OVERLAY = {
   height: 36,
@@ -83,8 +98,6 @@ const mobileShareItems = new Map();
 const MOBILE_SHARE_CREATED_TTL_MS = 5 * 60 * 1000;
 const MOBILE_SHARE_OPENED_TTL_MS = 2 * 60 * 1000;
 const MOBILE_SHARE_MAX_TEXT_BYTES = 2 * 1024 * 1024;
-const AUTOSAVE_MAX_ITEM_BYTES = 5 * 1024 * 1024;
-const AUTOSAVE_MAX_TOTAL_BYTES = 100 * 1024 * 1024;
 // Preserve note heading metadata support without reading or scanning note content while the sidebar icon is hidden.
 const NOTE_LIST_HEADING_ICON_ENABLED = false;
 
@@ -102,6 +115,29 @@ function bindWindowMaximizeState(window) {
 
 function getSessionWindowId(window) {
   return window ? sessionWindowIds.get(window.id) || null : null;
+}
+
+function isSessionRestoreEnabled() {
+  return sessionRestoreMode !== "none";
+}
+
+function beginSessionWindowClose(window) {
+  if (!window || window.isDestroyed() || !isSessionRestoreEnabled()) return { enabled: false, retain: false };
+  if (sessionCloseRetention.has(window.id)) {
+    return { enabled: true, retain: sessionCloseRetention.get(window.id) };
+  }
+
+  const retain = shouldRetainSessionWindowOnClose({
+    windowIds: BrowserWindow.getAllWindows()
+      .filter((candidate) => !candidate.isDestroyed())
+      .map((candidate) => candidate.id),
+    pendingWindowIds: [...sessionClosePending],
+    windowId: window.id,
+    quitRequested: appQuitRequested,
+  });
+  sessionClosePending.add(window.id);
+  sessionCloseRetention.set(window.id, retain);
+  return { enabled: true, retain };
 }
 
 function getRestoredWindowBounds(sessionState, fallback) {
@@ -122,7 +158,7 @@ function bindSessionWindow(window, sessionState = null) {
   sessionWindowIds.set(window.id, stableWindowId);
 
   window.on("focus", () => {
-    if (sessionRestoreEnabled) {
+    if (isSessionRestoreEnabled()) {
       sessionManager?.markWindowActive(stableWindowId).catch((error) => log.warn("[session] focus save failed:", error.message));
     }
   });
@@ -130,6 +166,7 @@ function bindSessionWindow(window, sessionState = null) {
   window.on("closed", () => {
     sessionWindowIds.delete(window.id);
     sessionClosePending.delete(window.id);
+    sessionCloseRetention.delete(window.id);
     if (mainWindow === window) {
       mainWindow = BrowserWindow.getAllWindows().find((candidate) => candidate !== window) || null;
     }
@@ -145,11 +182,9 @@ function bindSessionWindow(window, sessionState = null) {
 function requestWindowClose(window, event) {
   if (window.webContents.isDestroyed()) return;
   event.preventDefault();
-  if (sessionRestoreEnabled) {
-    if (sessionClosePending.has(window.id)) return;
-    sessionClosePending.add(window.id);
-  }
-  window.webContents.send("attempt-close-window", { sessionRestore: sessionRestoreEnabled });
+  if (isSessionRestoreEnabled() && sessionClosePending.has(window.id)) return;
+  if (isSessionRestoreEnabled()) beginSessionWindowClose(window);
+  window.webContents.send("attempt-close-window", { sessionRestore: isSessionRestoreEnabled() });
 }
 
 function closeFileWatcher(filePath) {
@@ -396,13 +431,19 @@ function getPreferredWindow() {
   return mainWindow && !mainWindow.isDestroyed() ? mainWindow : BrowserWindow.getAllWindows()[0] || null;
 }
 
-function createWindowsForLaunch() {
-  if (!sessionRestoreEnabled || !sessionManager?.hasWindows()) {
+async function createWindowsForLaunch() {
+  if (!isSessionRestoreEnabled() || !sessionManager?.hasWindows()) {
+    if (!isSessionRestoreEnabled() && sessionManager?.hasWindows()) await sessionManager.clear();
     createWindow();
     return;
   }
 
-  const { windows, lastActiveWindowId } = sessionManager.getWindowStates();
+  const { windows, lastActiveWindowId } = sessionManager.getWindowStates(sessionRestoreMode);
+  if (!windows.length) {
+    createWindow();
+    return;
+  }
+  if (sessionRestoreMode === "one") await sessionManager.retainWindows(windows.map((windowState) => windowState.id));
   createWindow(windows[0]);
   for (const sessionState of windows.slice(1)) {
     createNewWindow(null, null, sessionState);
@@ -435,46 +476,60 @@ ipcMain.handle("session:get-window-state", async (event) => {
   const window = BrowserWindow.fromWebContents(event.sender);
   const stableWindowId = getSessionWindowId(window);
   return {
-    enabled: sessionRestoreEnabled,
+    enabled: isSessionRestoreEnabled(),
+    mode: sessionRestoreMode,
     windowId: stableWindowId,
     snapshot:
-      sessionRestoreEnabled && stableWindowId && sessionManager
+      isSessionRestoreEnabled() && stableWindowId && sessionManager
         ? await sessionManager.hydrateWindow(stableWindowId)
         : null,
   };
 });
 
-ipcMain.handle("session:set-enabled", async (event, enabled) => {
-  const nextEnabled = Boolean(enabled);
+ipcMain.handle("session:set-mode", async (event, mode) => {
+  if (!["all", "one", "none"].includes(mode)) {
+    return { success: false, mode: sessionRestoreMode, error: "Invalid session restore mode." };
+  }
+  const nextMode = normalizeSessionRestoreMode(mode);
   sessionSettingQueue = sessionSettingQueue.then(async () => {
-    if (nextEnabled === sessionRestoreEnabled) return { success: true, enabled: sessionRestoreEnabled };
-    const previousEnabled = sessionRestoreEnabled;
+    if (nextMode === sessionRestoreMode) return { success: true, mode: sessionRestoreMode };
+    const previousMode = sessionRestoreMode;
     try {
-      if (!nextEnabled) sessionRestoreEnabled = false;
-      await sessionManager?.clear();
-      if (nextEnabled) sessionRestoreEnabled = true;
-      store.set("sessionRestoreEnabled", sessionRestoreEnabled);
+      const crossesDisabledBoundary = (previousMode === "none") !== (nextMode === "none");
+      if (nextMode === "none") sessionRestoreMode = "none";
+      if (crossesDisabledBoundary) await sessionManager?.clear();
+      sessionRestoreMode = nextMode;
+      store.set("sessionRestoreMode", sessionRestoreMode);
+      store.delete("sessionRestoreEnabled");
       for (const window of BrowserWindow.getAllWindows()) {
-        if (!window.webContents.isDestroyed()) window.webContents.send("session-enabled-changed", sessionRestoreEnabled);
+        if (!window.webContents.isDestroyed()) window.webContents.send("session-mode-changed", sessionRestoreMode);
       }
-      return { success: true, enabled: sessionRestoreEnabled };
+      return { success: true, mode: sessionRestoreMode };
     } catch (error) {
-      sessionRestoreEnabled = previousEnabled;
+      sessionRestoreMode = previousMode;
       log.error("[session] failed to change setting:", error);
-      return { success: false, enabled: sessionRestoreEnabled, error: error.message };
+      return { success: false, mode: sessionRestoreMode, error: error.message };
     }
   });
   return sessionSettingQueue;
 });
 
+ipcMain.handle("session:prepare-window-close", (event) => {
+  const window = BrowserWindow.fromWebContents(event.sender);
+  return beginSessionWindowClose(window);
+});
+
 ipcMain.handle("session:save-window", async (event, payload = {}) => {
-  if (!sessionRestoreEnabled || !sessionManager) return { success: false, disabled: true };
+  if (!isSessionRestoreEnabled() || !sessionManager) return { success: false, disabled: true };
   const window = BrowserWindow.fromWebContents(event.sender);
   const stableWindowId = getSessionWindowId(window);
   if (!window || !stableWindowId) return { success: false, error: "Unknown window." };
 
   try {
-    const result = await sessionManager.saveWindow(stableWindowId, payload, {
+    const closeState = payload.closing ? beginSessionWindowClose(window) : null;
+    const sessionPayload =
+      closeState && !closeState.retain ? { ...payload, discardWindow: true } : payload;
+    const result = await sessionManager.saveWindow(stableWindowId, sessionPayload, {
       bounds: window.getNormalBounds(),
       maximized: window.isMaximized(),
       active: window.isFocused(),
@@ -488,7 +543,10 @@ ipcMain.handle("session:save-window", async (event, payload = {}) => {
 
 ipcMain.on("session:close-aborted", (event) => {
   const window = BrowserWindow.fromWebContents(event.sender);
-  if (window) sessionClosePending.delete(window.id);
+  if (window) {
+    sessionClosePending.delete(window.id);
+    sessionCloseRetention.delete(window.id);
+  }
 });
 
 // theme folder
@@ -820,6 +878,14 @@ async function readAutosaveEntry(baseDir, id) {
   try {
     const content = await fs.promises.readFile(textPath, "utf8");
     const stats = await fs.promises.stat(textPath);
+    const contentBytes = getUtf8ByteLength(content);
+    if (Number.isInteger(meta?.contentBytes) && meta.contentBytes !== contentBytes) return null;
+    if (
+      typeof meta?.contentHash === "string" &&
+      crypto.createHash("sha256").update(content).digest("hex") !== meta.contentHash
+    ) {
+      return null;
+    }
     return { id, content, meta: meta || {}, updatedAt: stats.mtimeMs };
   } catch {
     return null;
@@ -832,37 +898,54 @@ async function writeAutosaveEntry(baseDir, id, meta, content) {
   }
 
   const contentText = typeof content === "string" ? content : "";
-  const contentBytes = Buffer.byteLength(contentText, "utf8");
+  const contentBytes = assertRecoveryItemSize(contentText);
   const textPath = path.join(baseDir, `${id}.txt`);
   const metaPath = path.join(baseDir, `${id}.json`);
 
-  if (contentBytes > AUTOSAVE_MAX_ITEM_BYTES) {
-    await removeFileIfExists(textPath);
-    await removeFileIfExists(metaPath);
-    return { success: true, skipped: true, reason: "too-large" };
-  }
-
   await fs.promises.mkdir(baseDir, { recursive: true });
   const now = Date.now();
+  const existingMeta = await readJsonFile(metaPath);
+  const contentHash = crypto.createHash("sha256").update(contentText).digest("hex");
   const nextMeta = {
     ...meta,
     id,
     contentBytes,
+    contentHash,
     updatedAt: now,
-    createdAt: meta?.createdAt || now,
+    createdAt: existingMeta?.createdAt || meta?.createdAt || now,
   };
+  const metaText = JSON.stringify(nextMeta, null, 2);
+  await ensureAutosaveCapacity(baseDir, id, contentBytes + getUtf8ByteLength(metaText));
 
-  const tempTextPath = `${textPath}.${process.pid}.tmp`;
-  const tempMetaPath = `${metaPath}.${process.pid}.tmp`;
+  const tempSuffix = `${process.pid}.${crypto.randomUUID()}.tmp`;
+  const tempTextPath = `${textPath}.${tempSuffix}`;
+  const tempMetaPath = `${metaPath}.${tempSuffix}`;
 
-  await fs.promises.writeFile(tempTextPath, contentText, "utf8");
-  await fs.promises.writeFile(tempMetaPath, JSON.stringify(nextMeta, null, 2), "utf8");
-  await fs.promises.rename(tempTextPath, textPath);
-  await fs.promises.rename(tempMetaPath, metaPath);
+  try {
+    await fs.promises.writeFile(tempTextPath, contentText, "utf8");
+    await fs.promises.writeFile(tempMetaPath, metaText, "utf8");
+    await fs.promises.rename(tempTextPath, textPath);
+    await fs.promises.rename(tempMetaPath, metaPath);
+  } finally {
+    await Promise.all([removeFileIfExists(tempTextPath), removeFileIfExists(tempMetaPath)]);
+  }
 
-  cleanupAutosaveStorage().catch((error) => log.warn("[autosave] cleanup failed:", error.message));
+  return { success: true, id, contentBytes, contentHash };
+}
 
-  return { success: true, id };
+async function verifyAutosaveWrite(baseDir, result) {
+  if (!result?.success || !result.id) return result;
+  const entry = await readAutosaveEntry(baseDir, result.id);
+  if (
+    !entry ||
+    entry.meta?.contentBytes !== result.contentBytes ||
+    entry.meta?.contentHash !== result.contentHash
+  ) {
+    const error = new Error("The autosave backup could not be verified after writing.");
+    error.code = "AUTOSAVE_VERIFY_FAILED";
+    throw error;
+  }
+  return result;
 }
 
 async function deleteAutosaveEntry(baseDir, id) {
@@ -897,11 +980,44 @@ async function rotateAutosaveTrash() {
   await ensureAutosaveDirs();
 }
 
-async function cleanupAutosaveStorage() {
-  const dirs = await ensureAutosaveDirs();
-  const fileEntries = await listAutosaveEntries(dirs.files);
+async function getAutosaveDiskEntries(baseDir) {
+  try {
+    const names = await fs.promises.readdir(baseDir);
+    const ids = new Set(
+      names
+        .map((name) => name.match(/^([a-zA-Z0-9_-]{8,80})\.(?:txt|json)$/)?.[1])
+        .filter(Boolean),
+    );
+    const entries = [];
+    for (const id of ids) {
+      let size = 0;
+      let mtimeMs = 0;
+      for (const extension of ["txt", "json"]) {
+        try {
+          const stats = await fs.promises.stat(path.join(baseDir, `${id}.${extension}`));
+          size += stats.size;
+          mtimeMs = Math.max(mtimeMs, stats.mtimeMs);
+        } catch {
+          // Missing halves are counted by whichever file still exists.
+        }
+      }
+      entries.push({ baseDir, id, size, mtimeMs });
+    }
+    return entries;
+  } catch {
+    return [];
+  }
+}
 
-  for (const entry of fileEntries) {
+async function cleanupStaleFileBackups(dirs) {
+  const diskEntries = await getAutosaveDiskEntries(dirs.files);
+
+  for (const diskEntry of diskEntries) {
+    const entry = await readAutosaveEntry(dirs.files, diskEntry.id);
+    if (!entry) {
+      await deleteAutosaveEntry(dirs.files, diskEntry.id);
+      continue;
+    }
     const filePath = entry.meta?.path;
     if (!filePath) {
       await deleteAutosaveEntry(dirs.files, entry.id);
@@ -917,86 +1033,113 @@ async function cleanupAutosaveStorage() {
       await deleteAutosaveEntry(dirs.files, entry.id);
     }
   }
+}
 
-  const allDirs = [dirs.files, dirs.drafts, dirs.trashCurrent, dirs.trashPrevious];
-  const allFiles = [];
-  for (const dir of allDirs) {
-    try {
-      const names = await fs.promises.readdir(dir);
-      for (const name of names) {
-        const fullPath = path.join(dir, name);
-        const stats = await fs.promises.stat(fullPath);
-        if (stats.isFile()) allFiles.push({ path: fullPath, size: stats.size, mtimeMs: stats.mtimeMs });
-      }
-    } catch {
-      // ignore missing autosave folders
-    }
+async function getAutosaveStorageEntries(dirs) {
+  const groups = await Promise.all(
+    [dirs.files, dirs.drafts, dirs.trashCurrent, dirs.trashPrevious].map((dir) => getAutosaveDiskEntries(dir)),
+  );
+  return groups.flat();
+}
+
+async function removeOldestTrashForCapacity(dirs, entries, requiredBytes) {
+  const plan = planRecoveryCapacity(
+    entries.map((entry) => ({
+      ...entry,
+      cleanupPriority:
+        entry.baseDir === dirs.trashPrevious ? 0 : entry.baseDir === dirs.trashCurrent ? 1 : undefined,
+    })),
+    requiredBytes,
+    RECOVERY_MAX_TOTAL_BYTES,
+  );
+  for (const entry of plan.entriesToDelete) {
+    await deleteAutosaveEntry(entry.baseDir, entry.id);
   }
+  return plan.retainedBytes;
+}
 
-  let totalSize = allFiles.reduce((sum, file) => sum + file.size, 0);
-  if (totalSize <= AUTOSAVE_MAX_TOTAL_BYTES) return;
-
-  const priority = (filePath) => {
-    if (filePath.startsWith(dirs.trashPrevious) || filePath.startsWith(dirs.trashCurrent)) return 0;
-    if (filePath.startsWith(dirs.drafts)) return 1;
-    return 2;
-  };
-
-  allFiles.sort((a, b) => priority(a.path) - priority(b.path) || a.mtimeMs - b.mtimeMs);
-  for (const file of allFiles) {
-    if (totalSize <= AUTOSAVE_MAX_TOTAL_BYTES) break;
-    await removeFileIfExists(file.path);
-    totalSize -= file.size;
+async function ensureAutosaveCapacity(baseDir, id, nextSize) {
+  const dirs = await ensureAutosaveDirs();
+  await cleanupStaleFileBackups(dirs);
+  let entries = await getAutosaveStorageEntries(dirs);
+  const existing = entries.find((entry) => entry.baseDir === baseDir && entry.id === id);
+  if (existing) entries = entries.filter((entry) => entry !== existing);
+  const totalBytes = await removeOldestTrashForCapacity(dirs, entries, nextSize);
+  const projectedBytes = totalBytes + nextSize;
+  if (projectedBytes > RECOVERY_MAX_TOTAL_BYTES) {
+    throw createRecoveryLimitError("total", projectedBytes, RECOVERY_MAX_TOTAL_BYTES);
   }
 }
 
-ipcMain.handle("autosave:write", async (event, payload = {}) => {
-  try {
-    const dirs = await ensureAutosaveDirs();
-    const content = typeof payload.content === "string" ? payload.content : "";
-    const ownerId = Number.isInteger(payload.ownerId) ? payload.ownerId : null;
-
-    if (payload.kind === "file") {
-      if (!payload.filePath) return { success: false, error: "Missing file path." };
-      const id = getPathBackupId(payload.filePath);
-      return await writeAutosaveEntry(
-        dirs.files,
-        id,
-        {
-          kind: "file",
-          path: payload.filePath,
-          name: payload.name || path.basename(payload.filePath),
-          index: Number.isInteger(payload.index) ? payload.index : null,
-          ownerId,
-          tabId: typeof payload.tabId === "string" ? payload.tabId : null,
-        },
-        content,
-      );
-    }
-
-    if (payload.kind === "draft") {
-      const id = isSafeAutosaveId(payload.draftId) ? payload.draftId : crypto.randomUUID();
-      return await writeAutosaveEntry(
-        dirs.drafts,
-        id,
-        {
-          kind: "draft",
-          name: payload.name || "Untitled.txt",
-          index: Number.isInteger(payload.index) ? payload.index : null,
-          ownerId,
-        },
-        content,
-      );
-    }
-
-    return { success: false, error: "Invalid autosave kind." };
-  } catch (error) {
-    return { success: false, error: error.message };
+async function cleanupAutosaveStorage() {
+  const dirs = await ensureAutosaveDirs();
+  await cleanupStaleFileBackups(dirs);
+  const entries = await getAutosaveStorageEntries(dirs);
+  const totalBytes = await removeOldestTrashForCapacity(dirs, entries, 0);
+  if (totalBytes > RECOVERY_MAX_TOTAL_BYTES) {
+    log.warn(`[autosave] recovery storage exceeds its limit: ${totalBytes} bytes`);
   }
+}
+
+function enqueueAutosaveOperation(operation) {
+  const result = autosaveWriteQueue.then(operation);
+  autosaveWriteQueue = result.catch((error) => log.warn("[autosave] write failed:", error.message));
+  return result;
+}
+
+ipcMain.handle("autosave:write", async (event, payload = {}) => {
+  return enqueueAutosaveOperation(async () => {
+    try {
+      await autosaveReadyPromise;
+      const dirs = await ensureAutosaveDirs();
+      const content = typeof payload.content === "string" ? payload.content : "";
+      const ownerId = Number.isInteger(payload.ownerId) ? payload.ownerId : null;
+
+      if (payload.kind === "file") {
+        if (!payload.filePath) return { success: false, error: "Missing file path." };
+        const id = getPathBackupId(payload.filePath);
+        const result = await writeAutosaveEntry(
+          dirs.files,
+          id,
+          {
+            kind: "file",
+            path: payload.filePath,
+            name: payload.name || path.basename(payload.filePath),
+            index: Number.isInteger(payload.index) ? payload.index : null,
+            ownerId,
+            tabId: typeof payload.tabId === "string" ? payload.tabId : null,
+          },
+          content,
+        );
+        return payload.verify ? await verifyAutosaveWrite(dirs.files, result) : result;
+      }
+
+      if (payload.kind === "draft") {
+        const id = isSafeAutosaveId(payload.draftId) ? payload.draftId : crypto.randomUUID();
+        const result = await writeAutosaveEntry(
+          dirs.drafts,
+          id,
+          {
+            kind: "draft",
+            name: payload.name || "Untitled.txt",
+            index: Number.isInteger(payload.index) ? payload.index : null,
+            ownerId,
+          },
+          content,
+        );
+        return payload.verify ? await verifyAutosaveWrite(dirs.drafts, result) : result;
+      }
+
+      return { success: false, error: "Invalid autosave kind." };
+    } catch (error) {
+      return { success: false, error: error.message, code: error.code || "AUTOSAVE_WRITE_FAILED" };
+    }
+  });
 });
 
 ipcMain.handle("autosave:get-file-backup", async (event, filePath) => {
   try {
+    await autosaveReadyPromise;
     if (!filePath) return { exists: false };
 
     const dirs = await ensureAutosaveDirs();
@@ -1024,18 +1167,22 @@ ipcMain.handle("autosave:get-file-backup", async (event, filePath) => {
 });
 
 ipcMain.handle("autosave:discard-file-backup", async (event, filePath) => {
-  try {
-    if (!filePath) return { success: true };
-    const dirs = await ensureAutosaveDirs();
-    await deleteAutosaveEntry(dirs.files, getPathBackupId(filePath));
-    return { success: true };
-  } catch (error) {
-    return { success: false, error: error.message };
-  }
+  return enqueueAutosaveOperation(async () => {
+    try {
+      await autosaveReadyPromise;
+      if (!filePath) return { success: true };
+      const dirs = await ensureAutosaveDirs();
+      await deleteAutosaveEntry(dirs.files, getPathBackupId(filePath));
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  });
 });
 
 ipcMain.handle("autosave:list-drafts", async (event, payload = {}) => {
   try {
+    await autosaveReadyPromise;
     const dirs = await ensureAutosaveDirs();
     const ownerId = Number.isInteger(payload.ownerId) ? payload.ownerId : null;
     const requesterWindow = BrowserWindow.fromWebContents(event.sender);
@@ -1046,7 +1193,7 @@ ipcMain.handle("autosave:list-drafts", async (event, payload = {}) => {
       Array.isArray(payload.draftIds) ? payload.draftIds.filter((id) => typeof id === "string") : [],
     );
     const sessionDraftIds = new Set();
-    if (sessionRestoreEnabled && sessionManager) {
+    if (isSessionRestoreEnabled() && sessionManager) {
       for (const windowState of sessionManager.getState().windows) {
         for (const tab of windowState.tabs) {
           if (typeof tab.draftId === "string") sessionDraftIds.add(tab.draftId);
@@ -1057,8 +1204,8 @@ ipcMain.handle("autosave:list-drafts", async (event, payload = {}) => {
     const drafts = await listAutosaveEntries(dirs.drafts);
     return drafts
       .filter((entry) => {
-        if (sessionRestoreEnabled && requestedDraftIds.has(entry.id)) return true;
-        if (shouldClaimRecovery) return !sessionRestoreEnabled || !sessionDraftIds.has(entry.id);
+        if (isSessionRestoreEnabled() && requestedDraftIds.has(entry.id)) return true;
+        if (shouldClaimRecovery) return !isSessionRestoreEnabled() || !sessionDraftIds.has(entry.id);
         return ownerId !== null && entry.meta?.ownerId === ownerId;
       })
       .map((entry) => ({
@@ -1080,56 +1227,63 @@ ipcMain.handle("autosave:list-drafts", async (event, payload = {}) => {
 });
 
 ipcMain.handle("autosave:delete-draft", async (event, draftId) => {
-  try {
-    const dirs = await ensureAutosaveDirs();
-    await deleteAutosaveEntry(dirs.drafts, draftId);
-    return { success: true };
-  } catch (error) {
-    return { success: false, error: error.message };
-  }
+  return enqueueAutosaveOperation(async () => {
+    try {
+      await autosaveReadyPromise;
+      const dirs = await ensureAutosaveDirs();
+      await deleteAutosaveEntry(dirs.drafts, draftId);
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  });
 });
 
 ipcMain.handle("autosave:move-draft-to-trash", async (event, payload = {}) => {
-  try {
-    const dirs = await ensureAutosaveDirs();
-    const sourceId = payload.draftId;
-    const trashId = crypto.randomUUID();
-    const content = typeof payload.content === "string" ? payload.content : "";
-    const name = payload.name || "Untitled.txt";
-    const ownerId = Number.isInteger(payload.ownerId) ? payload.ownerId : null;
+  return enqueueAutosaveOperation(async () => {
+    try {
+      await autosaveReadyPromise;
+      const dirs = await ensureAutosaveDirs();
+      const sourceId = payload.draftId;
+      const trashId = crypto.randomUUID();
+      const content = typeof payload.content === "string" ? payload.content : "";
+      const name = payload.name || "Untitled.txt";
+      const ownerId = Number.isInteger(payload.ownerId) ? payload.ownerId : null;
 
-    if (isSafeAutosaveId(sourceId)) {
-      const source = await readAutosaveEntry(dirs.drafts, sourceId);
-      if (source) {
+      if (isSafeAutosaveId(sourceId)) {
+        const source = await readAutosaveEntry(dirs.drafts, sourceId);
+        if (source) {
+          await writeAutosaveEntry(
+            dirs.trashCurrent,
+            trashId,
+            { kind: "trash", name: source.meta?.name || name, fromDraftId: sourceId, ownerId },
+            source.content,
+          );
+          await deleteAutosaveEntry(dirs.drafts, sourceId);
+          return { success: true, trashId, name: source.meta?.name || name };
+        }
+      }
+
+      if (content.trim()) {
         await writeAutosaveEntry(
           dirs.trashCurrent,
           trashId,
-          { kind: "trash", name: source.meta?.name || name, fromDraftId: sourceId, ownerId },
-          source.content,
+          { kind: "trash", name, fromDraftId: sourceId || null, ownerId },
+          content,
         );
-        await deleteAutosaveEntry(dirs.drafts, sourceId);
-        return { success: true, trashId, name: source.meta?.name || name };
+        return { success: true, trashId, name };
       }
-    }
 
-    if (content.trim()) {
-      await writeAutosaveEntry(
-        dirs.trashCurrent,
-        trashId,
-        { kind: "trash", name, fromDraftId: sourceId || null, ownerId },
-        content,
-      );
-      return { success: true, trashId, name };
+      return { success: false, error: "No draft content." };
+    } catch (error) {
+      return { success: false, error: error.message };
     }
-
-    return { success: false, error: "No draft content." };
-  } catch (error) {
-    return { success: false, error: error.message };
-  }
+  });
 });
 
 ipcMain.handle("autosave:read-trash", async (event, trashId) => {
   try {
+    await autosaveReadyPromise;
     const dirs = await ensureAutosaveDirs();
     const entry = await readAutosaveEntry(dirs.trashCurrent, trashId);
     if (!entry) return { exists: false };
@@ -1140,16 +1294,20 @@ ipcMain.handle("autosave:read-trash", async (event, trashId) => {
 });
 
 ipcMain.handle("autosave:delete-trash", async (event, trashId) => {
-  try {
-    const dirs = await ensureAutosaveDirs();
-    await deleteAutosaveEntry(dirs.trashCurrent, trashId);
-    return { success: true };
-  } catch (error) {
-    return { success: false, error: error.message };
-  }
+  return enqueueAutosaveOperation(async () => {
+    try {
+      await autosaveReadyPromise;
+      const dirs = await ensureAutosaveDirs();
+      await deleteAutosaveEntry(dirs.trashCurrent, trashId);
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  });
 });
 
 ipcMain.handle("autosave:get-trash-previous-path", async () => {
+  await autosaveReadyPromise;
   const dirs = await ensureAutosaveDirs();
   return dirs.trashPrevious;
 });
@@ -2464,7 +2622,10 @@ ipcMain.on("window:setTitleBarOverlay", (event, options = {}) => {
 // call window close from toolbar button
 ipcMain.on("window:close", (event) => {
   const window = BrowserWindow.fromWebContents(event.sender);
-  if (window) sessionClosePending.delete(window.id);
+  if (window) {
+    sessionClosePending.delete(window.id);
+    sessionCloseRetention.delete(window.id);
+  }
   window?.destroy();
 });
 
@@ -2589,15 +2750,19 @@ if (!gotTheLock) {
       fs.mkdirSync(userThemesPath, { recursive: true });
       console.log("[INIT] Created themes folder:", userThemesPath);
     }
-    rotateAutosaveTrash()
-      .then(() => cleanupAutosaveStorage())
-      .catch((error) => log.warn("[autosave] init failed:", error.message));
+    autosaveReadyPromise = rotateAutosaveTrash().then(() => cleanupAutosaveStorage());
+    autosaveReadyPromise.catch((error) => log.warn("[autosave] init failed:", error.message));
     cleanupEmptyNotes().catch((error) => log.warn("[notes] cleanup failed:", error.message));
 
-    sessionRestoreEnabled = store.get("sessionRestoreEnabled") === true;
+    sessionRestoreMode = normalizeSessionRestoreMode(
+      store.get("sessionRestoreMode"),
+      store.get("sessionRestoreEnabled") === true,
+    );
+    store.set("sessionRestoreMode", sessionRestoreMode);
+    store.delete("sessionRestoreEnabled");
     sessionManager = new SessionManager(path.join(app.getPath("userData"), "session"), log);
     await sessionManager.initialize();
-    createWindowsForLaunch();
+    await createWindowsForLaunch();
 
     // Handle file opened on app start
     filePathToOpen = getFilePathFromArgv(process.argv);
@@ -2643,7 +2808,7 @@ if (!gotTheLock) {
     }
 
     app.on("activate", function () {
-      if (BrowserWindow.getAllWindows().length === 0) createWindowsForLaunch();
+      if (BrowserWindow.getAllWindows().length === 0) void createWindowsForLaunch();
     });
   });
 
@@ -2652,6 +2817,7 @@ if (!gotTheLock) {
   });
 
   app.on("before-quit", () => {
+    appQuitRequested = true;
     for (const id of mobileShareItems.keys()) {
       deleteMobileShareItem(id);
     }

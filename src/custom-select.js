@@ -231,6 +231,7 @@ export class CustomSelect {
     const options = Array.from(this.element.options || []).map((option) => ({
       value: option.value,
       label: option.textContent,
+      customProperties: { title: option.title },
     }));
     this.setChoices(options, "value", "label", true, { silent: true });
   }
@@ -258,6 +259,7 @@ export class CustomSelect {
       const option = document.createElement("option");
       option.value = choice.value;
       option.textContent = choice.label;
+      if (typeof choice.customProperties.title === "string") option.title = choice.customProperties.title;
       fragment.appendChild(option);
     });
     this.element.appendChild(fragment);
@@ -332,11 +334,16 @@ export class CustomSelect {
   }
 
   renderSelection() {
-    const label = this.getSelectedLabel();
+    const selected = this.options.find((choice) => choice.value === this.value);
+    const label = selected?.label || "";
     if (this.config.combobox) {
       if (!this.isOpen) this.trigger.value = label;
     } else {
       this.trigger.textContent = label;
+    }
+    this.trigger.setAttribute("aria-label", label);
+    if (typeof selected?.customProperties?.title === "string") {
+      this.trigger.title = selected.customProperties.title;
     }
   }
 
@@ -384,6 +391,7 @@ export class CustomSelect {
       item.dataset.value = choice.value;
       item.setAttribute("role", "option");
       item.setAttribute("aria-selected", choice.value === this.value ? "true" : "false");
+      if (typeof choice.customProperties.title === "string") item.title = choice.customProperties.title;
       if (choice.value === this.value) item.classList.add("is-selected");
       if (index === this.highlightIndex) item.classList.add("is-highlighted");
 

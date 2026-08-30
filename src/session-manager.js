@@ -1,11 +1,18 @@
 const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
+const {
+  RECOVERY_MAX_ITEM_BYTES,
+  RECOVERY_MAX_TOTAL_BYTES,
+  assertRecoveryItemSize,
+  assertRecoveryTotalSize,
+} = require("./recovery-policy");
 
 const SESSION_SCHEMA_VERSION = 1;
 const MANIFEST_PREFIX = "manifest-";
 const MANIFEST_SUFFIX = ".json";
 const SAFE_ID = /^[a-zA-Z0-9_-]{8,100}$/;
+const SESSION_RESTORE_MODES = new Set(["all", "one", "none"]);
 
 function clone(value) {
   return JSON.parse(JSON.stringify(value));
@@ -28,6 +35,33 @@ function normalizeBounds(value) {
   return Number.isFinite(bounds.width) && Number.isFinite(bounds.height) ? bounds : null;
 }
 
+function normalizeSessionRestoreMode(value, legacyEnabled = false) {
+  return SESSION_RESTORE_MODES.has(value) ? value : legacyEnabled === true ? "all" : "none";
+}
+
+function isEmptySessionTab(tab) {
+  if (!isObject(tab) || !["draft", "pendingNote"].includes(tab.kind)) return false;
+  const content = typeof tab.content === "string" ? tab.content : "";
+  return (
+    !tab.path &&
+    !tab.noteId &&
+    !tab.pinned &&
+    !tab.dirty &&
+    !tab.contentRef &&
+    content.length === 0
+  );
+}
+
+function isDisposableSessionTab(tab, { allowLegacyEmpty = false } = {}) {
+  return isEmptySessionTab(tab) && (Boolean(tab.isAutoPlaceholder) || allowLegacyEmpty);
+}
+
+function shouldRetainSessionWindowOnClose({ windowIds = [], pendingWindowIds = [], windowId, quitRequested = false }) {
+  if (quitRequested) return true;
+  const pending = new Set(pendingWindowIds);
+  return !windowIds.some((id) => id !== windowId && !pending.has(id));
+}
+
 function validateManifest(value) {
   if (!isObject(value) || value.schemaVersion !== SESSION_SCHEMA_VERSION) return false;
   if (!Number.isInteger(value.revision) || value.revision < 0 || !Array.isArray(value.windows)) return false;
@@ -41,10 +75,12 @@ function validateManifest(value) {
 }
 
 class SessionManager {
-  constructor(rootPath, logger = console) {
+  constructor(rootPath, logger = console, limits = {}) {
     this.rootPath = rootPath;
     this.contentPath = path.join(rootPath, "content");
     this.logger = logger;
+    this.maxItemBytes = limits.maxItemBytes ?? RECOVERY_MAX_ITEM_BYTES;
+    this.maxTotalBytes = limits.maxTotalBytes ?? RECOVERY_MAX_TOTAL_BYTES;
     this.state = this.createEmptyState();
     this.writeQueue = Promise.resolve();
   }
@@ -66,6 +102,21 @@ class SessionManager {
     for (const candidate of candidates) {
       if (await this.isUsableManifest(candidate.value)) {
         this.state = candidate.value;
+        const next = clone(this.state);
+        next.windows = next.windows.filter(
+          (windowState) =>
+            windowState.tabs.length > 0 &&
+            !(
+              windowState.closedAt &&
+              windowState.tabs.every((tab) => isDisposableSessionTab(tab, { allowLegacyEmpty: true }))
+            ),
+        );
+        if (next.windows.length !== this.state.windows.length) {
+          if (!next.windows.some((windowState) => windowState.id === next.lastActiveWindowId)) {
+            next.lastActiveWindowId = next.windows.at(-1)?.id || null;
+          }
+          await this.commitRemoval(next);
+        }
         return clone(this.state);
       }
     }
@@ -81,11 +132,29 @@ class SessionManager {
     return this.state.windows.length > 0;
   }
 
-  getWindowStates() {
+  getWindowStates(mode = "all") {
+    const restoreMode = normalizeSessionRestoreMode(mode);
     const windows = clone(this.state.windows);
     const activeId = this.state.lastActiveWindowId;
     windows.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+    if (restoreMode === "none") return { windows: [], lastActiveWindowId: null };
+    if (restoreMode === "one") {
+      const selected = windows.find((windowState) => windowState.id === activeId) || windows.at(-1);
+      return { windows: selected ? [selected] : [], lastActiveWindowId: selected?.id || null };
+    }
     return { windows, lastActiveWindowId: activeId };
+  }
+
+  retainWindows(windowIds) {
+    const retainedIds = new Set(Array.isArray(windowIds) ? windowIds : []);
+    return this.enqueueWrite(async () => {
+      const next = clone(this.state);
+      next.windows = next.windows.filter((windowState) => retainedIds.has(windowState.id));
+      if (!retainedIds.has(next.lastActiveWindowId)) next.lastActiveWindowId = next.windows.at(-1)?.id || null;
+      if (next.windows.length === this.state.windows.length) return { success: true, unchanged: true };
+      await this.commitRemoval(next);
+      return { success: true };
+    });
   }
 
   async hydrateWindow(windowId) {
@@ -133,20 +202,26 @@ class SessionManager {
     const stableWindowId = normalizeId(windowId);
     const next = clone(this.state);
     const existingIndex = next.windows.findIndex((candidate) => candidate.id === stableWindowId);
+    const allowLegacyEmpty = Boolean(payload.closing) && payload.tabs.length === 1;
+    const restorableTabs = payload.tabs.filter(
+      (tab) => !isDisposableSessionTab(tab, { allowLegacyEmpty }),
+    );
 
-    if (payload.discardWindow) {
-      if (existingIndex !== -1) next.windows.splice(existingIndex, 1);
+    if (payload.discardWindow || restorableTabs.length === 0) {
+      if (existingIndex === -1) return { success: true, discarded: true, unchanged: true };
+      next.windows.splice(existingIndex, 1);
       if (next.lastActiveWindowId === stableWindowId) {
         next.lastActiveWindowId = next.windows.at(-1)?.id || null;
       }
-      await this.commit(next);
+      await this.commitRemoval(next);
       return { success: true, discarded: true };
     }
 
     const previousWindow = existingIndex === -1 ? null : next.windows[existingIndex];
+    await this.assertRecoveryLimits(stableWindowId, restorableTabs, previousWindow);
     const revision = next.revision + 1;
     const tabs = [];
-    for (const rawTab of payload.tabs) {
+    for (const rawTab of restorableTabs) {
       const tab = await this.normalizeTab(rawTab, revision, previousWindow);
       tabs.push(tab);
     }
@@ -160,7 +235,10 @@ class SessionManager {
           : next.windows.length,
       bounds: normalizeBounds(windowMeta.bounds || payload.bounds),
       maximized: Boolean(windowMeta.maximized ?? payload.maximized),
-      activeTabId: typeof payload.activeTabId === "string" ? payload.activeTabId : tabs[0]?.id || null,
+      activeTabId:
+        typeof payload.activeTabId === "string" && tabs.some((tab) => tab.id === payload.activeTabId)
+          ? payload.activeTabId
+          : tabs[0]?.id || null,
       tabs,
       closedAt: payload.closing ? Date.now() : null,
       updatedAt: Date.now(),
@@ -234,6 +312,7 @@ class SessionManager {
 
     if (Object.prototype.hasOwnProperty.call(rawTab, "content")) {
       const content = typeof rawTab.content === "string" ? rawTab.content : "";
+      tab.contentBytes = assertRecoveryItemSize(content, this.maxItemBytes);
       const contentHash = crypto.createHash("sha256").update(content).digest("hex");
       if (previousTab?.contentHash === contentHash && previousTab.contentRef) {
         tab.contentRef = previousTab.contentRef;
@@ -248,12 +327,53 @@ class SessionManager {
     } else if (tab.kind === "file" && !tab.dirty) {
       tab.contentRef = null;
       tab.contentHash = null;
+      tab.contentBytes = 0;
     } else {
       tab.contentRef = previousTab?.contentRef || null;
       tab.contentHash = previousTab?.contentHash || null;
+      tab.contentBytes = await this.getStoredTabBytes(previousTab);
     }
 
     return tab;
+  }
+
+  async getStoredTabBytes(tab) {
+    if (!tab?.contentRef) return 0;
+    if (Number.isInteger(tab.contentBytes) && tab.contentBytes >= 0) return tab.contentBytes;
+    return (await fs.promises.stat(this.resolveContentRef(tab.contentRef))).size;
+  }
+
+  async assertRecoveryLimits(windowId, rawTabs, previousWindow) {
+    let totalBytes = 0;
+    for (const windowState of this.state.windows) {
+      if (windowState.id === windowId) continue;
+      for (const tab of windowState.tabs) {
+        const contentBytes = await this.getStoredTabBytes(tab);
+        if (contentBytes > this.maxItemBytes) {
+          throw new Error(`Existing session content exceeds the ${this.maxItemBytes}-byte item limit.`);
+        }
+        totalBytes += contentBytes;
+      }
+    }
+
+    for (const rawTab of rawTabs) {
+      let contentBytes = 0;
+      if (Object.prototype.hasOwnProperty.call(rawTab, "content")) {
+        contentBytes = assertRecoveryItemSize(
+          typeof rawTab.content === "string" ? rawTab.content : "",
+          this.maxItemBytes,
+        );
+      } else {
+        const previousTab = previousWindow?.tabs?.find((candidate) => candidate.id === rawTab.id);
+        contentBytes = await this.getStoredTabBytes(previousTab);
+        if (contentBytes > this.maxItemBytes) {
+          throw new Error(`Existing session content exceeds the ${this.maxItemBytes}-byte item limit.`);
+        }
+      }
+      totalBytes += contentBytes;
+    }
+
+    assertRecoveryTotalSize(totalBytes, this.maxTotalBytes);
   }
 
   async commit(nextState) {
@@ -264,6 +384,11 @@ class SessionManager {
     await this.writeNewFile(path.join(this.rootPath, fileName), JSON.stringify(nextState, null, 2));
     this.state = nextState;
     await this.cleanupOldGenerations();
+  }
+
+  async commitRemoval(nextState) {
+    await this.commit(nextState);
+    await this.commit(clone(this.state));
   }
 
   enqueueWrite(operation) {
@@ -363,4 +488,11 @@ class SessionManager {
   }
 }
 
-module.exports = { SESSION_SCHEMA_VERSION, SessionManager, validateManifest };
+module.exports = {
+  SESSION_SCHEMA_VERSION,
+  SessionManager,
+  isDisposableSessionTab,
+  normalizeSessionRestoreMode,
+  shouldRetainSessionWindowOnClose,
+  validateManifest,
+};
