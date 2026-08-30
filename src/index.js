@@ -3865,7 +3865,7 @@ changeThemeBtn.addEventListener("mouseenter", () => {
     requestAnimationFrame(() => {
       const activeThemeButton = themeMenu.querySelector("button.active[data-theme]");
       if (activeThemeButton && getComputedStyle(themeMenu).display !== "none") {
-        themeMenu.scrollTop = Math.max(0, activeThemeButton.offsetTop - themeMenu.clientTop);
+        activeThemeButton.scrollIntoView({ block: "center", inline: "nearest" });
       }
     });
   }
