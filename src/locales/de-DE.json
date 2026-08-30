@@ -101,6 +101,9 @@
     "restore": "Wiederherstellen",
     "discard": "Verwerfen"
   },
+  "session": {
+    "closeFailed": "Die Sitzung konnte nicht gespeichert werden; das Fenster wurde nicht geschlossen."
+  },
   "editorMenu": {
     "cut": "Ausschneiden",
     "copy": "Kopieren",
@@ -128,6 +131,7 @@
     "font": "Schriftart",
     "size": "Größe",
     "layout": "Editor",
+    "sessionRestore": "Vorherige Sitzung wiederherstellen",
     "highlightLine": "Aktuelle Zeile hervorheben",
     "lineNumbers": "Zeilennummern",
     "folding": "Code-Faltung",

@@ -101,6 +101,9 @@
     "restore": "復元",
     "discard": "破棄"
   },
+  "session": {
+    "closeFailed": "セッションを保存できなかったため、ウィンドウを閉じませんでした。"
+  },
   "editorMenu": {
     "cut": "切り取り",
     "copy": "コピー",
@@ -128,6 +131,7 @@
     "font": "フォント",
     "size": "サイズ",
     "layout": "エディタ",
+    "sessionRestore": "前回のセッションを復元",
     "highlightLine": "現在行をハイライト",
     "lineNumbers": "行番号",
     "folding": "折りたたみ",

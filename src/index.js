@@ -174,6 +174,7 @@ let recentlyClosedFiles = [];
 let currentTheme = localStorage.getItem("theme") || "dark";
 let currentFilePath = `${i18next.t("file.untitled")}.txt`;
 const defaultSettings = {
+  sessionRestore: false,
   lineHighlight: true,
   lineNumbers: false,
   minimap: true,
@@ -202,6 +203,13 @@ const AUTOSAVE_FORCE_MS = 30000;
 const AUTOSAVE_MAX_ITEM_BYTES = 5 * 1024 * 1024;
 const autosaveTimers = new Map();
 let isRestoringAutosaveDrafts = false;
+let stableSessionWindowId = null;
+let sessionStartupSnapshot = null;
+let sessionSnapshotTimer = null;
+let sessionSnapshotInFlight = Promise.resolve();
+let sessionInitializationPromise = Promise.resolve();
+let isRestoringSession = false;
+let isClosingForSession = false;
 let transientStatusMessageId = null;
 let transientStatusMessageTimer = null;
 let saveStatusFadeTimer = null;
@@ -291,6 +299,17 @@ window.electronAPI.onAssignWindowId((id) => {
   resolveWindowIdReady?.(id);
 });
 
+window.electronAPI.onSessionRestoreEnabledChanged((enabled) => {
+  settings.sessionRestore = enabled;
+  localStorage.setItem("editorSettings", JSON.stringify(settings));
+  applySettings();
+  if (enabled) scheduleSessionSnapshot({ immediate: true });
+  else if (sessionSnapshotTimer) {
+    clearTimeout(sessionSnapshotTimer);
+    sessionSnapshotTimer = null;
+  }
+});
+
 window.electronAPI.onShowExternalDropIndicator(({ dropScreenX, dropScreenY, tabInfo }) => {
   const existingTab = getExistingTabForPayload(tabInfo);
   showExternalDropIndicator(dropScreenX, dropScreenY, existingTab?.element || null, existingTab || null);
@@ -329,6 +348,7 @@ function resetCursorWindowMove() {
 // file open on launch
 window.electronAPI.onOpenFile(async (filePath) => {
   try {
+    await sessionInitializationPromise;
     await loadFileByPath(filePath);
     console.log("File opened successfully via association:", filePath);
     window.electronLog.info("File opened successfully via association:", filePath);
@@ -374,6 +394,7 @@ function revealSearchRangeFromPayload(payload) {
 
 // receive data on open in new window
 window.electronAPI.onLoadTabData(async (receivedTabData) => {
+  await sessionInitializationPromise;
   hideDropIndicator();
   const payload = receivedTabData.tabInfo || receivedTabData;
   const existingTab = getExistingTabForPayload(payload);
@@ -1826,6 +1847,7 @@ function applyNoteDataToTab(tab, note, content, options = {}) {
   tab.isWarned = false;
   tab.isMarkdown = false;
   tab._lastExternalContent = null;
+  tab.isAutoPlaceholder = false;
   tab.element.classList.add("note");
   setNoteTabPreview(tab, Boolean(options.preview));
   tab.element.querySelector(".name")?.classList.remove("warn");
@@ -1854,6 +1876,7 @@ function applyPendingNoteDataToTab(tab, content = "", options = {}) {
   tab.isWarned = false;
   tab.isMarkdown = false;
   tab._lastExternalContent = null;
+  tab.isAutoPlaceholder = false;
   tab.element.classList.add("note");
   setNoteTabPreview(tab, Boolean(options.preview));
   tab.element.querySelector(".name")?.classList.remove("warn");
@@ -1904,6 +1927,7 @@ async function writeTabAutosave(tab, content = null) {
         name: tab.name,
         index: tabData.indexOf(tab),
         ownerId: myWindowId,
+        tabId: tab.sessionTabId,
         content: nextContent,
       });
     } else {
@@ -1972,6 +1996,7 @@ function scheduleAllUnsavedTabAutosaves() {
     scheduleTabAutosave(tab, tab.model?.getValue() ?? tab.content ?? "");
   }
   savePinnedTabsState();
+  scheduleSessionSnapshot();
 }
 
 async function deleteTabAutosave(tab) {
@@ -2021,8 +2046,10 @@ async function restoreAutosaveDrafts() {
 
   try {
     const ownerId = await windowIdReady;
-    const drafts = await window.electronAPI.listAutosaveDrafts({ ownerId });
+    const draftIds = tabData.map((tab) => tab.draftId).filter((id) => typeof id === "string");
+    const drafts = await window.electronAPI.listAutosaveDrafts({ ownerId, draftIds });
     if (!Array.isArray(drafts) || drafts.length === 0) return;
+    const activeBeforeRestore = currentTab;
 
     if (getReusableEmptyTab({ includeNotes: true }) === tabData[0]) {
       const emptyTab = tabData[0];
@@ -2050,7 +2077,7 @@ async function restoreAutosaveDrafts() {
     }
 
     if (tabData.length > 0) {
-      switchTab(tabData[0]);
+      switchTab(tabData.includes(activeBeforeRestore) ? activeBeforeRestore : tabData[0]);
       setTimeout(() => monacoEditor?.focus(), 0);
       showMessage("autosave-restored");
     }
@@ -2207,6 +2234,7 @@ function getPersistablePinnedTabEntry(tab) {
 function savePinnedTabsState() {
   const entries = tabData.map(getPersistablePinnedTabEntry).filter(Boolean);
   writePinnedTabEntries(entries);
+  scheduleSessionSnapshot();
 }
 
 function savePinnedTabsStateForDiscard() {
@@ -2392,6 +2420,8 @@ monacoEditor.onDidChangeModelContent(() => {
     return;
   }
 
+  active.isAutoPlaceholder = false;
+
   if (active.isNotePreview) keepOpenNoteTab(active);
   syncTabSaveState(active, currentContent);
   if (active.isNote && !active.noteId && currentContent.trim()) writeNoteTab(active, currentContent, true);
@@ -2401,9 +2431,11 @@ monacoEditor.onDidChangeModelContent(() => {
   updateDeviceShareButtonState();
   scheduleApplyDecorations();
   if (isGlobalSearchActive()) scheduleGlobalSearch();
+  scheduleSessionSnapshot();
 });
 monacoEditor.onDidScrollChange(() => {
   scheduleApplyDecorations();
+  scheduleSessionSnapshot();
 });
 applyDecorations();
 
@@ -2796,6 +2828,9 @@ function applySettings() {
   });
   updateEditorLeftMargin();
 
+  document.querySelector("#session-restore .checkmark").style.display = settings.sessionRestore
+    ? "inline-flex"
+    : "none";
   document.querySelector("#line-highlight .checkmark").style.display = settings.lineHighlight ? "inline-flex" : "none";
   document.querySelector("#line-num .checkmark").style.display = settings.lineNumbers ? "inline-flex" : "none";
   document
@@ -2843,6 +2878,25 @@ function toggleSetting(key) {
 applySettings();
 
 document.getElementById("line-highlight").onclick = () => toggleSetting("lineHighlight");
+document.getElementById("session-restore").onclick = async () => {
+  const nextEnabled = !settings.sessionRestore;
+  settings.sessionRestore = nextEnabled;
+  localStorage.setItem("editorSettings", JSON.stringify(settings));
+  applySettings();
+  let result = null;
+  try {
+    result = await window.electronAPI.setSessionRestoreEnabled(nextEnabled);
+  } catch (error) {
+    console.warn("Failed to change session restore setting:", error);
+  }
+  if (!result?.success) {
+    settings.sessionRestore = !nextEnabled;
+    localStorage.setItem("editorSettings", JSON.stringify(settings));
+    applySettings();
+    return;
+  }
+  if (nextEnabled) scheduleSessionSnapshot({ immediate: true });
+};
 document.getElementById("line-num").onclick = () => toggleSetting("lineNumbers");
 document.getElementById("minimap").onclick = () => toggleSetting("minimap");
 document.getElementById("toggleSyntaxHighlight").onclick = () => {
@@ -2864,13 +2918,24 @@ document.getElementById("default-new-tab-note").onclick = () => {
 };
 
 // editor settings reset button
-document.querySelector("#settings-menu #settingsLayout .reset").addEventListener("click", () => {
+document.querySelector("#settings-menu #settingsLayout .reset").addEventListener("click", async () => {
   // reset settings, tabSize
+  const wasSessionRestoreEnabled = settings.sessionRestore;
   Object.assign(settings, defaultSettings);
   localStorage.setItem("editorSettings", JSON.stringify(settings));
+  if (wasSessionRestoreEnabled) {
+    let result = null;
+    try {
+      result = await window.electronAPI.setSessionRestoreEnabled(false);
+    } catch (error) {
+      console.warn("Failed to reset session restore setting:", error);
+    }
+    if (!result?.success) settings.sessionRestore = true;
+  }
 
   tabSize = 4;
   localStorage.setItem("tabSize", tabSize);
+  localStorage.setItem("editorSettings", JSON.stringify(settings));
 
   applySettings();
   updateTabSize(tabSize);
@@ -3124,15 +3189,246 @@ async function openQuickOpenPicker() {
   picker.activeItems = items.length ? [items[0]] : [];
 }
 
+function getSessionTabKind(tab) {
+  if (tab.isNote) return tab.noteId ? "note" : "pendingNote";
+  return tab.path ? "file" : "draft";
+}
+
+function createSessionTabSnapshot(tab) {
+  const content = tab.model?.getValue?.() ?? tab.content ?? "";
+  const kind = getSessionTabKind(tab);
+  const dirty = kind === "file" ? hasUnsavedChanges(tab, content) : kind === "draft" ? Boolean(content) : tab.noteDirty;
+  const snapshot = {
+    id: tab.sessionTabId || (tab.sessionTabId = createAutosaveId()),
+    kind,
+    name: tab.name,
+    path: tab.path,
+    noteId: tab.noteId,
+    draftId: tab.draftId,
+    pinned: Boolean(tab.isPinned),
+    dirty: Boolean(dirty),
+    fontSize: tab.fontSize,
+    wordWrap: tab.wordWrap,
+    isMarkdown: tab.isMarkdown,
+    sourceEncoding: tab.sourceEncoding,
+    isUtf8Valid: tab.isUtf8Valid,
+    hasBom: tab.hasUtf8Bom,
+    viewState: tab.viewState,
+    hasReloadButton: tab.element?.classList.contains("has-reload-button"),
+    isAutoPlaceholder: Boolean(tab.isAutoPlaceholder),
+  };
+  if (kind === "file" && dirty) {
+    snapshot.originalContent = tab.originalContent ?? "";
+    snapshot.originalHasBom = Boolean(tab.hasUtf8Bom);
+  }
+  if (kind !== "file" || dirty) snapshot.content = content;
+  return snapshot;
+}
+
+function createSessionWindowSnapshot({ closing = false } = {}) {
+  saveCurrentTabViewState();
+  const onlyTab = tabData.length === 1 ? tabData[0] : null;
+  const onlyContent = onlyTab?.model?.getValue?.() ?? onlyTab?.content ?? "";
+  const discardWindow = Boolean(
+    closing &&
+      onlyTab?.isAutoPlaceholder &&
+      !onlyTab.path &&
+      !onlyTab.isNote &&
+      !onlyContent &&
+      !onlyTab.isPinned,
+  );
+  return {
+    closing,
+    discardWindow,
+    activeTabId: currentTab?.sessionTabId || null,
+    tabs: discardWindow ? [] : tabData.map(createSessionTabSnapshot),
+  };
+}
+
+async function flushSessionTabsBeforeClose() {
+  for (const tab of tabData) {
+    const content = tab.model?.getValue?.() ?? tab.content ?? "";
+    if (tab.isNote) {
+      if (content.trim()) {
+        const success = await writeNoteTab(tab, content, true);
+        if (!success) throw new Error(`Failed to save note: ${tab.name}`);
+      } else {
+        await deleteNoteTabStorage(tab);
+      }
+    } else if (hasUnsavedChanges(tab, content)) {
+      await writeTabAutosave(tab, content);
+    }
+  }
+}
+
+async function saveSessionWindow({ closing = false } = {}) {
+  if (!settings.sessionRestore || !stableSessionWindowId || isRestoringSession) {
+    return { success: false, disabled: true };
+  }
+  if (closing) await flushSessionTabsBeforeClose();
+  return window.electronAPI.saveSessionWindow(createSessionWindowSnapshot({ closing }));
+}
+
+function queueSessionSnapshot(options = {}) {
+  sessionSnapshotInFlight = sessionSnapshotInFlight
+    .catch(() => {})
+    .then(() => saveSessionWindow(options));
+  return sessionSnapshotInFlight;
+}
+
+function scheduleSessionSnapshot({ immediate = false } = {}) {
+  if (!settings.sessionRestore || !stableSessionWindowId || isRestoringSession || isClosingForSession) return;
+  if (sessionSnapshotTimer) clearTimeout(sessionSnapshotTimer);
+  sessionSnapshotTimer = null;
+  if (immediate) {
+    void queueSessionSnapshot();
+    return;
+  }
+  sessionSnapshotTimer = setTimeout(() => {
+    sessionSnapshotTimer = null;
+    void queueSessionSnapshot();
+  }, 750);
+}
+
+function removeInitialTabForSessionRestore() {
+  for (const tab of tabData) {
+    clearAutosaveTimer(tab);
+    releaseWatchedFileForTab(tab);
+    tab.element?.remove();
+    tab.model?.dispose();
+  }
+  tabData = [];
+  currentTab = null;
+  layoutTabs({ animate: false });
+}
+
+function applyCommonSessionTabState(tab, state) {
+  tab.sessionTabId = state.id || tab.sessionTabId;
+  tab.fontSize = state.fontSize || persistentFontSize;
+  tab.wordWrap = state.wordWrap !== false;
+  tab.isMarkdown = Boolean(state.isMarkdown);
+  tab.sourceEncoding = state.sourceEncoding || tab.sourceEncoding;
+  tab.isUtf8Valid = state.isUtf8Valid !== false;
+  tab.hasUtf8Bom = Boolean(state.hasBom);
+  tab.viewState = state.viewState || null;
+  tab.isAutoPlaceholder = Boolean(state.isAutoPlaceholder);
+  tab.isPinned = Boolean(state.pinned);
+  tab.element?.classList.toggle("pinned", tab.isPinned);
+  updatePinnedTabIcon(tab);
+  if ((state.hasReloadButton || (state.dirty && state.externalChanged)) && tab.path) {
+    reloadButton(tab, tab.path, "add");
+  }
+  return tab;
+}
+
+async function restoreFileSessionTab(state) {
+  const fileInfo = await readFileWithEncodingInfo(state.path);
+  const diskContent = fileInfo?.content ?? "";
+  const tab = createTab(state.name, diskContent, state.path, null, {
+    ...(fileInfo || {}),
+    sessionTabId: state.id,
+  });
+  tab.draftId = null;
+  tab.originalContent = diskContent;
+  tab.content = diskContent;
+  updateExternalFileSnapshot(tab, diskContent, fileInfo || { hasBom: state.hasBom, isUtf8Valid: state.isUtf8Valid });
+
+  const autosaveBackup = await window.electronAPI.getFileAutosaveBackup(state.path);
+  const matchingAutosave = autosaveBackup?.exists && autosaveBackup.meta?.tabId === state.id;
+  const restoredContent = matchingAutosave ? autosaveBackup.content : state.dirty ? state.content ?? "" : null;
+  if (restoredContent !== null) {
+    applyRestoredAutosaveContent(tab, diskContent, restoredContent);
+  } else {
+    tab.isFileSaved = true;
+  }
+
+  if (!fileInfo) {
+    tab.isWarned = true;
+    tab.element.querySelector(".name")?.classList.add("warn");
+  }
+  return tab;
+}
+
+async function restoreSessionTab(state) {
+  let tab = null;
+  if (state.kind === "file" && state.path) {
+    tab = await restoreFileSessionTab(state);
+  } else if (state.kind === "note" && state.noteId) {
+    const note = await window.electronAPI.readNote(state.noteId);
+    if (note?.exists) {
+      tab = await createNoteTab(note.content || "", null, note, { preview: false });
+      if (state.dirty && typeof state.content === "string" && state.content !== note.content) {
+        tab._ignoreUnsavedCheck = true;
+        tab.model.setValue(state.content);
+        tab.content = state.content;
+        syncTabSaveState(tab, state.content);
+        scheduleTabAutosave(tab, state.content);
+      }
+    } else {
+      tab = createTab(state.name, state.content || "", null, null, { sessionTabId: state.id });
+      tab.originalContent = "";
+      syncTabSaveState(tab, tab.model.getValue());
+    }
+  } else if (state.kind === "pendingNote") {
+    tab = createPendingNoteTab(state.content || "", null, {
+      preview: false,
+      sessionTabId: state.id,
+      isAutoPlaceholder: state.isAutoPlaceholder,
+    });
+    tab.draftId = state.draftId || tab.draftId;
+  } else {
+    tab = createTab(state.name, state.content || "", null, null, {
+      sessionTabId: state.id,
+      isAutoPlaceholder: state.isAutoPlaceholder,
+    });
+    tab.draftId = state.draftId || tab.draftId;
+    tab.originalContent = "";
+    syncTabSaveState(tab, tab.model.getValue());
+  }
+  return tab ? applyCommonSessionTabState(tab, state) : null;
+}
+
+async function restoreSessionWindow(snapshot) {
+  if (!snapshot?.tabs?.length) return false;
+  isRestoringSession = true;
+  try {
+    removeInitialTabForSessionRestore();
+    const restoredTabs = [];
+    for (const state of snapshot.tabs) {
+      const tab = await restoreSessionTab(state);
+      if (tab) restoredTabs.push(tab);
+    }
+    if (!restoredTabs.length) return false;
+    normalizePinnedTabs();
+    const active = restoredTabs.find((tab) => tab.sessionTabId === snapshot.activeTabId) || restoredTabs[0];
+    switchTab(active);
+    return true;
+  } finally {
+    isRestoringSession = false;
+  }
+}
+
+async function initializeSessionRestore() {
+  const state = await window.electronAPI.getSessionWindowState();
+  stableSessionWindowId = state?.windowId || null;
+  sessionStartupSnapshot = state?.snapshot || null;
+  settings.sessionRestore = Boolean(state?.enabled);
+  localStorage.setItem("editorSettings", JSON.stringify(settings));
+  applySettings();
+}
+
 // initial tab create
-createDefaultEmptyTab({ switchTo: false });
+createDefaultEmptyTab({ switchTo: false, isAutoPlaceholder: true });
 switchTab(tabData[0]);
 setTimeout(() => monacoEditor?.focus(), 0);
 
-(async () => {
+sessionInitializationPromise = (async () => {
   await windowIdReady;
-  await restorePinnedTabs();
+  await initializeSessionRestore();
+  const restoredSession = settings.sessionRestore && (await restoreSessionWindow(sessionStartupSnapshot));
+  if (!restoredSession) await restorePinnedTabs();
   await restoreAutosaveDrafts();
+  if (settings.sessionRestore) scheduleSessionSnapshot({ immediate: true });
 })();
 
 function getStoredSidePanelOpen() {
@@ -4301,7 +4597,7 @@ function enableTabDragging(tab, data) {
       setTimeout(() => monacoEditor?.focus(), 0);
     } else {
       currentTab = null;
-      createDefaultEmptyTab({ switchTo: false });
+      createDefaultEmptyTab({ switchTo: false, isAutoPlaceholder: true });
       switchTab(tabData[0]);
       setTimeout(() => monacoEditor?.focus(), 0);
     }
@@ -4658,7 +4954,7 @@ function removeTabAndAdjustUI(targetTabData) {
     setTimeout(() => monacoEditor?.focus(), 0);
   } else {
     currentTab = null;
-    createDefaultEmptyTab({ switchTo: false });
+    createDefaultEmptyTab({ switchTo: false, isAutoPlaceholder: true });
     switchTab(tabData[0]);
     setTimeout(() => monacoEditor?.focus(), 0);
   }
@@ -4712,7 +5008,7 @@ function finishClosedTabState(data, index, options = {}) {
       setTimeout(() => monacoEditor?.focus(), 0);
     } else {
       currentTab = null;
-      createDefaultEmptyTab({ switchTo: false });
+      createDefaultEmptyTab({ switchTo: false, isAutoPlaceholder: true });
       if (resetWidthOnEmpty) clearTabClosingModeAvailableWidth();
       switchTab(tabData[0]);
       setTimeout(() => monacoEditor?.focus(), 0);
@@ -4790,6 +5086,8 @@ function createTab(name, content = "", path = null, insertIndex = null, options 
     _lastExternalIsUtf8Valid: options.isUtf8Valid !== false,
     draftId: path ? null : createAutosaveId(),
     noteFolderPath: null,
+    sessionTabId: options.sessionTabId || createAutosaveId(),
+    isAutoPlaceholder: Boolean(options.isAutoPlaceholder),
   };
 
   if (targetInsertIndex !== null && targetInsertIndex >= 0 && targetInsertIndex < tabData.length) {
@@ -4843,19 +5141,20 @@ function createTab(name, content = "", path = null, insertIndex = null, options 
 
   updateTabsCompactClass();
   scheduleGlobalSearchAfterTabSetChange();
+  scheduleSessionSnapshot();
 
   return data;
 }
 
 function createUntitledTab(options = {}) {
   const { insertIndex = null, switchTo = true } = options;
-  const tab = createTab(null, "", null, insertIndex);
+  const tab = createTab(null, "", null, insertIndex, options);
   if (switchTo) switchTab(tab);
   return tab;
 }
 
 function createPendingNoteTab(content = "", insertIndex = null, options = {}) {
-  const tab = createTab(getNoteTitleFromContent(content), content, null, insertIndex);
+  const tab = createTab(getNoteTitleFromContent(content), content, null, insertIndex, options);
   applyPendingNoteDataToTab(tab, content, options);
   return tab;
 }
@@ -4864,8 +5163,8 @@ function createEmptyTabByType(type, options = {}) {
   const { insertIndex = null, switchTo = true } = options;
   const tab =
     type === "note"
-      ? createPendingNoteTab("", insertIndex, { preview: false })
-      : createUntitledTab({ insertIndex, switchTo: false });
+      ? createPendingNoteTab("", insertIndex, { preview: false, isAutoPlaceholder: options.isAutoPlaceholder })
+      : createUntitledTab({ insertIndex, switchTo: false, isAutoPlaceholder: options.isAutoPlaceholder });
   if (tab && switchTo) switchTab(tab);
   return tab;
 }
@@ -5330,7 +5629,35 @@ async function reopenRecentlyClosedFile() {
 }
 
 // close window
-async function attemptCloseWindow() {
+async function attemptCloseWindow(options = {}) {
+  if (options.sessionRestore || settings.sessionRestore) {
+    if (isClosingForSession) return;
+    isClosingForSession = true;
+    if (sessionSnapshotTimer) {
+      clearTimeout(sessionSnapshotTimer);
+      sessionSnapshotTimer = null;
+    }
+
+    try {
+      await sessionSnapshotInFlight.catch(() => {});
+      const result = await saveSessionWindow({ closing: true });
+      if (!result?.success) throw new Error(result?.error || "Session storage is unavailable.");
+      window.electronAPI.closeWindow();
+    } catch (error) {
+      isClosingForSession = false;
+      window.electronAPI.abortSessionWindowClose();
+      await window.electronAPI.showMessageBox({
+        type: "error",
+        buttons: ["OK"],
+        title: "Monapad",
+        message: i18next.t("session.closeFailed"),
+        detail: error.message,
+      });
+      monacoEditor?.focus();
+    }
+    return;
+  }
+
   const hasUnsavedTabs = tabData.some((tab) => !tab.isFileSaved);
   if (!hasUnsavedTabs) {
     await flushNoteTabs();
@@ -5571,6 +5898,7 @@ function switchTab(data) {
   applyDecorations();
   syncActiveFileWatcher(data);
   refreshFileTabStateOnActivate(data);
+  scheduleSessionSnapshot();
 }
 
 function updateTabAdjacencyClasses(activeTab = currentTab) {
@@ -5839,6 +6167,7 @@ async function loadFileByPath(filePath, insertIndex = null, options = {}) {
       applyFileEncodingInfo(singleTab, fileInfo);
       updateExternalFileSnapshot(singleTab, content, fileInfo);
       singleTab.draftId = null;
+      singleTab.isAutoPlaceholder = false;
       singleTab.isFileSaved = true;
       singleTab.isMarkdown = isMarkdownFile;
       singleTab.isWarned = false;
@@ -6248,6 +6577,7 @@ async function getOpenTabPayload(tab) {
     isUtf8Valid: tab.isUtf8Valid,
     hasBom: tab.hasUtf8Bom,
     draftId: tab.draftId,
+    sessionTabId: tab.sessionTabId,
     hasReloadButton: tab.element?.classList.contains("has-reload-button"),
   };
 }
@@ -8040,10 +8370,13 @@ window.electronAPI.onWindowFocus((focused) => {
     notesFocusRefreshTimer = null;
   }
   if (focused) scheduleNotesFocusRefresh();
+  else scheduleSessionSnapshot({ immediate: true });
   if (focused && messageQueue.length > 0 && !isShowingMessage) {
     processQueue();
   }
 });
+
+window.addEventListener("resize", () => scheduleSessionSnapshot());
 
 // Tab context menu handler
 document.addEventListener("contextmenu", async (e) => {

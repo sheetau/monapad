@@ -7,6 +7,7 @@ const os = require("os");
 const crypto = require("crypto");
 const { TextDecoder } = require("util");
 const Store = require("electron-store").default;
+const { SessionManager } = require("./session-manager");
 const log = require("electron-log");
 const logDir = path.dirname(log.transports.file.getFile().path);
 const kuromoji = require("kuromoji");
@@ -31,6 +32,11 @@ let mobileShareHost = null;
 let mobileSharePort = null;
 let mobileShareStartPromise = null;
 let autosaveDraftRecoveryClaimed = false;
+let sessionManager = null;
+let sessionRestoreEnabled = false;
+let sessionSettingQueue = Promise.resolve();
+const sessionWindowIds = new Map();
+const sessionClosePending = new Set();
 
 const WINDOW_CONTROL_OVERLAY = {
   height: 36,
@@ -90,6 +96,58 @@ function bindWindowMaximizeState(window) {
   window.on("unmaximize", () => sendWindowMaximizeState(window));
   window.on("enter-full-screen", () => sendWindowMaximizeState(window));
   window.on("leave-full-screen", () => sendWindowMaximizeState(window));
+}
+
+function getSessionWindowId(window) {
+  return window ? sessionWindowIds.get(window.id) || null : null;
+}
+
+function getRestoredWindowBounds(sessionState, fallback) {
+  const saved = sessionState?.bounds;
+  if (!saved || !Number.isFinite(saved.width) || !Number.isFinite(saved.height)) return fallback;
+
+  const display = screen.getDisplayMatching(saved);
+  const area = display.workArea;
+  const width = Math.max(400, Math.min(saved.width, area.width));
+  const height = Math.max(210, Math.min(saved.height, area.height));
+  const x = Math.min(Math.max(Number.isFinite(saved.x) ? saved.x : area.x, area.x), area.x + area.width - width);
+  const y = Math.min(Math.max(Number.isFinite(saved.y) ? saved.y : area.y, area.y), area.y + area.height - height);
+  return { x, y, width, height };
+}
+
+function bindSessionWindow(window, sessionState = null) {
+  const stableWindowId = sessionState?.id || crypto.randomUUID();
+  sessionWindowIds.set(window.id, stableWindowId);
+
+  window.on("focus", () => {
+    if (sessionRestoreEnabled) {
+      sessionManager?.markWindowActive(stableWindowId).catch((error) => log.warn("[session] focus save failed:", error.message));
+    }
+  });
+
+  window.on("closed", () => {
+    sessionWindowIds.delete(window.id);
+    sessionClosePending.delete(window.id);
+    if (mainWindow === window) {
+      mainWindow = BrowserWindow.getAllWindows().find((candidate) => candidate !== window) || null;
+    }
+  });
+
+  if (sessionState?.maximized) {
+    window.once("ready-to-show", () => {
+      if (!window.isDestroyed()) window.maximize();
+    });
+  }
+}
+
+function requestWindowClose(window, event) {
+  if (window.webContents.isDestroyed()) return;
+  event.preventDefault();
+  if (sessionRestoreEnabled) {
+    if (sessionClosePending.has(window.id)) return;
+    sessionClosePending.add(window.id);
+  }
+  window.webContents.send("attempt-close-window", { sessionRestore: sessionRestoreEnabled });
 }
 
 function closeFileWatcher(filePath) {
@@ -163,10 +221,15 @@ fs.readdirSync(logDir).forEach((file) => {
   }
 });
 
-function createWindow() {
-  const windowBounds = store.get("windowBounds") || { width: 800, height: 600 };
+function createWindow(sessionState = null) {
+  const windowBounds = getRestoredWindowBounds(
+    sessionState,
+    store.get("windowBounds") || { width: 800, height: 600 },
+  );
 
   mainWindow = new BrowserWindow({
+    x: windowBounds.x,
+    y: windowBounds.y,
     width: windowBounds.width,
     height: windowBounds.height,
     minWidth: 400,
@@ -186,55 +249,59 @@ function createWindow() {
     },
     icon: path.join(__dirname, "icon/favicon.ico"),
   });
+  const window = mainWindow;
 
-  mainWindow.loadFile(path.join(__dirname, "index.html"));
-  bindWindowMaximizeState(mainWindow);
-  bindWindowLoadDiagnostics(mainWindow, "mainWindow");
+  window.loadFile(path.join(__dirname, "index.html"));
+  bindSessionWindow(window, sessionState);
+  bindWindowMaximizeState(window);
+  bindWindowLoadDiagnostics(window, "mainWindow");
 
-  mainWindow.on("focus", () => {
-    mainWindow.webContents.send("window-focus", true);
+  window.on("focus", () => {
+    window.webContents.send("window-focus", true);
   });
 
-  mainWindow.on("blur", () => {
-    mainWindow.webContents.send("window-focus", false);
+  window.on("blur", () => {
+    window.webContents.send("window-focus", false);
   });
 
-  mainWindow.on("resize", () => {
-    const { width, height } = mainWindow.getBounds();
+  window.on("resize", () => {
+    const { width, height } = window.getBounds();
     store.set("windowBounds", { width, height });
   });
 
-  mainWindow.on("close", (e) => {
-    if (mainWindow.webContents.isDestroyed()) return;
-    e.preventDefault();
-    mainWindow.webContents.send("attempt-close-window");
-  });
+  window.on("close", (e) => requestWindowClose(window, e));
 
   // open link with default browser
-  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+  window.webContents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url);
     return { action: "deny" };
   });
 
-  mainWindow.webContents.on("will-navigate", (event, url) => {
-    const currentURL = mainWindow.webContents.getURL();
+  window.webContents.on("will-navigate", (event, url) => {
+    const currentURL = window.webContents.getURL();
     if (url !== currentURL) {
       event.preventDefault();
       shell.openExternal(url);
     }
   });
 
-  mainWindow.webContents.on("did-finish-load", () => {
-    mainWindow.webContents.send("assign-window-id", mainWindow.id);
-    sendWindowMaximizeState(mainWindow);
+  window.webContents.on("did-finish-load", () => {
+    window.webContents.send("assign-window-id", window.id);
+    sendWindowMaximizeState(window);
   });
 }
 
-function createNewWindow(parentWindow, position) {
-  const windowBounds = store.get("windowBounds") || { width: 800, height: 600 };
+function createNewWindow(parentWindow, position, sessionState = null) {
+  const windowBounds = getRestoredWindowBounds(
+    sessionState,
+    store.get("windowBounds") || { width: 800, height: 600 },
+  );
 
   let x, y;
-  if (position && typeof position.x === "number" && typeof position.y === "number") {
+  if (Number.isFinite(windowBounds.x) && Number.isFinite(windowBounds.y)) {
+    x = windowBounds.x;
+    y = windowBounds.y;
+  } else if (position && typeof position.x === "number" && typeof position.y === "number") {
     x = position.x;
     y = position.y;
   } else if (parentWindow) {
@@ -267,6 +334,7 @@ function createNewWindow(parentWindow, position) {
   });
 
   win.loadFile(path.join(__dirname, "index.html"));
+  bindSessionWindow(win, sessionState);
   bindWindowMaximizeState(win);
   bindWindowLoadDiagnostics(win, "window");
 
@@ -283,11 +351,7 @@ function createNewWindow(parentWindow, position) {
     store.set("windowBounds", { width, height });
   });
 
-  win.on("close", (e) => {
-    if (win.webContents.isDestroyed()) return;
-    e.preventDefault();
-    win.webContents.send("attempt-close-window");
-  });
+  win.on("close", (e) => requestWindowClose(win, e));
 
   win.webContents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url);
@@ -319,6 +383,37 @@ function createNewWindowWithTab(parentWindow, tabData, position) {
   });
 }
 
+function getPreferredWindow() {
+  const focused = BrowserWindow.getFocusedWindow();
+  if (focused) return focused;
+  const lastActiveId = sessionManager?.getState().lastActiveWindowId;
+  if (lastActiveId) {
+    const restored = BrowserWindow.getAllWindows().find((window) => getSessionWindowId(window) === lastActiveId);
+    if (restored) return restored;
+  }
+  return mainWindow && !mainWindow.isDestroyed() ? mainWindow : BrowserWindow.getAllWindows()[0] || null;
+}
+
+function createWindowsForLaunch() {
+  if (!sessionRestoreEnabled || !sessionManager?.hasWindows()) {
+    createWindow();
+    return;
+  }
+
+  const { windows, lastActiveWindowId } = sessionManager.getWindowStates();
+  createWindow(windows[0]);
+  for (const sessionState of windows.slice(1)) {
+    createNewWindow(null, null, sessionState);
+  }
+
+  const activeWindow = BrowserWindow.getAllWindows().find(
+    (window) => getSessionWindowId(window) === lastActiveWindowId,
+  );
+  activeWindow?.once("ready-to-show", () => {
+    if (!activeWindow.isDestroyed()) activeWindow.focus();
+  });
+}
+
 // app version
 ipcMain.handle("get-app-version", () => {
   return {
@@ -332,6 +427,66 @@ ipcMain.handle("get-app-version", () => {
 
 ipcMain.handle("get-app-session-id", () => {
   return String(process.pid);
+});
+
+ipcMain.handle("session:get-window-state", async (event) => {
+  const window = BrowserWindow.fromWebContents(event.sender);
+  const stableWindowId = getSessionWindowId(window);
+  return {
+    enabled: sessionRestoreEnabled,
+    windowId: stableWindowId,
+    snapshot:
+      sessionRestoreEnabled && stableWindowId && sessionManager
+        ? await sessionManager.hydrateWindow(stableWindowId)
+        : null,
+  };
+});
+
+ipcMain.handle("session:set-enabled", async (event, enabled) => {
+  const nextEnabled = Boolean(enabled);
+  sessionSettingQueue = sessionSettingQueue.then(async () => {
+    if (nextEnabled === sessionRestoreEnabled) return { success: true, enabled: sessionRestoreEnabled };
+    const previousEnabled = sessionRestoreEnabled;
+    try {
+      if (!nextEnabled) sessionRestoreEnabled = false;
+      await sessionManager?.clear();
+      if (nextEnabled) sessionRestoreEnabled = true;
+      store.set("sessionRestoreEnabled", sessionRestoreEnabled);
+      for (const window of BrowserWindow.getAllWindows()) {
+        if (!window.webContents.isDestroyed()) window.webContents.send("session-enabled-changed", sessionRestoreEnabled);
+      }
+      return { success: true, enabled: sessionRestoreEnabled };
+    } catch (error) {
+      sessionRestoreEnabled = previousEnabled;
+      log.error("[session] failed to change setting:", error);
+      return { success: false, enabled: sessionRestoreEnabled, error: error.message };
+    }
+  });
+  return sessionSettingQueue;
+});
+
+ipcMain.handle("session:save-window", async (event, payload = {}) => {
+  if (!sessionRestoreEnabled || !sessionManager) return { success: false, disabled: true };
+  const window = BrowserWindow.fromWebContents(event.sender);
+  const stableWindowId = getSessionWindowId(window);
+  if (!window || !stableWindowId) return { success: false, error: "Unknown window." };
+
+  try {
+    const result = await sessionManager.saveWindow(stableWindowId, payload, {
+      bounds: window.getNormalBounds(),
+      maximized: window.isMaximized(),
+      active: window.isFocused(),
+    });
+    return result;
+  } catch (error) {
+    log.error("[session] failed to save window:", error);
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.on("session:close-aborted", (event) => {
+  const window = BrowserWindow.fromWebContents(event.sender);
+  if (window) sessionClosePending.delete(window.id);
 });
 
 // theme folder
@@ -532,6 +687,11 @@ ipcMain.handle("dialog:openFile", async () => {
 ipcMain.handle("dialog:saveFile", async (event, defaultName) => {
   const { canceled, filePath } = await dialog.showSaveDialog({ defaultPath: defaultName });
   return canceled || !filePath ? {} : { filePath };
+});
+
+ipcMain.handle("show-message-box", async (event, options = {}) => {
+  const window = BrowserWindow.fromWebContents(event.sender);
+  return window ? dialog.showMessageBox(window, options) : dialog.showMessageBox(options);
 });
 
 ipcMain.handle("file:save", async (event, filePath, content, options = {}) => {
@@ -806,6 +966,7 @@ ipcMain.handle("autosave:write", async (event, payload = {}) => {
           name: payload.name || path.basename(payload.filePath),
           index: Number.isInteger(payload.index) ? payload.index : null,
           ownerId,
+          tabId: typeof payload.tabId === "string" ? payload.tabId : null,
         },
         content,
       );
@@ -879,10 +1040,23 @@ ipcMain.handle("autosave:list-drafts", async (event, payload = {}) => {
     const shouldClaimRecovery = !autosaveDraftRecoveryClaimed && mainWindow && requesterWindow?.id === mainWindow.id;
     if (shouldClaimRecovery) autosaveDraftRecoveryClaimed = true;
 
+    const requestedDraftIds = new Set(
+      Array.isArray(payload.draftIds) ? payload.draftIds.filter((id) => typeof id === "string") : [],
+    );
+    const sessionDraftIds = new Set();
+    if (sessionRestoreEnabled && sessionManager) {
+      for (const windowState of sessionManager.getState().windows) {
+        for (const tab of windowState.tabs) {
+          if (typeof tab.draftId === "string") sessionDraftIds.add(tab.draftId);
+        }
+      }
+    }
+
     const drafts = await listAutosaveEntries(dirs.drafts);
     return drafts
       .filter((entry) => {
-        if (shouldClaimRecovery) return true;
+        if (sessionRestoreEnabled && requestedDraftIds.has(entry.id)) return true;
+        if (shouldClaimRecovery) return !sessionRestoreEnabled || !sessionDraftIds.has(entry.id);
         return ownerId !== null && entry.meta?.ownerId === ownerId;
       })
       .map((entry) => ({
@@ -2287,6 +2461,7 @@ ipcMain.on("window:setTitleBarOverlay", (event, options = {}) => {
 // call window close from toolbar button
 ipcMain.on("window:close", (event) => {
   const window = BrowserWindow.fromWebContents(event.sender);
+  if (window) sessionClosePending.delete(window.id);
   window?.destroy();
 });
 
@@ -2388,7 +2563,7 @@ if (!gotTheLock) {
       // Focus existing window
       const windows = BrowserWindow.getAllWindows();
       if (windows.length > 0) {
-        const win = windows[0];
+        const win = getPreferredWindow() || windows[0];
         if (win.isMinimized()) win.restore();
         win.focus();
         win.webContents.send("open-file", filePath);
@@ -2397,14 +2572,14 @@ if (!gotTheLock) {
       // No file to open, just focus the window
       const windows = BrowserWindow.getAllWindows();
       if (windows.length > 0) {
-        const win = windows[0];
+        const win = getPreferredWindow() || windows[0];
         if (win.isMinimized()) win.restore();
         win.focus();
       }
     }
   });
 
-  app.whenReady().then(() => {
+  app.whenReady().then(async () => {
     // create theme folder if not exist
     const userThemesPath = path.join(app.getPath("userData"), "themes");
     if (!fs.existsSync(userThemesPath)) {
@@ -2416,16 +2591,20 @@ if (!gotTheLock) {
       .catch((error) => log.warn("[autosave] init failed:", error.message));
     cleanupEmptyNotes().catch((error) => log.warn("[notes] cleanup failed:", error.message));
 
-    createWindow();
+    sessionRestoreEnabled = store.get("sessionRestoreEnabled") === true;
+    sessionManager = new SessionManager(path.join(app.getPath("userData"), "session"), log);
+    await sessionManager.initialize();
+    createWindowsForLaunch();
 
     // Handle file opened on app start
     filePathToOpen = getFilePathFromArgv(process.argv);
 
-    mainWindow.webContents.once("did-finish-load", () => {
-      mainWindow.webContents.send("assign-window-id", mainWindow.id);
+    const launchWindow = getPreferredWindow() || mainWindow;
+    launchWindow.webContents.once("did-finish-load", () => {
+      launchWindow.webContents.send("assign-window-id", launchWindow.id);
       if (filePathToOpen) {
         log.info("Sending open-file event to renderer");
-        mainWindow.webContents.send("open-file", filePathToOpen);
+        launchWindow.webContents.send("open-file", filePathToOpen);
         filePathToOpen = null;
       }
     });
@@ -2461,7 +2640,7 @@ if (!gotTheLock) {
     }
 
     app.on("activate", function () {
-      if (BrowserWindow.getAllWindows().length === 0) createWindow();
+      if (BrowserWindow.getAllWindows().length === 0) createWindowsForLaunch();
     });
   });
 
@@ -2488,14 +2667,15 @@ if (!gotTheLock) {
 
     const windows = BrowserWindow.getAllWindows();
     if (windows.length > 0) {
-      windows[0].webContents.send("open-file", path);
+      (getPreferredWindow() || windows[0]).webContents.send("open-file", path);
     } else {
       // If no windows exist, store the file path and open it after window creation
       app.whenReady().then(() => {
-        createWindow();
-        mainWindow.webContents.once("did-finish-load", () => {
-          mainWindow.webContents.send("assign-window-id", mainWindow.id);
-          mainWindow.webContents.send("open-file", path);
+        createWindowsForLaunch();
+        const targetWindow = getPreferredWindow() || mainWindow;
+        targetWindow.webContents.once("did-finish-load", () => {
+          targetWindow.webContents.send("assign-window-id", targetWindow.id);
+          targetWindow.webContents.send("open-file", path);
         });
       });
     }

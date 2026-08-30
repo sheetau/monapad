@@ -4,6 +4,12 @@ const log = require("electron-log");
 contextBridge.exposeInMainWorld("electronAPI", {
   getAppVersion: () => ipcRenderer.invoke("get-app-version"),
   getAppSessionId: () => ipcRenderer.invoke("get-app-session-id"),
+  getSessionWindowState: () => ipcRenderer.invoke("session:get-window-state"),
+  setSessionRestoreEnabled: (enabled) => ipcRenderer.invoke("session:set-enabled", enabled),
+  saveSessionWindow: (payload) => ipcRenderer.invoke("session:save-window", payload),
+  abortSessionWindowClose: () => ipcRenderer.send("session:close-aborted"),
+  onSessionRestoreEnabledChanged: (callback) =>
+    ipcRenderer.on("session-enabled-changed", (_event, enabled) => callback(Boolean(enabled))),
   openExternal: (url) => shell.openExternal(url),
   sendMessage: (msg) => ipcRenderer.send("message", msg),
   onReceive: (callback) => ipcRenderer.on("reply", callback),
@@ -80,7 +86,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   updateFolderMeta: (payload) => ipcRenderer.invoke("folders:update-meta", payload),
   onWindowFocus: (callback) => ipcRenderer.on("window-focus", (event, focused) => callback(focused)),
   onWindowMaximizeState: (callback) => ipcRenderer.on("window-maximize-state", (event, maximized) => callback(maximized)),
-  onAttemptCloseWindow: (callback) => ipcRenderer.on("attempt-close-window", callback),
+  onAttemptCloseWindow: (callback) => ipcRenderer.on("attempt-close-window", (_event, options) => callback(options || {})),
 
   // file watch
   watchFile: (filePath) => ipcRenderer.invoke("file:watch", filePath),

@@ -101,6 +101,9 @@
     "restore": "Restore",
     "discard": "Discard"
   },
+  "session": {
+    "closeFailed": "The session could not be saved, so the window was not closed."
+  },
   "editorMenu": {
     "cut": "Cut",
     "copy": "Copy",
@@ -161,6 +164,7 @@
     "font": "Font",
     "size": "Size",
     "layout": "Editor",
+    "sessionRestore": "Restore Previous Session",
     "highlightLine": "Line Highlight",
     "lineNumbers": "Line Numbers",
     "folding": "Folding",

@@ -46,6 +46,7 @@ function setHtmls(t, entries) {
 
 export function updateSettingsTooltipsUi({ t, selectedFontFamily }) {
   removeTitle("#settingsLayout .h1");
+  setTitle("#session-restore", t("settings.sessionRestore"));
   setTitle("#default-new-tab-note", t("settings.defaultNewTabNote"));
   setTitle("#line-highlight", t("settings.highlightLine"));
   setTitle("#line-num", t("settings.lineNumbers"));
@@ -124,6 +125,7 @@ export function updateStaticUiText({
     ["#settings-menu .font .h1", "settings.font"],
     ["#settings-menu .size", "settings.size"],
     ["#settingsLayout .h1", "settings.layout"],
+    ["#session-restore span", "settings.sessionRestore"],
     ["#toggleStatusBar span", "settings.statusBar"],
     ["#toggleKuromoji span", "settings.kuromoji"],
     ["#default-new-tab-note span", "settings.defaultNewTabNote"],

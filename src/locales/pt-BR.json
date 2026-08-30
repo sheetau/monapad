@@ -101,6 +101,9 @@
     "restore": "Restaurar",
     "discard": "Descartar"
   },
+  "session": {
+    "closeFailed": "Não foi possível salvar a sessão, então a janela não foi fechada."
+  },
   "editorMenu": {
     "cut": "Recortar",
     "copy": "Copiar",
@@ -161,6 +164,7 @@
     "font": "Fonte",
     "size": "Tamanho",
     "layout": "Editor",
+    "sessionRestore": "Restaurar sessão anterior",
     "highlightLine": "Realce da linha",
     "lineNumbers": "Números de linha",
     "folding": "Dobramento de código",

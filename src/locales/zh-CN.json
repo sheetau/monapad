@@ -101,6 +101,9 @@
     "restore": "恢复",
     "discard": "丢弃"
   },
+  "session": {
+    "closeFailed": "无法保存会话，因此窗口未关闭。"
+  },
   "editorMenu": {
     "cut": "剪切",
     "copy": "复制",
@@ -128,6 +131,7 @@
     "font": "字体",
     "size": "大小",
     "layout": "编辑器布局",
+    "sessionRestore": "恢复上次会话",
     "highlightLine": "当前行高亮",
     "lineNumbers": "显示行号",
     "folding": "代码折叠",
