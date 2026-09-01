@@ -12,6 +12,7 @@ import {
 import { updateSettingsTooltipsUi, updateStaticUiText } from "./i18next.js";
 import { createGlobalSearchController } from "./search.js";
 import { createFileIconElement, createNotesPanelController, getDisplayNoteTitle, sortNotesForPanel } from "./notes.js";
+import { computeTabPathDescriptions } from "./tab-labels.js";
 import { createVSCodeThemePresentation } from "./vscode-theme-adapter.js";
 import {
   createTabStripController,
@@ -22,6 +23,7 @@ import {
   clampNumber,
   formatNoteUpdatedAt,
   getPathBasename,
+  getSearchResultPathDisplay,
   getUiLanguageTag,
   isDefaultThemeName,
   isPointInRect,
@@ -75,6 +77,7 @@ const noteContextMenu = document.getElementById("note-context-menu");
 const customContextMenu = document.getElementById("custom-context-menu");
 const tabContextMenu = document.getElementById("tab-context-menu");
 const excludedIds = ["changeTheme", "openRecent"]; // buttons that dont close menu on click
+const TAB_PATH_SEPARATOR = navigator.platform.toLowerCase().startsWith("win") ? "\\" : "/";
 
 // font family select, dropdown menu
 const fontSelectRow = document.querySelector(".font-select-row");
@@ -1703,10 +1706,53 @@ function contentHasHeading(content) {
 const TAB_HEADING_ICON_ENABLED = false;
 
 function updateTabTitleDisplay(tab) {
-  const nameSpan = tab?.element?.querySelector(".name");
-  if (!nameSpan) return;
-  nameSpan.textContent = tab.isNote ? getDisplayNoteTitle(tab.name) : tab.name;
-  nameSpan.title = tab.name;
+  updateTabDisambiguationLabels();
+}
+
+function getTabDisplayName(tab) {
+  return tab?.isNote ? getDisplayNoteTitle(tab.name) : String(tab?.name || "");
+}
+
+function normalizeTabDescriptionPath(value) {
+  const path = String(value || "");
+  return TAB_PATH_SEPARATOR === "\\" ? path.replace(/\//g, "\\") : path.replace(/\\/g, "/");
+}
+
+function getTabDescriptionPath(tab) {
+  if (tab?.isNote) return normalizeTabDescriptionPath(tab.noteFolderPath);
+  if (!tab?.path) return null;
+  return normalizeTabDescriptionPath(getSearchResultPathDisplay(tab.path));
+}
+
+function getTabLongTitle(tab, displayName) {
+  if (!tab?.isNote) return tab?.path || tab?.name || displayName;
+  const folderPath = normalizeTabDescriptionPath(tab.noteFolderPath);
+  return ["Notes", folderPath, tab.name || displayName].filter(Boolean).join(TAB_PATH_SEPARATOR);
+}
+
+function updateTabDisambiguationLabels() {
+  const labels = tabData.map((tab) => ({
+    tab,
+    kind: tab.isNote ? "note" : "file",
+    name: getTabDisplayName(tab),
+    description: getTabDescriptionPath(tab),
+  }));
+  const descriptions = computeTabPathDescriptions(labels, TAB_PATH_SEPARATOR);
+
+  for (const label of labels) {
+    const nameSpan = label.tab?.element?.querySelector(".name");
+    const nameLabel = nameSpan?.querySelector(".tab-name-label");
+    const pathLabel = nameSpan?.querySelector(".tab-name-description");
+    if (!nameSpan || !nameLabel || !pathLabel) continue;
+
+    nameLabel.textContent = label.name;
+    const fullDescription = descriptions.get(label.tab) || "";
+    pathLabel.textContent = fullDescription;
+    nameSpan.title = getTabLongTitle(label.tab, label.name);
+    label.tab._tabDisplayName = label.name;
+    label.tab._tabLabelKind = label.kind;
+    label.tab._tabDescriptionPath = label.description;
+  }
 }
 
 function updateTabHeadingIcon(tab, content = null) {
@@ -1724,9 +1770,15 @@ function updateTabHeadingIcon(tab, content = null) {
 function updateNoteTabTitle(tab, content = null) {
   if (!tab?.isNote) return;
   const title = truncateNoteTitle(getNoteTitleFromContent(content ?? tab.model?.getValue() ?? tab.content ?? ""));
+  const titleChanged =
+    tab.name !== title ||
+    tab.noteTitle !== title ||
+    tab._tabDisplayName !== getDisplayNoteTitle(title) ||
+    tab._tabLabelKind !== "note" ||
+    tab._tabDescriptionPath !== normalizeTabDescriptionPath(tab.noteFolderPath);
   tab.name = title;
   tab.noteTitle = title;
-  updateTabTitleDisplay(tab);
+  if (titleChanged) updateTabTitleDisplay(tab);
   updateTabHeadingIcon(tab, content);
 }
 
@@ -4861,6 +4913,7 @@ function enableTabDragging(tab, data) {
     clearAutosaveTimer(targetTabData);
     if (index !== -1) tabData.splice(index, 1);
     if (targetTabData.element?.parentElement === tabs) tabs.removeChild(targetTabData.element);
+    updateTabDisambiguationLabels();
     layoutTabs({ animate: true });
     scheduleAllUnsavedTabAutosaves();
     scheduleGlobalSearchAfterTabSetChange();
@@ -5215,6 +5268,7 @@ function removeTabAndAdjustUI(targetTabData) {
   clearAutosaveTimer(targetTabData);
   tabs.removeChild(targetTabData.element);
   tabData.splice(index, 1);
+  updateTabDisambiguationLabels();
   layoutTabs({ animate: true });
   scheduleAllUnsavedTabAutosaves();
   scheduleGlobalSearchAfterTabSetChange();
@@ -5270,6 +5324,7 @@ function finishClosedTabState(data, index, options = {}) {
   if (closeByMouse) enterTabClosingMode(closingModeWidth);
 
   tabData = tabData.filter((tab) => tab !== data);
+  updateTabDisambiguationLabels();
   addClosingTabSlot(data, index);
   if (closeByMouse && !wasTrailingTab) {
     setTabClosingModeAvailableWidth(Math.max(0, closingModeWidth - closedTabWidth));
@@ -5311,8 +5366,13 @@ function createTab(name, content = "", path = null, insertIndex = null, options 
 
   const nameSpan = document.createElement("span");
   nameSpan.className = "name";
-  nameSpan.textContent = name;
   nameSpan.title = name;
+  const nameLabel = document.createElement("span");
+  nameLabel.className = "tab-name-label";
+  nameLabel.textContent = name;
+  const pathLabel = document.createElement("span");
+  pathLabel.className = "tab-name-description";
+  nameSpan.append(nameLabel, pathLabel);
   const fileIcon = createFileIconElement("tab-file-icon");
   const nameWrap = document.createElement("div");
   nameWrap.className = "name-wrap";
@@ -5381,6 +5441,7 @@ function createTab(name, content = "", path = null, insertIndex = null, options 
     tabData.push(data);
   }
   syncTabDomOrderToData();
+  updateTabDisambiguationLabels();
   layoutTabs({ animate: true, openingTab: data });
   updateTabHeadingIcon(data, content);
 
@@ -6016,6 +6077,8 @@ async function attemptCloseWindow(options = {}) {
         layoutTabs({ animate: false });
       }
     }
+
+    updateTabDisambiguationLabels();
 
     removeListeners();
 
@@ -6796,7 +6859,10 @@ function syncOpenNoteTabsWithNotesIndex(notes = notesIndexCache) {
       changed = true;
     }
   }
-  if (changed) savePinnedTabsState();
+  if (changed) {
+    updateTabDisambiguationLabels();
+    savePinnedTabsState();
+  }
 }
 
 let notesWindowFocusRefreshPromise = null;

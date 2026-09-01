@@ -20,3 +20,10 @@ test("gutter background does not make the editor a tooltip containing block", ()
   assert.match(getRule("#editor::before"), /position:\s*fixed/);
   assert.match(getRule("#editor::before"), /left:\s*var\(--editor-side-panel-offset\)/);
 });
+
+test("warned tabs strike only the title without overriding state opacity", () => {
+  assert.doesNotMatch(getRule(".tab .name.warn"), /text-decoration/);
+  assert.match(getRule(".tab .name.warn"), /opacity:\s*0\.5/);
+  assert.match(getRule(".tab .name.warn .tab-name-label"), /text-decoration:\s*line-through/);
+  assert.doesNotMatch(getRule(".tab .name.warn .tab-name-label"), /opacity/);
+});

@@ -891,8 +891,36 @@
         flex: 1 1 auto;
         min-width: 0;
         overflow: hidden;
+        display: flex;
+        align-items: baseline;
         white-space: nowrap;
         text-decoration: none;
+      }
+      .tab .tab-name-label {
+        flex: 0 0 auto;
+      }
+      .tab .tab-name-description {
+        flex: 1 1 auto;
+        min-width: 0;
+        margin-left: 5px;
+        color: var(--grayOut);
+        font-size: 11px;
+        overflow: hidden;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+        text-align: left;
+      }
+      .tab .tab-name-description:empty {
+        display: none;
+      }
+      .tab:not(.note):not(.active) .tab-name-description {
+        opacity: 0.5;
+      }
+      .tab:not(.note):not(.active):hover .tab-name-description {
+        opacity: 1;
+      }
+      .dragging .tab:not(.note):not(.active):hover .tab-name-description {
+        opacity: 0.5;
       }
       .file-icon {
         display: flex;
@@ -947,9 +975,11 @@
       }
       /* warned name span */
       .tab .name.warn {
-        text-decoration: line-through;
         color: var(--warn);
         opacity: 0.5;
+      }
+      .tab .name.warn .tab-name-label {
+        text-decoration: line-through;
       }
       .tab:hover .name.warn,
       .tab.active .name.warn {
