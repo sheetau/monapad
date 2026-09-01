@@ -256,13 +256,17 @@ function addFileWatchOwner(sender, filePath) {
   return true;
 }
 
-fs.readdirSync(logDir).forEach((file) => {
-  if (file.startsWith("main.log.old")) {
-    const filePath = path.join(logDir, file);
-    fs.unlinkSync(filePath);
-    console.log(`[LOG CLEANUP] Deleted old log file: ${file}`);
-  }
-});
+try {
+  fs.readdirSync(logDir).forEach((file) => {
+    if (file.startsWith("main.log.old")) {
+      const filePath = path.join(logDir, file);
+      fs.unlinkSync(filePath);
+      console.log(`[LOG CLEANUP] Deleted old log file: ${file}`);
+    }
+  });
+} catch (error) {
+  log.warn("[log] old log cleanup failed:", error.message);
+}
 
 function createWindow(sessionState = null) {
   const windowBounds = getRestoredWindowBounds(
@@ -463,6 +467,22 @@ async function createWindowsForLaunch() {
   });
 }
 
+async function createWindowsForLaunchSafely() {
+  try {
+    await createWindowsForLaunch();
+  } catch (error) {
+    log.error("[window] failed to restore launch windows:", error);
+    if (BrowserWindow.getAllWindows().length === 0) {
+      try {
+        createWindow();
+      } catch (fallbackError) {
+        log.error("[window] failed to create fallback window:", fallbackError);
+      }
+    }
+  }
+  return getPreferredWindow();
+}
+
 // app version
 ipcMain.handle("get-app-version", () => {
   return {
@@ -481,14 +501,19 @@ ipcMain.handle("get-app-session-id", () => {
 ipcMain.handle("session:get-window-state", async (event) => {
   const window = BrowserWindow.fromWebContents(event.sender);
   const stableWindowId = getSessionWindowId(window);
+  let snapshot = null;
+  if (isSessionRestoreEnabled() && stableWindowId && sessionManager) {
+    try {
+      snapshot = await sessionManager.hydrateWindow(stableWindowId);
+    } catch (error) {
+      log.warn("[session] failed to hydrate window:", error.message);
+    }
+  }
   return {
     enabled: isSessionRestoreEnabled(),
     mode: sessionRestoreMode,
     windowId: stableWindowId,
-    snapshot:
-      isSessionRestoreEnabled() && stableWindowId && sessionManager
-        ? await sessionManager.hydrateWindow(stableWindowId)
-        : null,
+    snapshot,
   };
 });
 
@@ -812,18 +837,27 @@ ipcMain.handle("file:save", async (event, filePath, content, options = {}) => {
 function readFileWithUtf8Info(buffer) {
   const hasBom = buffer.length >= 3 && buffer[0] === 0xef && buffer[1] === 0xbb && buffer[2] === 0xbf;
   let isUtf8Valid = true;
+  let content;
   try {
-    new TextDecoder("utf-8", { fatal: true }).decode(buffer);
+    content = new TextDecoder("utf-8", { fatal: true }).decode(buffer);
   } catch {
     isUtf8Valid = false;
+    content = buffer.toString("utf8");
   }
-  let content = buffer.toString("utf8");
   if (content.length > 0 && content.charCodeAt(0) === 0xfeff) content = content.slice(1);
   return {
     content,
     encoding: isUtf8Valid ? (hasBom ? "UTF-8 with BOM" : "UTF-8") : "Invalid UTF-8",
     isUtf8Valid,
     hasBom,
+  };
+}
+
+function getFileMetadata(stats) {
+  return {
+    fileSize: stats.size,
+    modifiedTimeMs: stats.mtimeMs,
+    changedTimeMs: stats.ctimeMs,
   };
 }
 
@@ -836,9 +870,22 @@ ipcMain.handle("file:read", async (event, filePath) => {
 });
 
 ipcMain.handle("file:readWithEncoding", async (event, filePath) => {
+  let handle = null;
   try {
-    const buffer = await fs.promises.readFile(filePath);
-    return readFileWithUtf8Info(buffer);
+    handle = await fs.promises.open(filePath, "r");
+    const buffer = await handle.readFile();
+    const stats = await handle.stat();
+    return { ...readFileWithUtf8Info(buffer), ...getFileMetadata(stats) };
+  } catch {
+    return null;
+  } finally {
+    await handle?.close().catch(() => {});
+  }
+});
+
+ipcMain.handle("file:metadata", async (event, filePath) => {
+  try {
+    return getFileMetadata(await fs.promises.stat(filePath));
   } catch {
     return null;
   }
@@ -2809,21 +2856,27 @@ if (!gotTheLock) {
     store.set("sessionRestoreMode", sessionRestoreMode);
     store.delete("sessionRestoreEnabled");
     sessionManager = new SessionManager(path.join(app.getPath("userData"), "session"), log);
-    await sessionManager.initialize();
-    await createWindowsForLaunch();
+    try {
+      await sessionManager.initialize();
+    } catch (error) {
+      log.error("[session] initialization failed; starting without session restore:", error);
+      sessionRestoreMode = "none";
+    }
+    const launchWindow = await createWindowsForLaunchSafely();
 
     // Handle file opened on app start
     filePathToOpen = getFilePathFromArgv(process.argv);
 
-    const launchWindow = getPreferredWindow() || mainWindow;
-    launchWindow.webContents.once("did-finish-load", () => {
-      launchWindow.webContents.send("assign-window-id", launchWindow.id);
-      if (filePathToOpen) {
-        log.info("Sending open-file event to renderer");
-        launchWindow.webContents.send("open-file", filePathToOpen);
-        filePathToOpen = null;
-      }
-    });
+    if (launchWindow) {
+      launchWindow.webContents.once("did-finish-load", () => {
+        launchWindow.webContents.send("assign-window-id", launchWindow.id);
+        if (filePathToOpen) {
+          log.info("Sending open-file event to renderer");
+          launchWindow.webContents.send("open-file", filePathToOpen);
+          filePathToOpen = null;
+        }
+      });
+    }
 
     // Updater
     let autoUpdater = null;
@@ -2856,7 +2909,7 @@ if (!gotTheLock) {
     }
 
     app.on("activate", function () {
-      if (BrowserWindow.getAllWindows().length === 0) void createWindowsForLaunch();
+      if (BrowserWindow.getAllWindows().length === 0) void createWindowsForLaunchSafely();
     });
   });
 
@@ -2887,9 +2940,9 @@ if (!gotTheLock) {
       (getPreferredWindow() || windows[0]).webContents.send("open-file", path);
     } else {
       // If no windows exist, store the file path and open it after window creation
-      app.whenReady().then(() => {
-        createWindowsForLaunch();
-        const targetWindow = getPreferredWindow() || mainWindow;
+      app.whenReady().then(async () => {
+        const targetWindow = await createWindowsForLaunchSafely();
+        if (!targetWindow) return;
         targetWindow.webContents.once("did-finish-load", () => {
           targetWindow.webContents.send("assign-window-id", targetWindow.id);
           targetWindow.webContents.send("open-file", path);

@@ -57,6 +57,9 @@ export function normalizeFileReadResult(result) {
       encoding: result.encoding || (result.isUtf8Valid === false ? "Invalid UTF-8" : "UTF-8"),
       isUtf8Valid: result.isUtf8Valid !== false,
       hasBom: Boolean(result.hasBom),
+      fileSize: Number.isFinite(result.fileSize) ? result.fileSize : null,
+      modifiedTimeMs: Number.isFinite(result.modifiedTimeMs) ? result.modifiedTimeMs : null,
+      changedTimeMs: Number.isFinite(result.changedTimeMs) ? result.changedTimeMs : null,
     };
   }
   return null;

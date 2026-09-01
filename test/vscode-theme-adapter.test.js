@@ -48,3 +48,28 @@ test("uses complete light fallbacks and rejects unsafe color or font-style value
   assert.equal(normalizeColor("transparent"), "transparent");
   assert.equal(normalizeColor("rgb(0, 0, 0)"), null);
 });
+
+test("normalizes Monaco token colors without passing unsupported values", () => {
+  const presentation = createVSCodeThemePresentation({
+    colors: {
+      "editor.background": "transparent",
+      "invalid.short": "#12345",
+    },
+    tokenColors: [
+      { scope: "comment", settings: { foreground: "#abc", background: "#1234" } },
+      { scope: "string", settings: { foreground: "transparent" } },
+    ],
+  });
+
+  assert.equal(normalizeColor("#12345"), null);
+  assert.equal(normalizeColor("#1234567"), null);
+  assert.equal(presentation.monacoColors["editor.background"], undefined);
+  assert.equal(presentation.monacoColors["invalid.short"], undefined);
+  assert.deepEqual(presentation.monacoRules[0], {
+    token: "comment",
+    foreground: "aabbcc",
+    background: "11223344",
+    fontStyle: undefined,
+  });
+  assert.equal(presentation.monacoRules[1].foreground, undefined);
+});

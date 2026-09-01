@@ -1432,28 +1432,21 @@ registerMonacoFormattingActions();
 let currentDecorations = [];
 let decorationFrameId = null;
 const DECORATION_BUFFER_LINES = 100;
+const CODE_BLOCK_CHECKPOINT_LINES = 500;
 const DECORATION_MATCHERS = [/^#\s[^#]/, /^##\s[^#]/, /^###\s[^#]/, /^-#\s[^#]/, /^>\s/];
+let decorationCoverage = { model: null, versionId: null, ranges: [] };
+let codeBlockCheckpointModel = null;
+let codeBlockCheckpointVersion = null;
+let codeBlockCheckpoints = new Map([[1, false]]);
 
-function getDecorationLineRanges(model) {
-  const visibleRanges = monacoEditor.getVisibleRanges();
-  const lineCount = model.getLineCount();
-
-  if (!visibleRanges.length) {
-    return [{ startLineNumber: 1, endLineNumber: lineCount }];
-  }
-
-  const expandedRanges = visibleRanges
-    .map((range) => ({
-      startLineNumber: Math.max(1, range.startLineNumber - DECORATION_BUFFER_LINES),
-      endLineNumber: Math.min(lineCount, range.endLineNumber + DECORATION_BUFFER_LINES),
-    }))
-    .sort((a, b) => a.startLineNumber - b.startLineNumber);
-
+function mergeLineRanges(ranges) {
+  const sortedRanges = ranges.slice().sort((a, b) => a.startLineNumber - b.startLineNumber);
   const mergedRanges = [];
-  for (const range of expandedRanges) {
+
+  for (const range of sortedRanges) {
     const lastRange = mergedRanges.at(-1);
     if (!lastRange || range.startLineNumber > lastRange.endLineNumber + 1) {
-      mergedRanges.push(range);
+      mergedRanges.push({ ...range });
       continue;
     }
 
@@ -1463,13 +1456,76 @@ function getDecorationLineRanges(model) {
   return mergedRanges;
 }
 
-function isInsideCodeBlockBeforeLine(model, lineNumber) {
-  let insideCodeBlock = false;
+function getVisibleLineRanges(model) {
+  const lineCount = model.getLineCount();
+  return mergeLineRanges(
+    monacoEditor.getVisibleRanges().map((range) => ({
+      startLineNumber: Math.max(1, Math.min(lineCount, range.startLineNumber)),
+      endLineNumber: Math.max(1, Math.min(lineCount, range.endLineNumber)),
+    })),
+  );
+}
 
-  for (let i = 1; i < lineNumber; i++) {
+function getDecorationLineRanges(model, visibleRanges) {
+  const lineCount = model.getLineCount();
+
+  return mergeLineRanges(
+    visibleRanges.map((range) => ({
+      startLineNumber: Math.max(1, range.startLineNumber - DECORATION_BUFFER_LINES),
+      endLineNumber: Math.min(lineCount, range.endLineNumber + DECORATION_BUFFER_LINES),
+    })),
+  );
+}
+
+function areLineRangesCovered(visibleRanges, coveredRanges) {
+  return visibleRanges.every((visibleRange) =>
+    coveredRanges.some(
+      (coveredRange) =>
+        coveredRange.startLineNumber <= visibleRange.startLineNumber &&
+        coveredRange.endLineNumber >= visibleRange.endLineNumber,
+    ),
+  );
+}
+
+function resetDecorationCoverage() {
+  decorationCoverage = { model: null, versionId: null, ranges: [] };
+}
+
+function resetCodeBlockCheckpoints(model) {
+  codeBlockCheckpointModel = model;
+  codeBlockCheckpointVersion = model?.getVersionId?.() ?? null;
+  codeBlockCheckpoints = new Map([[1, false]]);
+}
+
+function invalidateCodeBlockCheckpoints(model, fromLineNumber) {
+  if (!model || codeBlockCheckpointModel !== model) return;
+  codeBlockCheckpointVersion = model.getVersionId();
+  for (const lineNumber of codeBlockCheckpoints.keys()) {
+    if (lineNumber > fromLineNumber) codeBlockCheckpoints.delete(lineNumber);
+  }
+}
+
+function isInsideCodeBlockBeforeLine(model, lineNumber) {
+  const versionId = model.getVersionId();
+  if (codeBlockCheckpointModel !== model || codeBlockCheckpointVersion !== versionId) {
+    resetCodeBlockCheckpoints(model);
+  }
+
+  let checkpointLine = Math.floor((lineNumber - 1) / CODE_BLOCK_CHECKPOINT_LINES) * CODE_BLOCK_CHECKPOINT_LINES + 1;
+  while (checkpointLine > 1 && !codeBlockCheckpoints.has(checkpointLine)) {
+    checkpointLine -= CODE_BLOCK_CHECKPOINT_LINES;
+  }
+
+  let insideCodeBlock = codeBlockCheckpoints.get(checkpointLine) || false;
+
+  for (let i = checkpointLine; i < lineNumber; i++) {
     const trimmed = model.getLineContent(i).trimStart();
     if (trimmed.startsWith("```")) {
       insideCodeBlock = !insideCodeBlock;
+    }
+    const nextLine = i + 1;
+    if ((nextLine - 1) % CODE_BLOCK_CHECKPOINT_LINES === 0) {
+      codeBlockCheckpoints.set(nextLine, insideCodeBlock);
     }
   }
 
@@ -1487,6 +1543,7 @@ function applyDecorations() {
 
   if (!settings.syntaxHighlight) {
     currentDecorations = monacoEditor.deltaDecorations(currentDecorations, []);
+    resetDecorationCoverage();
     return;
   }
 
@@ -1494,10 +1551,23 @@ function applyDecorations() {
 
   if (model.getLanguageId() !== "monapad") {
     currentDecorations = monacoEditor.deltaDecorations(currentDecorations, []);
+    resetDecorationCoverage();
     return;
   }
 
-  const lineRanges = getDecorationLineRanges(model);
+  const visibleRanges = getVisibleLineRanges(model);
+  if (!visibleRanges.length) return;
+
+  const versionId = model.getVersionId();
+  if (
+    decorationCoverage.model === model &&
+    decorationCoverage.versionId === versionId &&
+    areLineRangesCovered(visibleRanges, decorationCoverage.ranges)
+  ) {
+    return;
+  }
+
+  const lineRanges = getDecorationLineRanges(model, visibleRanges);
 
   for (const range of lineRanges) {
     let insideCodeBlock = isInsideCodeBlockBeforeLine(model, range.startLineNumber);
@@ -1533,6 +1603,7 @@ function applyDecorations() {
   }
 
   currentDecorations = monacoEditor.deltaDecorations(currentDecorations, decorations);
+  decorationCoverage = { model, versionId, ranges: lineRanges };
 }
 
 function scheduleApplyDecorations() {
@@ -1721,6 +1792,9 @@ function updateExternalFileSnapshot(tab, content, fileInfo = null) {
   tab._lastExternalContent = content;
   tab._lastExternalHasBom = Boolean(fileInfo?.hasBom);
   tab._lastExternalIsUtf8Valid = fileInfo?.isUtf8Valid !== false;
+  tab._lastExternalFileSize = Number.isFinite(fileInfo?.fileSize) ? fileInfo.fileSize : null;
+  tab._lastExternalModifiedTimeMs = Number.isFinite(fileInfo?.modifiedTimeMs) ? fileInfo.modifiedTimeMs : null;
+  tab._lastExternalChangedTimeMs = Number.isFinite(fileInfo?.changedTimeMs) ? fileInfo.changedTimeMs : null;
 }
 
 function isSameExternalFileSnapshot(tab, content, fileInfo = null) {
@@ -1728,6 +1802,21 @@ function isSameExternalFileSnapshot(tab, content, fileInfo = null) {
   return (
     Boolean(fileInfo?.hasBom) === Boolean(tab._lastExternalHasBom) &&
     (fileInfo?.isUtf8Valid !== false) === (tab._lastExternalIsUtf8Valid !== false)
+  );
+}
+
+function isSameExternalFileMetadata(tab, fileInfo) {
+  return Boolean(
+    tab &&
+      Number.isFinite(tab._lastExternalFileSize) &&
+      Number.isFinite(tab._lastExternalModifiedTimeMs) &&
+      Number.isFinite(tab._lastExternalChangedTimeMs) &&
+      Number.isFinite(fileInfo?.fileSize) &&
+      Number.isFinite(fileInfo?.modifiedTimeMs) &&
+      Number.isFinite(fileInfo?.changedTimeMs) &&
+      tab._lastExternalFileSize === fileInfo.fileSize &&
+      tab._lastExternalModifiedTimeMs === fileInfo.modifiedTimeMs &&
+      tab._lastExternalChangedTimeMs === fileInfo.changedTimeMs,
   );
 }
 
@@ -2292,9 +2381,9 @@ function writePinnedTabEntries(entries) {
 
 function getPersistablePinnedTabEntry(tab) {
   if (!tab?.isPinned) return null;
+  if (tab.path) return { type: "file", path: tab.path };
   const content = tab.model?.getValue() ?? tab.content ?? "";
   if (tab.isNote && tab.noteId && content.trim()) return { type: "note", noteId: tab.noteId };
-  if (tab.path) return { type: "file", path: tab.path };
   if (!tab.path && !tab.isNote && tab.draftId && content.trim())
     return { type: "draft", draftId: tab.draftId, name: tab.name };
   return null;
@@ -2475,9 +2564,16 @@ function updateCurrentTabStatusBar() {
 }
 
 // detect change in editor
-monacoEditor.onDidChangeModelContent(() => {
+monacoEditor.onDidChangeModelContent((event) => {
   const active = currentTab;
   if (!active || monacoEditor.getModel() !== active.model) return;
+
+  const firstChangedLine = event.changes.reduce(
+    (lineNumber, change) => Math.min(lineNumber, change.range.startLineNumber),
+    Number.POSITIVE_INFINITY,
+  );
+  if (Number.isFinite(firstChangedLine)) invalidateCodeBlockCheckpoints(active.model, firstChangedLine);
+  else resetCodeBlockCheckpoints(active.model);
 
   const currentContent = monacoEditor.getValue();
   active.content = currentContent;
@@ -2506,6 +2602,7 @@ monacoEditor.onDidScrollChange(() => {
   scheduleApplyDecorations();
   scheduleSessionSnapshot();
 });
+monacoEditor.onDidLayoutChange(() => scheduleApplyDecorations());
 applyDecorations();
 
 // prevent monaco error that occurs when try to delete all selection includes folding
@@ -3266,9 +3363,18 @@ function getSessionTabKind(tab) {
 }
 
 function createSessionTabSnapshot(tab) {
-  const content = tab.model?.getValue?.() ?? tab.content ?? "";
   const kind = getSessionTabKind(tab);
-  const dirty = kind === "file" ? hasUnsavedChanges(tab, content) : kind === "draft" ? Boolean(content) : tab.noteDirty;
+  let content = "";
+  let dirty = false;
+  if (kind === "file") {
+    if (!tab.isFileSaved) {
+      content = tab.model?.getValue?.() ?? tab.content ?? "";
+      dirty = hasUnsavedChanges(tab, content);
+    }
+  } else {
+    content = tab.model?.getValue?.() ?? tab.content ?? "";
+    dirty = kind === "draft" ? Boolean(content) : Boolean(tab.noteDirty);
+  }
   const snapshot = {
     id: tab.sessionTabId || (tab.sessionTabId = createAutosaveId()),
     kind,
@@ -3299,14 +3405,12 @@ function createSessionTabSnapshot(tab) {
 function createSessionWindowSnapshot({ closing = false } = {}) {
   saveCurrentTabViewState();
   const onlyTab = tabData.length === 1 ? tabData[0] : null;
-  const onlyContent = onlyTab?.model?.getValue?.() ?? onlyTab?.content ?? "";
+  const shouldCheckDiscardWindow = Boolean(
+    closing && onlyTab?.isAutoPlaceholder && !onlyTab.path && !onlyTab.noteId && !onlyTab.isPinned,
+  );
+  const onlyContent = shouldCheckDiscardWindow ? (onlyTab?.model?.getValue?.() ?? onlyTab?.content ?? "") : "";
   const discardWindow = Boolean(
-    closing &&
-      onlyTab?.isAutoPlaceholder &&
-      !onlyTab.path &&
-      !onlyTab.noteId &&
-      !onlyContent &&
-      !onlyTab.isPinned,
+    shouldCheckDiscardWindow && !onlyContent,
   );
   return {
     closing,
@@ -3497,12 +3601,19 @@ setTimeout(() => monacoEditor?.focus(), 0);
 
 sessionInitializationPromise = (async () => {
   await windowIdReady;
-  await initializeSessionRestore();
-  const restoredSession = settings.sessionRestoreMode !== "none" && (await restoreSessionWindow(sessionStartupSnapshot));
+  let restoredSession = false;
+  try {
+    await initializeSessionRestore();
+    restoredSession = settings.sessionRestoreMode !== "none" && (await restoreSessionWindow(sessionStartupSnapshot));
+  } catch (error) {
+    stableSessionWindowId = null;
+    sessionStartupSnapshot = null;
+    console.warn("Failed to initialize session restore:", error);
+  }
   if (!restoredSession) await restorePinnedTabs();
   await restoreAutosaveDrafts();
   if (settings.sessionRestoreMode !== "none") scheduleSessionSnapshot({ immediate: true });
-})();
+})().catch((error) => console.error("Failed to initialize startup recovery:", error));
 
 function getStoredSidePanelOpen() {
   return localStorage.getItem(SIDE_PANEL_OPEN_STORAGE_KEY) === "true";
@@ -4119,8 +4230,6 @@ async function addCustomThemesToMenu() {
 
 await applyTheme(currentTheme);
 await addCustomThemesToMenu(); // load custom theme first
-updateActiveButton();
-attachThemeButtonEvents();
 
 // apply css file update
 window.electronAPI.onCssFileUpdated(async (path) => {
@@ -5254,6 +5363,9 @@ function createTab(name, content = "", path = null, insertIndex = null, options 
     _lastExternalContent: path ? content : null,
     _lastExternalHasBom: Boolean(options.hasBom),
     _lastExternalIsUtf8Valid: options.isUtf8Valid !== false,
+    _lastExternalFileSize: Number.isFinite(options.fileSize) ? options.fileSize : null,
+    _lastExternalModifiedTimeMs: Number.isFinite(options.modifiedTimeMs) ? options.modifiedTimeMs : null,
+    _lastExternalChangedTimeMs: Number.isFinite(options.changedTimeMs) ? options.changedTimeMs : null,
     draftId: path ? null : createAutosaveId(),
     noteFolderPath: null,
     sessionTabId: options.sessionTabId || createAutosaveId(),
@@ -6086,7 +6198,19 @@ async function refreshFileTabStateOnActivate(tab) {
 
   try {
     tab._needsDiskRefresh = false;
-    const fileInfo = await readFileWithEncodingInfo(tab.path);
+    let fileInfo = null;
+    let shouldReadFile = true;
+    if (
+      typeof window.electronAPI.getFileMetadata === "function" &&
+      !tab.isWarned &&
+      !tab.element.classList.contains("has-reload-button")
+    ) {
+      const metadata = await window.electronAPI.getFileMetadata(tab.path);
+      if (tab !== currentTab) return;
+      if (metadata && isSameExternalFileMetadata(tab, metadata)) return;
+      if (!metadata) shouldReadFile = false;
+    }
+    if (shouldReadFile) fileInfo = await readFileWithEncodingInfo(tab.path);
     const content = fileInfo?.content;
     if (tab !== currentTab) return;
 
@@ -6104,6 +6228,7 @@ async function refreshFileTabStateOnActivate(tab) {
 
     if (isSameExternalFileSnapshot(tab, content, fileInfo)) {
       applyFileEncodingInfo(tab, fileInfo);
+      updateExternalFileSnapshot(tab, content, fileInfo);
       reloadButton(tab, null, "remove");
       return;
     }
@@ -6184,6 +6309,7 @@ async function handleFileChange(targetTab, filePath) {
   // Ignore watcher noise if the on-disk content is unchanged from the last known disk snapshot.
   if (isSameExternalFileSnapshot(targetTab, content, fileInfo)) {
     if (fileInfo) applyFileEncodingInfo(targetTab, fileInfo);
+    updateExternalFileSnapshot(targetTab, content, fileInfo);
     reloadButton(targetTab, null, "remove");
     return;
   }
@@ -8405,7 +8531,7 @@ function syncTabSaveState(tab, content = null) {
     updateNoteTabTitle(tab, nextContent);
     const close = tab.element?.querySelector(".close");
     if (close) close.classList.remove("show-unsaved");
-    savePinnedTabsState();
+    if (tab.isPinned) savePinnedTabsState();
     return tab.noteDirty;
   }
 
@@ -8420,7 +8546,7 @@ function syncTabSaveState(tab, content = null) {
     close.classList.toggle("show-unsaved", hasChanges);
   }
   updatePinnedTabIcon(tab);
-  savePinnedTabsState();
+  if (tab.isPinned && !tab.path) savePinnedTabsState();
 
   return hasChanges;
 }

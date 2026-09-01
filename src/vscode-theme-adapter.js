@@ -1,4 +1,4 @@
-const VALID_COLOR = /^(?:#[0-9a-f]{3,8}|transparent)$/i;
+const VALID_COLOR = /^(?:#(?:[0-9a-f]{3}|[0-9a-f]{4}|[0-9a-f]{6}|[0-9a-f]{8})|transparent)$/i;
 
 const UI_COLOR_MAP = {
   "--color1": ["editor.background"],
@@ -28,6 +28,13 @@ const SYNTAX_SCOPE_MAP = {
 function normalizeColor(value) {
   const color = typeof value === "string" ? value.trim() : "";
   return VALID_COLOR.test(color) ? color : null;
+}
+
+function toMonacoTokenColor(value) {
+  const color = normalizeColor(value);
+  if (!color || color === "transparent") return undefined;
+  const hex = color.slice(1);
+  return (hex.length === 3 || hex.length === 4 ? [...hex].map((digit) => digit.repeat(2)).join("") : hex);
 }
 
 function getThemeColor(colors, keys, fallback = null) {
@@ -119,12 +126,12 @@ function createVSCodeThemePresentation(theme) {
   const monacoColors = {};
   for (const [key, value] of Object.entries(colors)) {
     const color = normalizeColor(value);
-    if (color) monacoColors[key] = color;
+    if (color && color !== "transparent") monacoColors[key] = color;
   }
   const monacoRules = [];
   for (const rule of tokenColors) {
-    const foreground = normalizeColor(rule?.settings?.foreground)?.replace(/^#/, "");
-    const background = normalizeColor(rule?.settings?.background)?.replace(/^#/, "");
+    const foreground = toMonacoTokenColor(rule?.settings?.foreground);
+    const background = toMonacoTokenColor(rule?.settings?.background);
     const fontStyle = normalizeFontStyle(rule?.settings?.fontStyle) || undefined;
     for (const token of normalizeScopes(rule?.scope)) {
       monacoRules.push({ token, foreground, background, fontStyle });

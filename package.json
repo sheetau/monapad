@@ -233,8 +233,8 @@
     "test": "node --test test/*.test.js",
     "start": "electron .",
     "clean": "rimraf dist",
-    "dist": "npm run clean && electron-builder --publish always",
-    "dist:local": "npm run clean && electron-builder --publish never",
+    "dist": "npm run clean && npm run build:prod && electron-builder --publish always",
+    "dist:local": "npm run clean && npm run build:prod && electron-builder --publish never",
     "build:dev": "webpack --mode development",
     "build:prod": "webpack --mode production",
     "watch": "webpack --watch"
