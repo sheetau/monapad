@@ -1034,7 +1034,6 @@
         outline: none;
       }
       #editor {
-        position: relative;
         flex: 1;
         box-sizing: border-box;
         background: var(--color1);
@@ -1047,15 +1046,19 @@
       }
       #editor::before {
         content: "";
-        position: absolute;
-        top: -1px;
+        position: fixed;
+        top: calc(var(--toolbar-height) + var(--window-top-safe-area));
         bottom: 0;
-        left: calc(-1 * var(--editor-line-number-offset));
+        left: var(--editor-side-panel-offset);
         width: var(--editor-line-number-offset);
         background: var(--editor-gutter-background);
         border-top: 1px solid var(--color3);
         box-sizing: border-box;
         pointer-events: none;
+        transition: left 180ms ease;
+      }
+      body.status-bar-visible #editor::before {
+        bottom: var(--status-bar-height);
       }
 
       /* status bar */
@@ -1654,7 +1657,8 @@
       body.side-panel-resizing #side-panel,
       body.side-panel-resizing #toolbar,
       body.side-panel-resizing #tabs-container,
-      body.side-panel-resizing #editor {
+      body.side-panel-resizing #editor,
+      body.side-panel-resizing #editor::before {
         transition: none !important;
       }
       body.side-panel-resizing {
