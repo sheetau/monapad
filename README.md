@@ -13,7 +13,7 @@
 
 With the same core editor used in VSCode and its own language designed for text editing, Monapad brings code editor-level efficiency and readability to your everyday writing. Its key features include:
 
-- A clean, modern dark theme-only interface for distraction-free writing.
+- A clean, modern interface for distraction-free writing.
 - Smooth and responsive tab management, just like Chromium browser experience.
 - Supports many of the same keyboard shortcuts and functionalities as VSCode.
 - Its own language and syntax highlighting includes:
@@ -26,7 +26,7 @@ With the same core editor used in VSCode and its own language designed for text 
 - A high-functional side panel that can be opened by dragging the menu button to the right.
 - App-native Notes that stay entirely inside Monapad.
 - Powerful global search across all open tabs and notes.
-- Supports [Custome CSS and Themes](https://github.com/sheetau/monapad/blob/main/CONTRIBUTING.md#how-to-setup-custom-theme)
+- Supports [Custom CSS and Themes](https://github.com/sheetau/monapad/blob/main/CONTRIBUTING.md#how-to-setup-custom-theme), including themes from installed VSCode extensions.
 - Syntax highlighting for Markdown.
 - Share the current note to another device with a temporary local QR/link.
   - The text is served only from your computer on the local network, and only for a short time using an in-memory temporary page.
@@ -34,6 +34,7 @@ With the same core editor used in VSCode and its own language designed for text 
 - Autosaves unsaved changes for crash recovery.
   - Periodically backs up unsaved edits while you type and automatically restores them after an unexpected exit on the next open.
   - Untitled tabs closed with "Don't Save" are kept only for the current session's reopen flow; discarded drafts from the previous session are temporarily stored in `%appdata%/monapad/autosave/trash-previous` for manual recovery.
+- Optionally restores the previous session with untitled and unsaved tabs in their original order, with settings to restore all windows, the last active window, or none.
 - Advanced Japanese word segmentation support using Kuromoji.
 
 Standard text editors can become hard to read and navigate when handling large documents. Monapad was created to solve this by offering lightweight highlighting features and heading level folding through its own language designed for text editing, without fully relying on Markdown formatting. It also allows users to use familiar VSCode-style shortcuts and editing features.
@@ -82,6 +83,8 @@ Download [latest version](https://github.com/sheetau/monapad/releases/latest) of
 - [Ink Theme](https://github.com/sheetau/monapad/tree/main/customthemes/ink/README.md) [[sheeta](https://github.com/sheetau)]
 
 To use custom themes, download CSS file from the above list or from [official repository](https://github.com/sheetau/monapad/tree/main/customthemes) and place it to themes folder that can be opened from the settings in the app.
+
+Monapad also detects compatible themes from installed VSCode extensions and lists them under Menu > Themes. Extension folders are detected automatically; additional search locations can be specified by editing `vscode-theme-paths.txt` in Monapad's themes folder and restarting the app.
 
 Click [here](https://github.com/sheetau/monapad/blob/main/CONTRIBUTING.md#how-to-setup-custom-theme) to see how to setup and submit your own custom themes.
 
