@@ -53,7 +53,8 @@ export function updateSettingsTooltipsUi({ t, selectedFontFamily }) {
   setTitle("#minimap", t("settings.displayMinimap"));
   setTitle("#toggleSyntaxHighlight", t("settings.syntaxHighlight"));
   setTitle("#toggleStatusBar", t("settings.statusBar"));
-  setTitle("#toggleKuromoji", t("settings.kuromoji"));
+  setTitle("#toggleTabPaths", t("settings.alwaysShowTabPathsTooltip"));
+  setTitle("#toggleKuromoji", t("settings.kuromojiTooltip"));
   setTitle("#settings-menu .tabSize", t("settings.tabSize"));
   removeTitle("#settings-menu .font .h1");
   setTitle(".font-select-row .custom-select__trigger", selectedFontFamily);
@@ -125,6 +126,7 @@ export function updateStaticUiText({
     ["#settings-menu .size", "settings.size"],
     ["#settingsLayout .h1", "settings.layout"],
     ["#toggleStatusBar span", "settings.statusBar"],
+    ["#toggleTabPaths span", "settings.alwaysShowTabPaths"],
     ["#toggleKuromoji span", "settings.kuromoji"],
     ["#default-new-tab-note span", "settings.defaultNewTabNote"],
     ["#line-highlight span", "settings.highlightLine"],
@@ -177,8 +179,6 @@ export function updateStaticUiText({
   if (refs.monacoNlsRestartWarning) {
     setElementText(refs.monacoNlsRestartWarning, t("settings.monacoRestartWarning"));
   }
-  const kuromojiToggle = qs("#toggleKuromoji");
-  if (kuromojiToggle) kuromojiToggle.title = t("settings.kuromojiTooltip");
   const fontReset = qs(".font .reset");
   if (fontReset) fontReset.title = t("settings.resetTooltip");
   const layoutReset = qs("#settingsLayout .reset");

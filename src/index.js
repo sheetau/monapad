@@ -192,6 +192,7 @@ const defaultSettings = {
   syntaxHighlight: true,
   folding: true,
   statusBarVisible: true,
+  alwaysShowTabPaths: false,
   kuromojiEnabled: false,
   defaultNewTabType: "untitled",
 };
@@ -1737,7 +1738,7 @@ function updateTabDisambiguationLabels() {
     name: getTabDisplayName(tab),
     description: getTabDescriptionPath(tab),
   }));
-  const descriptions = computeTabPathDescriptions(labels, TAB_PATH_SEPARATOR);
+  const descriptions = computeTabPathDescriptions(labels, TAB_PATH_SEPARATOR, settings.alwaysShowTabPaths);
 
   for (const label of labels) {
     const nameSpan = label.tab?.element?.querySelector(".name");
@@ -3056,6 +3057,9 @@ function applySettings() {
     ? "inline-flex"
     : "none";
   document.querySelector("#toggleFolding .checkmark").style.display = settings.folding ? "inline-flex" : "none";
+  document.querySelector("#toggleTabPaths .checkmark").style.display = settings.alwaysShowTabPaths
+    ? "inline-flex"
+    : "none";
   document.querySelector("#toggleKuromoji .checkmark").style.display = settings.kuromojiEnabled
     ? "inline-flex"
     : "none";
@@ -3127,6 +3131,10 @@ document.getElementById("toggleSyntaxHighlight").onclick = () => {
 };
 document.getElementById("toggleFolding").onclick = () => toggleSetting("folding");
 document.getElementById("toggleStatusBar").onclick = () => toggleSetting("statusBarVisible");
+document.getElementById("toggleTabPaths").onclick = () => {
+  toggleSetting("alwaysShowTabPaths");
+  updateTabDisambiguationLabels();
+};
 document.getElementById("toggleKuromoji").onclick = () => {
   toggleSetting("kuromojiEnabled");
   setKuromojiEnabled(settings.kuromojiEnabled);
@@ -3158,6 +3166,7 @@ document.querySelector("#settings-menu #settingsLayout .reset").addEventListener
   localStorage.setItem("editorSettings", JSON.stringify(settings));
 
   applySettings();
+  updateTabDisambiguationLabels();
   updateTabSize(tabSize);
 });
 

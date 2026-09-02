@@ -78,7 +78,7 @@ function shortenPaths(paths, defaultPathSeparator = "\\") {
   return shortenedPaths;
 }
 
-function computeTabPathDescriptions(labels, separator = "\\") {
+function computeTabPathDescriptions(labels, separator = "\\", alwaysShow = false) {
   const groups = new Map();
   const result = new Map();
 
@@ -91,9 +91,9 @@ function computeTabPathDescriptions(labels, separator = "\\") {
   }
 
   for (const group of groups.values()) {
-    if (group.length < 2) continue;
+    if (!alwaysShow && group.length < 2) continue;
     const descriptions = [...new Set(group.map((label) => label.description))];
-    if (descriptions.length < 2) continue;
+    if (!alwaysShow && descriptions.length < 2) continue;
 
     const displayDescriptions = group[0].kind === "file" ? shortenPaths(descriptions, separator) : descriptions;
     for (let index = 0; index < descriptions.length; index++) {

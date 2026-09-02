@@ -4,6 +4,7 @@ const path = require("node:path");
 const test = require("node:test");
 
 const html = fs.readFileSync(path.join(__dirname, "..", "src", "index.html"), "utf8");
+const i18nextSource = fs.readFileSync(path.join(__dirname, "..", "src", "i18next.js"), "utf8");
 
 function getRule(selector) {
   const escapedSelector = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -26,4 +27,17 @@ test("warned tabs strike only the title without overriding state opacity", () =>
   assert.match(getRule(".tab .name.warn"), /opacity:\s*0\.5/);
   assert.match(getRule(".tab .name.warn .tab-name-label"), /text-decoration:\s*line-through/);
   assert.doesNotMatch(getRule(".tab .name.warn .tab-name-label"), /opacity/);
+});
+
+test("tab-path and Kuromoji settings use localized descriptive titles", () => {
+  assert.ok(html.indexOf('id="toggleTabPaths"') < html.indexOf('id="toggleKuromoji"'));
+  assert.match(i18nextSource, /setTitle\("#toggleTabPaths", t\("settings\.alwaysShowTabPathsTooltip"\)\)/);
+  assert.match(i18nextSource, /setTitle\("#toggleKuromoji", t\("settings\.kuromojiTooltip"\)\)/);
+
+  for (const locale of ["en-US", "ja-JP", "de-DE", "pt-BR", "zh-CN"]) {
+    const settings = require(`../src/locales/${locale}.json`).settings;
+    assert.ok(settings.alwaysShowTabPaths);
+    assert.ok(settings.alwaysShowTabPathsTooltip);
+    assert.ok(settings.kuromojiTooltip);
+  }
 });

@@ -86,3 +86,22 @@ test("preserves drive prefixes while selecting unique file path segments", () =>
     "C:\\…\\beta\\…",
   ]);
 });
+
+test("always-show mode removes the duplicate-name requirement", () => {
+  const file = {};
+  const note = {};
+  const rootNote = {};
+  const descriptions = computeTabPathDescriptions(
+    [
+      { tab: file, kind: "file", name: "index.js", description: "C:\\work\\src" },
+      { tab: note, kind: "note", name: "Meeting", description: "work\\projects" },
+      { tab: rootNote, kind: "note", name: "Root", description: "" },
+    ],
+    "\\",
+    true,
+  );
+
+  assert.equal(descriptions.get(file), "C:\\…\\src");
+  assert.equal(descriptions.get(note), "work\\projects");
+  assert.equal(descriptions.has(rootNote), false);
+});
