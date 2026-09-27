@@ -32,6 +32,9 @@ import {
   truncateNoteTitle,
 } from "./app-utils.js";
 import i18next from "i18next";
+import { OPEN_FENCE, CLOSE_FENCE, scanStructure, computeFoldingRanges } from "./monapad-structure.js";
+import { captureEditorHistory, restoreEditorHistory } from "./editor-transfer.js";
+import { getTransferredExternalState, restoreTransferredExternalState } from "./tab-transfer.js";
 
 const toolbar = document.getElementById("toolbar");
 const tabsContainer = document.getElementById("tabs-container");
@@ -180,12 +183,12 @@ let activeVSCodeThemePresentation = null;
 let currentFilePath = `${i18next.t("file.untitled")}.txt`;
 const SESSION_RESTORE_MODES = new Set(["all", "one", "none"]);
 
-function normalizeSessionRestoreMode(value, legacyEnabled = false) {
-  return SESSION_RESTORE_MODES.has(value) ? value : legacyEnabled === true ? "all" : "none";
+function normalizeSessionRestoreMode(value, legacyEnabled) {
+  return SESSION_RESTORE_MODES.has(value) ? value : legacyEnabled === false ? "none" : "all";
 }
 
 const defaultSettings = {
-  sessionRestoreMode: "none",
+  sessionRestoreMode: "all",
   lineHighlight: true,
   lineNumbers: false,
   minimap: true,
@@ -204,7 +207,7 @@ try {
 }
 storedSettings.sessionRestoreMode = normalizeSessionRestoreMode(
   storedSettings.sessionRestoreMode,
-  storedSettings.sessionRestore === true,
+  storedSettings.sessionRestore,
 );
 delete storedSettings.sessionRestore;
 const settings = { ...defaultSettings, ...storedSettings };
@@ -314,6 +317,13 @@ window.electronAPI.onAssignWindowId((id) => {
   myWindowId = id;
   resolveWindowIdReady?.(id);
 });
+// Pull as well as listen: restoration must not depend on a one-shot load event.
+window.electronAPI.getWindowId().then((id) => {
+  if (Number.isInteger(id)) {
+    myWindowId = id;
+    resolveWindowIdReady?.(id);
+  }
+}).catch((error) => console.warn("Failed to obtain window ID:", error));
 
 window.electronAPI.onSessionRestoreModeChanged((mode) => {
   settings.sessionRestoreMode = normalizeSessionRestoreMode(mode);
@@ -385,9 +395,11 @@ function getExistingTabForPayload(payload) {
     return tabData.find((tab) => tab.isNote && tab.noteId === payload.noteId) || null;
   }
   if (payload.path) {
-    return tabData.find((tab) => tab.path === payload.path) || null;
+    const key = value => TAB_PATH_SEPARATOR === "\\" ? String(value || "").replaceAll("/", "\\").toLowerCase() : value;
+    return tabData.find((tab) => tab.path && key(tab.path) === key(payload.path)) || null;
   }
-  return null;
+  return tabData.find(tab => (payload.sessionTabId && tab.sessionTabId === payload.sessionTabId) ||
+    (payload.draftId && tab.draftId === payload.draftId)) || null;
 }
 
 function getSearchRangeFromPayload(payload) {
@@ -414,84 +426,24 @@ window.electronAPI.onLoadTabData(async (receivedTabData) => {
   hideDropIndicator();
   const payload = receivedTabData.tabInfo || receivedTabData;
   const existingTab = getExistingTabForPayload(payload);
-  const placement =
-    typeof receivedTabData.dropScreenX === "number"
-      ? getTabDropPlacementByClientX(receivedTabData.dropScreenX - window.screenX, existingTab?.element || null)
-      : { index: null, referenceTab: null };
-  if (existingTab?.isPinned) {
-    switchTab(existingTab);
-    revealSearchRangeFromPayload(payload);
-    return;
+  // An existing tab may have its own unsaved edits and history. Never acknowledge
+  // a move by merely focusing it, which would silently discard the source tab.
+  if (receivedTabData.transferId && payload.transferMove && existingTab) throw new Error(i18next.t("tabMove.alreadyOpen"));
+  const placement = typeof receivedTabData.dropScreenX === "number"
+    ? getTabDropPlacementByClientX(receivedTabData.dropScreenX - window.screenX, existingTab?.element || null)
+    : { index: null, referenceTab: null };
+  const previousTabs = new Set(tabData);
+  try {
+    const tab = await openTabPayloadInCurrentWindow(payload, placement);
+    if (!tab) throw new Error(i18next.t("tabMove.failed"));
+    if (receivedTabData.transferId && settings.sessionRestoreMode !== "none") {
+      const saved = await queueSessionSnapshot();
+      if (!saved?.success) throw new Error(saved?.error || i18next.t("tabMove.failed"));
+    }
+  } catch (error) {
+    for (const tab of [...tabData]) if (!previousTabs.has(tab)) removeTabAndAdjustUI(tab);
+    throw error;
   }
-  const adjustedPlacement = clampDropPlacementAfterPinnedTabs(placement, existingTab?.element || null);
-  const insertIndex = adjustedPlacement.index;
-
-  if (payload.isNote) {
-    await createNoteTabFromPayload(payload, insertIndex, adjustedPlacement);
-    revealSearchRangeFromPayload(payload);
-    return;
-  }
-
-  if (existingTab) {
-    moveTabToDropPlacement(existingTab, adjustedPlacement);
-    switchTab(existingTab);
-    revealSearchRangeFromPayload(payload);
-    return;
-  }
-
-  // remove existing initial tab
-  if (getReusableEmptyTab({ includeNotes: true }) === tabData[0]) {
-    const defaultTab = tabData[0];
-    await prepareReusableEmptyTabForReplacement(defaultTab);
-    tabs.removeChild(defaultTab.element);
-    defaultTab.model?.dispose();
-    tabData = [];
-    layoutTabs({ animate: false });
-  }
-
-  // create new tab
-  const newTabData = createTab(payload.name, payload.content, payload.path, insertIndex, payload);
-
-  // restore tab data
-  newTabData.isFileSaved = payload.isFileSaved;
-  newTabData.originalContent = payload.originalContent;
-  newTabData.fontSize = payload.fontSize;
-  newTabData.wordWrap = payload.wordWrap;
-  newTabData.isMarkdown = payload.isMarkdown;
-  newTabData.draftId = payload.draftId || newTabData.draftId;
-  if (payload.isNote) {
-    newTabData.isNote = true;
-    newTabData.noteId = payload.noteId;
-    newTabData.notePath = payload.notePath;
-    newTabData.noteFolderPath = payload.noteFolderPath || "";
-    newTabData.noteTitle = payload.noteTitle || payload.name;
-    newTabData.noteCreatedAt = payload.noteCreatedAt;
-    newTabData.noteUpdatedAt = payload.noteUpdatedAt;
-    newTabData.noteDirty = false;
-    newTabData.draftId = null;
-    newTabData.path = null;
-    newTabData.isFileSaved = true;
-    newTabData.originalContent = payload.content;
-    newTabData.element.classList.add("note");
-    newTabData.element.querySelector(".close")?.classList.remove("show-unsaved");
-    updateNoteTabTitle(newTabData, payload.content);
-  }
-
-  // restore save state
-  if (!payload.isNote && !payload.isFileSaved) {
-    const close = newTabData.element.querySelector(".close");
-    if (close) close.classList.add("show-unsaved");
-    await windowIdReady;
-    await writeTabAutosave(newTabData, newTabData.model.getValue());
-    scheduleTabAutosave(newTabData, newTabData.model.getValue());
-  }
-
-  if (payload.hasReloadButton) {
-    reloadButton(newTabData, payload.path, "add");
-  }
-
-  switchTab(newTabData);
-  revealSearchRangeFromPayload(payload);
 });
 
 // language
@@ -575,6 +527,8 @@ i18next
       zh: { translation: require("./locales/zh-CN.json") },
       de: { translation: require("./locales/de-DE.json") },
       pt: { translation: require("./locales/pt-BR.json") },
+      it: { translation: require("./locales/it-IT.json") },
+      es: { translation: require("./locales/es-ES.json") },
     },
   })
   .then(() => {
@@ -802,18 +756,17 @@ monaco.languages.setMonarchTokensProvider("monapad", {
       [/^\s*###\s[^#].*/, "heading-3"], // ### heading
       [/^\s*>\s.*/, "block-quote"], // > blockquote
       ...MONAPAD_CODE_BLOCK_LANGUAGE_RULES,
-      [/^\s*```\s*((?:\w|[\/\-#])+).*$/, { token: "code-block-fence", next: "@codeblock" }], // code block with unsupported language
-      [/^\s*```\s*$/, { token: "code-block-fence", next: "@codeblock" }], // code block
+      [OPEN_FENCE, { token: "code-block-fence", next: "@codeblock" }],
       [/`([^\\`]|\\.)+`/, "inline-code"], // inline code block
     ],
 
     codeblock: [
-      [/^\s*```\s*$/, { token: "code-block-fence", next: "@pop" }],
+      [CLOSE_FENCE, { token: "code-block-fence", next: "@pop" }],
       [/.*$/, "code-block-content"],
     ],
 
     codeblockEmbedded: [
-      [/```\s*$/, { token: "code-block-fence", next: "@pop", nextEmbedded: "@pop" }],
+      [CLOSE_FENCE, { token: "code-block-fence", next: "@pop", nextEmbedded: "@pop" }],
       [/[^`]+/, "code-block-content"],
       [/`/, "code-block-content"],
     ],
@@ -826,23 +779,9 @@ monaco.languages.registerDocumentSymbolProvider("monapad", {
     const lines = model.getLinesContent();
     const symbols = [];
 
-    // code block range
-    const codeBlocks = [];
-    let codeBlockStart = null;
-    lines.forEach((line, i) => {
-      const trimmed = line.trim();
-      if (trimmed.startsWith("```")) {
-        if (codeBlockStart === null) {
-          codeBlockStart = i;
-        } else {
-          codeBlocks.push({ start: codeBlockStart, end: i });
-          codeBlockStart = null;
-        }
-      }
-    });
-
+    const { blocks } = scanStructure(lines, model.getOptions().tabSize);
     function isInsideCodeBlock(lineNumber) {
-      return codeBlocks.some((block) => lineNumber >= block.start && lineNumber <= block.end);
+      return blocks.some((block) => lineNumber + 1 >= block.start && lineNumber + 1 <= block.end);
     }
 
     lines.forEach((line, lineNumber) => {
@@ -885,87 +824,19 @@ monaco.languages.registerDocumentSymbolProvider("monapad", {
 });
 
 // folding
+const foldingChangeListeners = new Set();
+function refreshFolding() {
+  for (const listener of foldingChangeListeners) listener();
+}
 monaco.languages.registerFoldingRangeProvider("monapad", {
-  provideFoldingRanges(model, context, token) {
-    const ranges = [];
-    const lines = model.getLineCount();
-
-    // code block
-    const codeBlocks = [];
-    let codeBlockStart = null;
-
-    for (let lineNumber = 1; lineNumber <= lines; lineNumber++) {
-      const line = model.getLineContent(lineNumber).trim();
-
-      if (line.startsWith("```")) {
-        if (codeBlockStart === null) {
-          codeBlockStart = lineNumber;
-        } else {
-          const codeBlockEnd = lineNumber;
-          codeBlocks.push({ start: codeBlockStart, end: codeBlockEnd });
-          ranges.push({
-            start: codeBlockStart,
-            end: codeBlockEnd,
-            kind: monaco.languages.FoldingRangeKind.Region,
-          });
-          codeBlockStart = null;
-        }
-      }
-    }
-
-    // check if heading is inside code block
-    function isInsideCodeBlock(lineNumber) {
-      return codeBlocks.some((block) => lineNumber >= block.start && lineNumber <= block.end);
-    }
-
-    // heading
-    const headingRegexes = [
-      { level: 1, regex: /^\s*#\s[^#]/ },
-      { level: 2, regex: /^\s*##\s[^#]/ },
-      { level: 3, regex: /^\s*###\s[^#]/ },
-    ];
-
-    const headings = [];
-
-    for (let lineNumber = 1; lineNumber <= lines; lineNumber++) {
-      if (isInsideCodeBlock(lineNumber)) continue;
-
-      const line = model.getLineContent(lineNumber);
-      for (const { level, regex } of headingRegexes) {
-        if (regex.test(line)) {
-          headings.push({ lineNumber, level });
-          break;
-        }
-      }
-    }
-
-    for (let i = 0; i < headings.length; i++) {
-      const { lineNumber: startLine, level } = headings[i];
-      let endLine = lines;
-
-      for (let j = i + 1; j < headings.length; j++) {
-        if (headings[j].level <= level) {
-          endLine = headings[j].lineNumber - 1;
-          break;
-        }
-      }
-
-      // do not include empty line
-      while (endLine > startLine && model.getLineContent(endLine).trim() === "") {
-        endLine--;
-      }
-
-      // only when range is more than one line
-      if (endLine > startLine) {
-        ranges.push({
-          start: startLine,
-          end: endLine,
-          kind: monaco.languages.FoldingRangeKind.Region,
-        });
-      }
-    }
-
-    return ranges;
+  onDidChange(listener) {
+    foldingChangeListeners.add(listener);
+    return { dispose: () => foldingChangeListeners.delete(listener) };
+  },
+  provideFoldingRanges(model) {
+    return computeFoldingRanges(model.getLinesContent(), model.getOptions().tabSize).map((range) => ({
+      ...range, kind: monaco.languages.FoldingRangeKind.Region,
+    }));
   },
 });
 
@@ -1051,7 +922,7 @@ monacoEditor = monaco.editor.create(editor, {
   matchBrackets: "never",
   fontSize: persistentFontSize,
   fontFamily: `"${selectedFontFamily}", "Migu 1M", monospace`,
-  fontLigatures: true,
+  fontLigatures: /figtree/i.test(selectedFontFamily) ? '"liga", "calt", "tnum"' : true,
   unicodeHighlight: {
     nonBasicASCII: false,
     ambiguousCharacters: false,
@@ -1524,7 +1395,7 @@ function isInsideCodeBlockBeforeLine(model, lineNumber) {
 
   for (let i = checkpointLine; i < lineNumber; i++) {
     const trimmed = model.getLineContent(i).trimStart();
-    if (trimmed.startsWith("```")) {
+    if ((insideCodeBlock ? CLOSE_FENCE : OPEN_FENCE).test(trimmed)) {
       insideCodeBlock = !insideCodeBlock;
     }
     const nextLine = i + 1;
@@ -1581,7 +1452,7 @@ function applyDecorations() {
       const trimmed = line.trimStart();
       const leadingSpaces = line.length - trimmed.length;
 
-      if (trimmed.startsWith("```")) {
+      if ((insideCodeBlock ? CLOSE_FENCE : OPEN_FENCE).test(trimmed)) {
         insideCodeBlock = !insideCodeBlock;
         continue;
       }
@@ -1694,7 +1565,7 @@ function getNoteTitleFromContent(content) {
 function contentHasHeading(content) {
   let inCodeBlock = false;
   for (const line of String(content || "").split(/\r\n|\r|\n/)) {
-    if (/^\s*```/.test(line)) {
+    if ((inCodeBlock ? CLOSE_FENCE : OPEN_FENCE).test(line)) {
       inCodeBlock = !inCodeBlock;
       continue;
     }
@@ -2243,7 +2114,7 @@ async function flushNoteTabs(tabsToFlush = tabData) {
     if (tab?.isNote) {
       const content = tab.model?.getValue() ?? tab.content ?? "";
       if (content.trim()) {
-        await writeNoteTab(tab, content, true);
+        if (!await writeNoteTab(tab, content, true)) throw new Error(`Failed to save note: ${tab.name}`);
       } else {
         await deleteNoteTabStorage(tab);
       }
@@ -2936,6 +2807,7 @@ function applyFontToMonaco() {
 
   monacoEditor.updateOptions({
     fontFamily: finalFont,
+    fontLigatures: /figtree/i.test(finalFont) ? '"liga", "calt", "tnum"' : true,
     ...WRAP_MEASURE_OPTIONS,
   });
   document.fonts.ready.then(() => {
@@ -3090,6 +2962,19 @@ function applySettings() {
   }
 }
 
+// Preferences are shared by windows. Recompute descriptions when another window
+// changes the path option, instead of leaving a stale label until restart.
+window.addEventListener("storage", (event) => {
+  if (event.key !== "editorSettings" || !event.newValue) return;
+  try {
+    const mode = settings.sessionRestoreMode;
+    Object.assign(settings, defaultSettings, JSON.parse(event.newValue));
+    settings.sessionRestoreMode = mode; // main process owns this setting
+    applySettings();
+    updateTabDisambiguationLabels();
+  } catch (error) { console.warn("Failed to read shared editor settings:", error); }
+});
+
 function toggleSetting(key) {
   settings[key] = !settings[key];
   localStorage.setItem("editorSettings", JSON.stringify(settings));
@@ -3151,10 +3036,10 @@ document.querySelector("#settings-menu #settingsLayout .reset").addEventListener
   const previousSessionRestoreMode = settings.sessionRestoreMode;
   Object.assign(settings, defaultSettings);
   localStorage.setItem("editorSettings", JSON.stringify(settings));
-  if (previousSessionRestoreMode !== "none") {
+  if (previousSessionRestoreMode !== defaultSettings.sessionRestoreMode) {
     let result = null;
     try {
-      result = await window.electronAPI.setSessionRestoreMode("none");
+      result = await window.electronAPI.setSessionRestoreMode(defaultSettings.sessionRestoreMode);
     } catch (error) {
       console.warn("Failed to reset session restore setting:", error);
     }
@@ -3180,6 +3065,8 @@ function updateTabSize(newSize) {
   tabSizeValue.textContent = tabSize;
   localStorage.setItem("tabSize", tabSize);
   monacoEditor.updateOptions({ tabSize });
+  for (const tab of tabData) tab.model?.updateOptions({ tabSize });
+  refreshFolding();
 
   tabSizeDecrease.classList.toggle("disabled", tabSize <= 1);
   tabSizeIncrease.classList.toggle("disabled", tabSize >= 10);
@@ -3650,7 +3537,7 @@ async function initializeSessionRestore() {
   const state = await window.electronAPI.getSessionWindowState();
   stableSessionWindowId = state?.windowId || null;
   sessionStartupSnapshot = state?.snapshot || null;
-  settings.sessionRestoreMode = normalizeSessionRestoreMode(state?.mode, state?.enabled === true);
+  settings.sessionRestoreMode = normalizeSessionRestoreMode(state?.mode, state?.enabled);
   localStorage.setItem("editorSettings", JSON.stringify(settings));
   applySettings();
 }
@@ -4918,6 +4805,8 @@ function enableTabDragging(tab, data) {
     const index = tabData.indexOf(targetTabData);
     const switchIndex = index === -1 ? Math.max(0, Math.min(fallbackIndex, tabData.length - 1)) : index;
 
+    targetTabData._autosaveDisabled = true;
+    queueMicrotask(() => targetTabData.model?.dispose());
     releaseWatchedFileForTab(targetTabData);
     clearAutosaveTimer(targetTabData);
     if (index !== -1) tabData.splice(index, 1);
@@ -5129,21 +5018,15 @@ function enableTabDragging(tab, data) {
       .then(async (targetWindowId) => {
         if (targetWindowId) {
           if (releasedTabData.isNotePreview) keepOpenNoteTab(releasedTabData);
-          const tabInfo = await getOpenTabPayload(releasedTabData);
-          window.electronAPI
-            .sendTabToWindow(targetWindowId, {
-              tabInfo,
-              dropScreenX: e.screenX,
-              dropScreenY: e.screenY,
-            })
-            .then(() => {
-              window.electronAPI.focusWindow(targetWindowId);
-            });
-
-          finalizeDraggedTabRemovalAfterExternalDrop(releasedTabData, releasedDetachedState?.index ?? releasedOriginalOrder?.indexOf(releasedTabData) ?? 0);
-
-          if (wasOnlyTab) {
-            attemptCloseWindow();
+          const moved = await moveTabToWindow(releasedTabData,
+            tabInfo => window.electronAPI.sendTabToWindow(targetWindowId, {
+              tabInfo, dropScreenX: e.screenX, dropScreenY: e.screenY,
+            }),
+            () => finalizeDraggedTabRemovalAfterExternalDrop(releasedTabData,
+              releasedDetachedState?.index ?? releasedOriginalOrder?.indexOf(releasedTabData) ?? 0));
+          if (moved) {
+            window.electronAPI.focusWindow(targetWindowId);
+            if (wasOnlyTab) attemptCloseWindow();
           }
         } else if (isOutsideToolbar) {
           if (wasOnlyTab) {
@@ -5165,13 +5048,25 @@ function enableTabDragging(tab, data) {
               }
             : { x: e.screenX, y: e.screenY };
           if (releasedDetachedState) {
-            const tabInfo = await getOpenTabPayload(releasedTabData);
-            await window.electronAPI.createNewWindowWithTab(tabInfo, position);
-            finalizeDraggedTabRemovalAfterExternalDrop(releasedTabData, releasedDetachedState.index);
+            await moveTabToWindow(releasedTabData,
+              tabInfo => window.electronAPI.createNewWindowWithTab(tabInfo, position),
+              () => finalizeDraggedTabRemovalAfterExternalDrop(releasedTabData, releasedDetachedState.index));
           } else {
             openTabInNewWindow(releasedTabData, position);
           }
         }
+      })
+      .catch(async (error) => {
+        releasedTabData.element.style.display = "";
+        if (!tabData.includes(releasedTabData)) {
+          const index = Math.max(0, Math.min(releasedDetachedState?.index ?? 0, tabData.length));
+          tabData.splice(index, 0, releasedTabData);
+        }
+        syncTabDomOrderToData();
+        updateTabDisambiguationLabels();
+        layoutTabs({ animate: true });
+        switchTab(releasedTabData);
+        await reportTabMoveFailure(error);
       })
       .finally(() => {
         dragStartClientPos = null;
@@ -5261,18 +5156,49 @@ document.addEventListener("mouseup", (e) => {
   }
 });
 
+async function moveTabToWindow(tab, deliver, remove) {
+  if (!tab || tab._transferring || tab.isPinned) return false;
+  tab._transferring = true;
+  if (currentTab === tab) monacoEditor.updateOptions({ readOnly: true });
+  try {
+    const payload = await getOpenTabPayload(tab);
+    const version = tab.model.getVersionId();
+    const result = await deliver({ ...payload, transferMove: true });
+    if (!result?.success) throw new Error(result?.error || i18next.t("tabMove.failed"));
+    if (tab.model.getVersionId() !== version) throw new Error(i18next.t("tabMove.failed"));
+    remove();
+    await queueSessionSnapshot().catch(error => console.warn("Failed to persist the source window after tab transfer:", error));
+    return true;
+  } finally {
+    tab._transferring = false;
+    if (currentTab === tab) monacoEditor.updateOptions({ readOnly: false });
+  }
+}
+
+async function reportTabMoveFailure(error) {
+  await window.electronAPI.showMessageBox({
+    type: "error", buttons: ["OK"], title: "Monapad",
+    message: i18next.t("tabMove.failed"), detail: error.message,
+  });
+}
+
 async function openTabInNewWindow(targetTabData, position) {
-  if (!targetTabData) return;
-  if (targetTabData.isPinned) return;
-  const tabInfo = await getOpenTabPayload(targetTabData);
-  await window.electronAPI.createNewWindowWithTab(tabInfo, position);
-  removeTabAndAdjustUI(targetTabData);
+  try {
+    return await moveTabToWindow(targetTabData,
+      payload => window.electronAPI.createNewWindowWithTab(payload, position),
+      () => removeTabAndAdjustUI(targetTabData));
+  } catch (error) {
+    await reportTabMoveFailure(error);
+    return false;
+  }
 }
 
 function removeTabAndAdjustUI(targetTabData) {
   const index = tabData.indexOf(targetTabData);
   if (index === -1) return;
 
+  targetTabData._autosaveDisabled = true;
+  queueMicrotask(() => targetTabData.model?.dispose());
   releaseWatchedFileForTab(targetTabData);
   clearAutosaveTimer(targetTabData);
   tabs.removeChild(targetTabData.element);
@@ -5413,6 +5339,7 @@ function createTab(name, content = "", path = null, insertIndex = null, options 
   tab.appendChild(tabContent);
 
   const model = monaco.editor.createModel(content, "monapad");
+  model.updateOptions({ tabSize });
   const data = {
     name,
     content,
@@ -5670,6 +5597,7 @@ async function saveAsNote() {
 
 // close tab
 async function attemptCloseTab(data, options = {}) {
+  if (data?._transferring) return "cancelled";
   return new Promise(async (resolve) => {
     if (data?.isPinned) {
       resolve("pinned");
@@ -5981,41 +5909,54 @@ async function reopenRecentlyClosedFile() {
 }
 
 // close window
-async function attemptCloseWindow(options = {}) {
-  if (options.sessionRestore || settings.sessionRestoreMode !== "none") {
-    if (isClosingForSession) return;
-    isClosingForSession = true;
-    if (sessionSnapshotTimer) {
-      clearTimeout(sessionSnapshotTimer);
-      sessionSnapshotTimer = null;
-    }
+function abortWindowClose() {
+  isClosingForSession = false;
+  window.electronAPI.abortSessionWindowClose();
+  scheduleSessionSnapshot({ immediate: true });
+}
 
-    try {
-      await window.electronAPI.prepareSessionWindowClose();
-      await sessionSnapshotInFlight.catch(() => {});
+async function reportWindowCloseFailure(error) {
+  abortWindowClose();
+  await window.electronAPI.showMessageBox({
+    type: "error", buttons: ["OK"], title: "Monapad",
+    message: i18next.t("session.closeFailed"), detail: error.message,
+  });
+  monacoEditor?.focus();
+}
+
+async function finishWindowClose() {
+  await sessionSnapshotInFlight.catch(() => {});
+  const result = await window.electronAPI.closeWindow();
+  if (!result?.success) throw new Error(result?.error || "Failed to close window.");
+}
+
+async function attemptCloseWindow(options = {}) {
+  if (currentTab?._transferring || tabData.some(tab => tab._transferring)) { abortWindowClose(); return; }
+  if (isClosingForSession) return;
+  isClosingForSession = true;
+  clearTimeout(sessionSnapshotTimer);
+  sessionSnapshotTimer = null;
+  try {
+    const closeState = await window.electronAPI.prepareSessionWindowClose();
+    await sessionSnapshotInFlight.catch(() => {});
+    if (closeState.enabled && closeState.retain) {
       const result = await saveSessionWindow({ closing: true });
       if (!result?.success) throw new Error(result?.error || "Session storage is unavailable.");
-      window.electronAPI.closeWindow();
-    } catch (error) {
-      isClosingForSession = false;
-      window.electronAPI.abortSessionWindowClose();
-      await window.electronAPI.showMessageBox({
-        type: "error",
-        buttons: ["OK"],
-        title: "Monapad",
-        message: i18next.t("session.closeFailed"),
-        detail: error.message,
-      });
-      monacoEditor?.focus();
+      await finishWindowClose();
+      return;
     }
-    return;
+    await confirmWindowClose();
+  } catch (error) {
+    await reportWindowCloseFailure(error);
   }
+}
 
+async function confirmWindowClose() {
   const hasUnsavedTabs = tabData.some((tab) => !tab.isFileSaved);
   if (!hasUnsavedTabs) {
     await flushNoteTabs();
     await cleanupSavedTabAutosaves();
-    window.electronAPI.closeWindow();
+    await finishWindowClose();
     return;
   }
 
@@ -6037,111 +5978,125 @@ async function attemptCloseWindow(options = {}) {
   };
 
   const onSaveAll = async () => {
-    closeConfirm();
+    try {
+      closeConfirm();
+      removeListeners();
 
-    const cancelledTabs = [];
+      const cancelledTabs = [];
 
-    const allTabs = [...tabData];
+      const allTabs = [...tabData];
 
-    for (const tab of allTabs) {
-      switchTab(tab);
+      for (const tab of allTabs) {
+        switchTab(tab);
 
-      if (tab.isNote) {
-        const noteContent = tab.model?.getValue() ?? tab.content ?? "";
-        if (noteContent.trim()) {
-          await writeNoteTab(tab, noteContent, true);
-        } else {
-          await deleteNoteTabStorage(tab);
-        }
-      }
-
-      if (!tab.isFileSaved) {
-        let success = false;
-        if (tab.path) {
-          success = await saveFile();
-        } else {
-          success = await saveAsFile();
+        if (tab.isNote) {
+          const noteContent = tab.model?.getValue() ?? tab.content ?? "";
+          if (noteContent.trim()) {
+            if (!await writeNoteTab(tab, noteContent, true)) throw new Error(`Failed to save note: ${tab.name}`);
+          } else {
+            await deleteNoteTabStorage(tab);
+          }
         }
 
-        if (success === false) {
-          cancelledTabs.push(tab); // keep canceled tab
+        if (!tab.isFileSaved) {
+          let success = false;
+          if (tab.path) {
+            success = await saveFile();
+          } else {
+            success = await saveAsFile();
+          }
+
+          if (success === false) {
+            cancelledTabs.push(tab); // keep canceled tab
+            continue;
+          }
+        }
+
+        if (tab.isPinned) {
+          savePinnedTabsState();
           continue;
         }
+
+        // close saved tab
+        const index = tabData.indexOf(tab);
+        if (index !== -1) {
+          addTabToRecentlyClosed(tab, index);
+          await deleteTabAutosave(tab);
+          releaseWatchedFileForTab(tab);
+          tabs.removeChild(tab.element);
+          tabData.splice(index, 1);
+          syncRecentlyClosedFilesState();
+          layoutTabs({ animate: false });
+        }
       }
 
-      if (tab.isPinned) {
-        savePinnedTabsState();
-        continue;
+      updateTabDisambiguationLabels();
+
+      removeListeners();
+
+      if (cancelledTabs.length === 0) {
+        await finishWindowClose();
+      } else {
+        abortWindowClose();
+        switchTab(cancelledTabs[0]);
+        setTimeout(() => monacoEditor?.focus(), 0);
       }
-
-      // close saved tab
-      const index = tabData.indexOf(tab);
-      if (index !== -1) {
-        addTabToRecentlyClosed(tab, index);
-        await deleteTabAutosave(tab);
-        releaseWatchedFileForTab(tab);
-        tabs.removeChild(tab.element);
-        tabData.splice(index, 1);
-        syncRecentlyClosedFilesState();
-        layoutTabs({ animate: false });
-      }
-    }
-
-    updateTabDisambiguationLabels();
-
-    removeListeners();
-
-    if (cancelledTabs.length === 0) {
-      window.electronAPI.closeWindow();
-    } else {
-      switchTab(cancelledTabs[0]);
-      setTimeout(() => monacoEditor?.focus(), 0);
+    } catch (error) {
+      removeListeners();
+      await reportWindowCloseFailure(error);
     }
   };
 
   const onDiscardAll = async () => {
-    closeConfirm();
-    removeListeners();
-    savePinnedTabsStateForDiscard();
+    try {
+      closeConfirm();
+      removeListeners();
+      savePinnedTabsStateForDiscard();
 
-    // close all tabs
-    for (const tab of [...tabData]) {
-      clearAutosaveTimer(tab);
-      if (tab.isNote) {
-        const noteContent = tab.model?.getValue() ?? tab.content ?? "";
-        if (noteContent.trim()) {
-          await writeNoteTab(tab, noteContent, true);
-        } else {
-          await deleteNoteTabStorage(tab);
+      // close all tabs
+      for (const tab of [...tabData]) {
+        clearAutosaveTimer(tab);
+        if (tab.isNote) {
+          const noteContent = tab.model?.getValue() ?? tab.content ?? "";
+          if (noteContent.trim()) {
+            if (!await writeNoteTab(tab, noteContent, true)) throw new Error(`Failed to save note: ${tab.name}`);
+          } else {
+            await deleteNoteTabStorage(tab);
+          }
+          releaseWatchedFileForTab(tab);
+          tabs.removeChild(tab.element);
+          continue;
         }
-        releaseWatchedFileForTab(tab);
-        tabs.removeChild(tab.element);
-        continue;
-      }
-      if (!tab.isFileSaved) {
-        if (tab.path) {
-          await window.electronAPI.discardFileAutosaveBackup(tab.path);
-        } else if (tab.model?.getValue()?.trim()) {
-          await window.electronAPI.moveAutosaveDraftToTrash({
-            draftId: tab.draftId,
-            name: tab.name,
-            ownerId: myWindowId,
-            content: tab.model.getValue(),
-          });
+        if (!tab.isFileSaved) {
+          if (tab.path) {
+            const result = await window.electronAPI.discardFileAutosaveBackup(tab.path);
+            if (!result?.success) throw new Error(result?.error || "Failed to discard backup.");
+          } else if (tab.model?.getValue()?.trim()) {
+            const result = await window.electronAPI.moveAutosaveDraftToTrash({
+              draftId: tab.draftId,
+              name: tab.name,
+              ownerId: myWindowId,
+              content: tab.model.getValue(),
+            });
+            if (!result?.success) throw new Error(result?.error || "Failed to discard draft.");
+          } else {
+            await deleteTabAutosave(tab);
+          }
         } else {
           await deleteTabAutosave(tab);
         }
-      } else {
-        await deleteTabAutosave(tab);
+        releaseWatchedFileForTab(tab);
+        tabs.removeChild(tab.element);
       }
-      releaseWatchedFileForTab(tab);
-      tabs.removeChild(tab.element);
+      tabData = [];
+      await finishWindowClose();
+    } catch (error) {
+      await reportWindowCloseFailure(error);
     }
-    tabData = [];
-    window.electronAPI.closeWindow();
   };
 
   const onCancelAll = () => {
+    abortWindowClose();
     closeConfirm();
     removeListeners();
     monacoEditor?.focus();
@@ -6188,6 +6143,7 @@ function getTabEditorOptions(tab) {
 
   return {
     fontSize,
+    readOnly: Boolean(tab._transferring),
     wordWrap: isWordWrapOn ? "on" : "off",
     ...WRAP_MEASURE_OPTIONS,
     scrollbar: {
@@ -6226,7 +6182,7 @@ function syncActiveFileWatcher(data) {
 function switchTab(data) {
   if (!monacoEditor || !data?.model) return;
 
-  saveCurrentTabViewState();
+  if (currentTab !== data) saveCurrentTabViewState();
 
   const editorOptions = getTabEditorOptions(data);
   const languageId = isMarkdownOn ? "markdown" : "monapad";
@@ -6928,8 +6884,12 @@ function createSearchRangePayload(match) {
 
 async function getOpenTabPayload(tab) {
   if (!tab) return null;
-  await writeTabAutosave(tab);
+  saveCurrentTabViewState();
+  const backup = await writeTabAutosave(tab);
+  if (!backup?.success) throw new Error(backup?.error || i18next.t("tabMove.failed"));
   return {
+    editorHistory: captureEditorHistory(tab.model),
+    viewState: tab.viewState,
     name: tab.name,
     content: tab.model?.getValue?.() ?? tab.content ?? "",
     path: tab.path,
@@ -6942,6 +6902,7 @@ async function getOpenTabPayload(tab) {
     noteUpdatedAt: tab.noteUpdatedAt,
     isFileSaved: tab.isFileSaved,
     originalContent: tab.originalContent,
+    ...getTransferredExternalState(tab),
     fontSize: tab.fontSize,
     wordWrap: tab.wordWrap,
     isMarkdown: tab.isMarkdown,
@@ -7008,13 +6969,16 @@ async function openTabPayloadInCurrentWindow(payload, placement = { index: null,
   const tab = createTab(payload.name, payload.content, payload.path, insertIndex, payload);
   tab.isFileSaved = payload.isFileSaved;
   tab.originalContent = payload.originalContent;
+  restoreTransferredExternalState(tab, payload);
   tab.fontSize = payload.fontSize;
   tab.wordWrap = payload.wordWrap;
   tab.isMarkdown = payload.isMarkdown;
   tab.draftId = payload.draftId || tab.draftId;
+  restoreTransferredEditorState(tab, payload);
   if (!tab.isFileSaved) {
     tab.element.querySelector(".close")?.classList.add("show-unsaved");
-    await writeTabAutosave(tab, tab.model.getValue());
+    const backup = await writeTabAutosave(tab, tab.model.getValue());
+    if (!backup?.success) throw new Error(backup?.error || i18next.t("tabMove.failed"));
     scheduleTabAutosave(tab, tab.model.getValue());
   }
   if (payload.hasReloadButton) reloadButton(tab, payload.path, "add");
@@ -7166,11 +7130,27 @@ async function getNoteTabPayload(noteId) {
   };
 }
 
+function restoreTransferredEditorState(tab, payload) {
+  restoreEditorHistory(tab.model, payload.editorHistory);
+  tab.viewState = payload.viewState || null;
+  tab.fontSize = payload.fontSize ?? tab.fontSize;
+  tab.wordWrap = payload.wordWrap ?? tab.wordWrap;
+  tab.isMarkdown = payload.isMarkdown ?? tab.isMarkdown;
+  tab.sessionTabId = payload.sessionTabId || tab.sessionTabId;
+}
+
 async function createNoteTabFromPayload(payload, insertIndex = null, placement = null) {
-  if (!payload?.noteId)
-    return createNoteTab(payload?.content || "", insertIndex, null, {
-      preview: false,
+  if (!payload?.noteId) {
+    const tab = await createNoteTab(payload?.content || "", insertIndex, null, {
+      preview: false, folderPath: payload?.noteFolderPath,
     });
+    if (tab) {
+      restoreTransferredEditorState(tab, payload);
+      tab.draftId = payload.draftId || tab.draftId;
+      switchTab(tab);
+    }
+    return tab;
+  }
   const existingTab = tabData.find((tab) => tab.isNote && tab.noteId === payload.noteId);
   const pinnedCount = getPinnedTabCount();
   const adjustedPlacement =
@@ -7200,6 +7180,7 @@ async function createNoteTabFromPayload(payload, insertIndex = null, placement =
   };
   const tab = await createNoteTab(payload.content || "", adjustedInsertIndex, note);
   if (tab) {
+    restoreTransferredEditorState(tab, payload);
     switchTab(tab);
     updateRecentNote(tab.noteId);
   }
@@ -8790,8 +8771,11 @@ document.addEventListener("contextmenu", async (e) => {
   customContextMenu.style.display = "none";
   notesController?.closeContextMenu();
 
-  // Update copy & open path button
-  updateTabContextMenuState(tabContextMenu, rightClickedTab);
+  // Resolve the source without creating a backup just to show a menu.
+  const contextTab = rightClickedTab;
+  contextTab.sourcePath = await getTabSourcePath(contextTab);
+  if (rightClickedTab !== contextTab) return;
+  updateTabContextMenuState(tabContextMenu, contextTab);
 
   // menu position
   tabContextMenu.style.display = "block";
@@ -8818,6 +8802,14 @@ document.addEventListener("contextmenu", async (e) => {
   tabContextMenu.style.display = "flex";
 });
 
+function getTabSourcePath(tab) {
+  return window.electronAPI.getTabSourcePath({
+    noteId: tab?.isNote ? tab.noteId : null,
+    filePath: tab?.isNote ? null : tab?.path,
+    draftId: tab?.draftId,
+  });
+}
+
 // update copy & open path button based on path existance
 function updateTabContextMenuState(menu, tab) {
   if (!menu) return;
@@ -8827,7 +8819,14 @@ function updateTabContextMenuState(menu, tab) {
   const keepOpenBtn = menu.querySelector('[data-action="keepOpen"]');
   const togglePinBtn = menu.querySelector('[data-action="togglePin"]');
 
-  const hasPath = tab && tab.path;
+  for (const action of ["copyBackupPath", "openBackupPath"]) {
+    const button = menu.querySelector(`[data-action="${action}"]`);
+    if (button) {
+      button.disabled = Boolean(tab?.isNote) || !tab?.sourcePath;
+      button.classList.toggle("disabled", button.disabled);
+    }
+  }
+  const hasPath = tab?.isNote ? tab.sourcePath : tab?.path;
   const isWarn = Boolean(tab?.isWarned);
 
   if (copyPathBtn) copyPathBtn.classList.toggle("disabled", !hasPath || isWarn);
@@ -8858,8 +8857,9 @@ async function closeTabsSequentially(tabsToClose) {
 
 // Tab context menu click handler
 tabContextMenu.addEventListener("click", async (e) => {
-  const action = e.target.closest("button")?.dataset.action;
-  if (!action || !rightClickedTab) return;
+  const button = e.target.closest("button");
+  const action = button?.dataset.action;
+  if (!action || !rightClickedTab || button.disabled || button.classList.contains("disabled")) return;
 
   const targetTab = rightClickedTab;
 
@@ -8893,25 +8893,30 @@ tabContextMenu.addEventListener("click", async (e) => {
       }
       break;
 
-    case "copyPath":
-      if (targetTab && targetTab.path) {
-        try {
-          await navigator.clipboard.writeText(targetTab.path);
-        } catch (err) {
-          console.error("Failed to copy path:", err);
-        }
+    case "copyBackupPath":
+    case "openBackupPath": {
+      if (targetTab.isNote) break;
+      const sourcePath = await getTabSourcePath(targetTab);
+      if (sourcePath) {
+        if (action === "copyBackupPath") await navigator.clipboard.writeText(`"${sourcePath}"`);
+        else await window.electronAPI.openPath(sourcePath);
       }
       break;
+    }
 
-    case "openPath":
-      if (targetTab && targetTab.path) {
-        try {
-          await window.electronAPI.openPath(targetTab.path);
-        } catch (err) {
-          console.error("Failed to open path:", err);
+    case "copyPath":
+    case "openPath": {
+      try {
+        const filePath = targetTab.isNote ? await getTabSourcePath(targetTab) : targetTab.path;
+        if (filePath) {
+          if (action === "copyPath") await navigator.clipboard.writeText(`"${filePath}"`);
+          else await window.electronAPI.openPath(filePath);
         }
+      } catch (err) {
+        console.error("Failed to access path:", err);
       }
       break;
+    }
 
     case "reopenClosedTab":
       await reopenRecentlyClosedFile();

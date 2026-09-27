@@ -1,4 +1,8 @@
 {
+  "tabMove": {
+    "failed": "No se pudo mover la pestaña. Se ha conservado la pestaña original.",
+    "alreadyOpen": "Esta pestaña ya está abierta en la ventana de destino."
+  },
   "file": {
     "untitled": "Sin título"
   },
@@ -115,6 +119,8 @@
     "markdownMode": "Modo Markdown"
   },
   "tabMenu": {
+    "copyBackupPath": "Copiar ruta de la copia de seguridad",
+    "openBackupPath": "Abrir ruta de la copia de seguridad",
     "close": "Cerrar",
     "closeOthers": "Cerrar otras",
     "closeToRight": "Cerrar a la derecha",
@@ -169,7 +175,7 @@
     "sessionRestoreOne": "Restaurar ventanas: Una",
     "sessionRestoreNone": "Restaurar ventanas: Ninguna",
     "sessionRestoreAllTooltip": "Restaura todas las ventanas que seguían abiertas cuando finalizó la sesión anterior. Las ventanas cerradas individualmente no se restauran.",
-    "sessionRestoreOneTooltip": "Restaura únicamente la ventana que estuvo activa más recientemente en la sesión anterior.",
+    "sessionRestoreOneTooltip": "Restaura la última ventana activa. Las demás ventanas con cambios sin guardar se recuperan por separado para evitar la pérdida de datos.",
     "sessionRestoreNoneTooltip": "No restaura la sesión anterior. Al cerrar una ventana con cambios no guardados se preguntará si deseas guardarlos.",
     "highlightLine": "Resaltar línea",
     "lineNumbers": "Números de línea",

@@ -1,4 +1,8 @@
 {
+  "tabMove": {
+    "failed": "Impossibile spostare la scheda. La scheda originale è stata mantenuta.",
+    "alreadyOpen": "Questa scheda è già aperta nella finestra di destinazione."
+  },
   "file": {
     "untitled": "Senza nome"
   },
@@ -115,6 +119,8 @@
     "markdownMode": "Modalità Markdown"
   },
   "tabMenu": {
+    "copyBackupPath": "Copia percorso del backup",
+    "openBackupPath": "Apri percorso del backup",
     "close": "Chiudi",
     "closeOthers": "Chiudi altre",
     "closeToRight": "Chiudi a destra",
@@ -169,7 +175,7 @@
     "sessionRestoreOne": "Ripristina finestre: Una",
     "sessionRestoreNone": "Ripristina finestre: Nessuna",
     "sessionRestoreAllTooltip": "Ripristina ogni finestra ancora aperta al termine della sessione precedente. Le finestre chiuse singolarmente non vengono ripristinate.",
-    "sessionRestoreOneTooltip": "Ripristina solo la finestra attiva più di recente nella sessione precedente.",
+    "sessionRestoreOneTooltip": "Ripristina la finestra attiva più di recente. Le altre finestre con modifiche non salvate vengono recuperate separatamente per evitare la perdita di dati.",
     "sessionRestoreNoneTooltip": "Non ripristina la sessione precedente. La chiusura di una finestra con modifiche non salvate chiede se salvarle.",
     "highlightLine": "Evidenzia riga",
     "lineNumbers": "Numeri di riga",

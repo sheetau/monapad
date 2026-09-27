@@ -124,6 +124,8 @@ If you like my work, please consider:
   - [zh-CN][Chinese]: [kazepu](https://github.com/kazepu)
   - [de-DE][German]: [Undertaker-afk](https://github.com/Undertaker-afk)
   - [pt-BR][Brazilian Portuguese]: [akaimxntis](https://github.com/akaimxntis)
+  - [it-IT][Italian]: [Dikaios](https://github.com/zDikaios)
+  - [es-ES][Spanish]: [Dikaios](https://github.com/zDikaios)
 
 ## Stay tuned:
 

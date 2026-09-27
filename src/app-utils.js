@@ -14,6 +14,8 @@ export function getUiLanguageTag(lang = "en") {
       zh: "zh-CN",
       de: "de-DE",
       pt: "pt-BR",
+      it: "it-IT",
+      es: "es-ES",
     }[lang] || lang
   );
 }

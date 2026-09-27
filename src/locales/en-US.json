@@ -1,4 +1,8 @@
 {
+  "tabMove": {
+    "failed": "The tab could not be moved. The original tab has been kept.",
+    "alreadyOpen": "This tab is already open in the destination window."
+  },
   "file": {
     "untitled": "Untitled"
   },
@@ -115,6 +119,8 @@
     "markdownMode": "Markdown Mode"
   },
   "tabMenu": {
+    "copyBackupPath": "Copy Backup Path",
+    "openBackupPath": "Open Backup Path",
     "close": "Close",
     "closeOthers": "Close Others",
     "closeToRight": "Close to the Right",
@@ -169,7 +175,7 @@
     "sessionRestoreOne": "Restore Windows: One",
     "sessionRestoreNone": "Restore Windows: None",
     "sessionRestoreAllTooltip": "Restores every window still open when the previous session ended. Windows closed individually are not restored.",
-    "sessionRestoreOneTooltip": "Restores only the window that was active most recently in the previous session.",
+    "sessionRestoreOneTooltip": "Restore the most recently active window. Other windows with unsaved work are recovered separately to prevent data loss.",
     "sessionRestoreNoneTooltip": "Does not restore the previous session. Closing a window with unsaved changes asks whether to save them.",
     "highlightLine": "Line Highlight",
     "lineNumbers": "Line Numbers",

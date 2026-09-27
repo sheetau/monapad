@@ -4,6 +4,8 @@ const monacoNlsLoaders = {
   ja: () => require("monaco-editor/esm/nls.messages.ja.js"),
   zh: () => require("monaco-editor/esm/nls.messages.zh-cn.js"),
   de: () => require("monaco-editor/esm/nls.messages.de.js"),
+  it: () => require("monaco-editor/esm/nls.messages.it.js"),
+  es: () => require("monaco-editor/esm/nls.messages.es.js"),
 };
 
 const monacoNlsSupportedLangs = ["en", ...Object.keys(monacoNlsLoaders)];

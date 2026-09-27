@@ -111,6 +111,8 @@ export function updateStaticUiText({
     ['button[data-action="closeToRight"] .label', "tabMenu.closeToRight"],
     ['button[data-action="closeSaved"] .label', "tabMenu.closeSaved"],
     ['button[data-action="copyPath"] .label', "tabMenu.copyPath"],
+    ['button[data-action="copyBackupPath"] .label', "tabMenu.copyBackupPath"],
+    ['button[data-action="openBackupPath"] .label', "tabMenu.openBackupPath"],
     ['button[data-action="openPath"] .label', "tabMenu.openPath"],
     ['button[data-action="reopenClosedTab"] .label', "tabMenu.reopenClosedTab"],
     ['button[data-action="openInNewWindow"] .label', "tabMenu.openInNewWindow"],

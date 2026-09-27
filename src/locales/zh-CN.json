@@ -1,4 +1,8 @@
 {
+  "tabMove": {
+    "failed": "无法移动标签页，原标签页已保留。",
+    "alreadyOpen": "目标窗口中已打开此标签页。"
+  },
   "file": {
     "untitled": "未命名"
   },
@@ -115,6 +119,8 @@
     "markdownMode": "Markdown 模式"
   },
   "tabMenu": {
+    "copyBackupPath": "复制备份路径",
+    "openBackupPath": "打开备份路径",
     "close": "关闭",
     "closeOthers": "关闭其他标签",
     "closeToRight": "关闭右侧标签",
@@ -136,7 +142,7 @@
     "sessionRestoreOne": "恢复窗口：一个",
     "sessionRestoreNone": "恢复窗口：无",
     "sessionRestoreAllTooltip": "恢复上次会话结束时仍打开的所有窗口。单独关闭的窗口不会恢复。",
-    "sessionRestoreOneTooltip": "仅恢复上次会话中最后活动的窗口。",
+    "sessionRestoreOneTooltip": "恢复最近活动的窗口。其他含有未保存更改的窗口将单独恢复，以防止数据丢失。",
     "sessionRestoreNoneTooltip": "不恢复上次会话。关闭包含未保存更改的窗口时会询问是否保存。",
     "highlightLine": "当前行高亮",
     "lineNumbers": "显示行号",

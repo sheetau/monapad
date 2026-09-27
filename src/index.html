@@ -88,6 +88,7 @@
       }
       :root {
         font-family: "Figtree", sans-serif;
+        font-variant-numeric: tabular-nums;
 
         --color1: #000000; /* editor, modal background */
         --color2: #0c0c0e; /* toolbar, statusbar, menu, message background */
@@ -199,6 +200,12 @@
       :lang(ja) body,
       :lang(ja-JP) body {
         font-family: "Figtree", "Yu Gothic UI", "Meiryo", "Hiragino Sans", sans-serif;
+      }
+
+      :lang(it) body,
+      :lang(es) body,
+      :lang(pt) body {
+        font-family: "Figtree", "Segoe UI", "Arial", sans-serif;
       }
 
       :lang(zh) body,
@@ -1113,10 +1120,10 @@
         flex: 1;
         min-width: 0;
         overflow: hidden;
-        gap: 6px;
+        gap: 3px;
       }
       #device-share-btn {
-        width: 40px;
+        width: 30px;
         height: 100%;
         background: var(--color2);
         border: none;
@@ -1126,7 +1133,6 @@
         align-items: center;
         justify-content: center;
         flex-shrink: 0;
-        padding: 0 0 0 2px;
       }
       #device-share-btn svg {
         margin-top: -2px;
@@ -1200,7 +1206,7 @@
         margin-top: -1px;
       }
       #status-right span:not(#save-status):not(.codicon) {
-        margin-left: 20px;
+        margin-left: 10px;
         white-space: nowrap;
       }
       #save-status,
@@ -2494,7 +2500,7 @@
         top: calc(var(--window-top-safe-area) + var(--toolbar-height));
         right: 0px;
         user-select: none;
-        padding: 10px 0 140px 0;
+        padding: 10px 0 200px 0;
         box-sizing: border-box;
         display: none;
         overflow-y: auto;
@@ -2585,6 +2591,9 @@
       #settings-menu .label {
         color: var(--editorText);
         user-select: none;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
       }
       #settings-menu .control {
         display: flex;
@@ -3232,6 +3241,12 @@
         <button data-action="openPath">
           <span class="label">Open Path</span>
         </button>
+        <button data-action="copyBackupPath" disabled>
+          <span class="label">Copy Backup Path</span>
+        </button>
+        <button data-action="openBackupPath" disabled>
+          <span class="label">Open Backup Path</span>
+        </button>
         <div class="hr"></div>
         <button data-action="keepOpen" class="disabled">
           <span class="label">Keep Open</span>
@@ -3430,6 +3445,8 @@
             <option value="zh">中文</option>
             <option value="de">Deutsch</option>
             <option value="pt">Português (Brasil)</option>
+            <option value="it">Italiano</option>
+            <option value="es">Español</option>
           </select>
         </div>
 

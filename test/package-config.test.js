@@ -18,6 +18,8 @@ test("packaged files include every unbundled startup module", () => {
     "src/preload.js",
     "src/recovery-policy.js",
     "src/session-manager.js",
+    "src/settings-store.js",
+    "src/pending-update.js",
     "src/vscode-theme-loader.js",
   ]) {
     assert.ok(packagedFiles.has(filePath), `${filePath} is missing from build.files`);

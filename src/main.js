@@ -6,7 +6,7 @@ const http = require("http");
 const os = require("os");
 const crypto = require("crypto");
 const { TextDecoder } = require("util");
-const Store = require("electron-store").default;
+const { createAppSettingsStore } = require("./settings-store");
 const {
   SessionManager,
   normalizeSessionRestoreMode,
@@ -24,11 +24,15 @@ const {
   ensureVSCodeThemePathsFile,
   loadVSCodeTheme,
 } = require("./vscode-theme-loader");
+const { PendingUpdate } = require("./pending-update");
 const log = require("electron-log");
 const logDir = path.dirname(log.transports.file.getFile().path);
 const kuromoji = require("kuromoji");
 
-const store = new Store();
+const store = createAppSettingsStore(
+  require("electron-store"), app.getPath("userData"),
+  path.join(app.getPath("appData"), "electron-store-nodejs", "Config", "config.json"),
+);
 const watchers = new Map();
 const watcherRefCounts = new Map();
 const watcherOwnersBySender = new Map();
@@ -52,12 +56,15 @@ let autosaveReadyPromise = Promise.resolve();
 let autosaveWriteQueue = Promise.resolve();
 let vscodeThemeCatalogPromise = null;
 let sessionManager = null;
-let sessionRestoreMode = "none";
+let sessionRestoreMode = "all";
+let sessionStorageAvailable = true;
 let sessionSettingQueue = Promise.resolve();
 const sessionWindowIds = new Map();
 const sessionClosePending = new Set();
 const sessionCloseRetention = new Map();
 let appQuitRequested = false;
+let installUpdateAfterClose = false;
+const pendingUpdate = new PendingUpdate(path.join(app.getPath("userData"), "pending-update"));
 
 const WINDOW_CONTROL_OVERLAY = {
   height: 36,
@@ -124,7 +131,7 @@ function getSessionWindowId(window) {
 }
 
 function isSessionRestoreEnabled() {
-  return sessionRestoreMode !== "none";
+  return sessionRestoreMode !== "none" && sessionStorageAvailable;
 }
 
 function beginSessionWindowClose(window) {
@@ -135,7 +142,7 @@ function beginSessionWindowClose(window) {
 
   const retain = shouldRetainSessionWindowOnClose({
     windowIds: BrowserWindow.getAllWindows()
-      .filter((candidate) => !candidate.isDestroyed())
+      .filter((candidate) => !candidate.isDestroyed() && sessionWindowIds.has(candidate.id))
       .map((candidate) => candidate.id),
     pendingWindowIds: [...sessionClosePending],
     windowId: window.id,
@@ -421,13 +428,38 @@ function createNewWindow(parentWindow, position, sessionState = null) {
   return win;
 }
 
-function createNewWindowWithTab(parentWindow, tabData, position) {
-  const newWindow = createNewWindow(parentWindow, position);
-
-  // send tab data when new window is ready
-  newWindow.webContents.once("did-finish-load", () => {
-    newWindow.webContents.send("load-tab-data", tabData);
+const pendingTabTransfers = new Map();
+function deliverTab(target, payload, waitForLoad = false) {
+  if (!target || target.isDestroyed()) return Promise.resolve({ success: false, error: "The destination window is unavailable." });
+  return new Promise((resolve) => {
+    const transferId = crypto.randomUUID();
+    const finish = (result) => {
+      clearTimeout(timer);
+      target.removeListener("closed", onClosed);
+      pendingTabTransfers.delete(transferId);
+      resolve(result);
+    };
+    const onClosed = () => finish({ success: false, error: "The destination window was closed." });
+    const timer = setTimeout(() => finish({ success: false, error: "The destination window did not accept the tab." }), 30000);
+    pendingTabTransfers.set(transferId, { senderId: target.webContents.id, finish });
+    target.once("closed", onClosed);
+    const send = () => {
+      if (!pendingTabTransfers.has(transferId)) return;
+      target.webContents.send("load-tab-data", { ...payload, transferId });
+    };
+    if (waitForLoad) target.webContents.once("did-finish-load", send);
+    else send();
   });
+}
+
+ipcMain.on("tab:received", (event, transferId, result) => {
+  const pending = pendingTabTransfers.get(transferId);
+  if (pending?.senderId === event.sender.id) pending.finish(result);
+});
+
+async function createNewWindowWithTab(parentWindow, tabData, position) {
+  const newWindow = createNewWindow(parentWindow, position);
+  return deliverTab(newWindow, tabData, true);
 }
 
 function getPreferredWindow() {
@@ -443,7 +475,7 @@ function getPreferredWindow() {
 
 async function createWindowsForLaunch() {
   if (!isSessionRestoreEnabled() || !sessionManager?.hasWindows()) {
-    if (!isSessionRestoreEnabled() && sessionManager?.hasWindows()) await sessionManager.clear();
+    if (sessionRestoreMode === "none" && sessionManager?.hasWindows()) await sessionManager.clear();
     createWindow();
     return;
   }
@@ -573,6 +605,8 @@ ipcMain.handle("session:save-window", async (event, payload = {}) => {
 });
 
 ipcMain.on("session:close-aborted", (event) => {
+  appQuitRequested = false;
+  installUpdateAfterClose = false;
   const window = BrowserWindow.fromWebContents(event.sender);
   if (window) {
     sessionClosePending.delete(window.id);
@@ -652,6 +686,7 @@ ipcMain.handle("window:createNewWithTab", (event, tabData, position) => {
 });
 
 // get window id from dimention
+ipcMain.handle("window:getMyId", (event) => BrowserWindow.fromWebContents(event.sender)?.id ?? null);
 ipcMain.handle("window:getIdAt", (_, point) => {
   const win = BrowserWindow.getAllWindows().find(
     (w) =>
@@ -674,9 +709,7 @@ ipcMain.handle("isWindowMinimized", (event, windowId) => {
 // send tab to different window
 ipcMain.handle("tab:sendToWindow", (event, targetWindowId, payload) => {
   const targetWin = BrowserWindow.fromId(targetWindowId);
-  if (targetWin && !targetWin.isDestroyed()) {
-    targetWin.webContents.send("load-tab-data", payload);
-  }
+  return deliverTab(targetWin, payload);
 });
 
 ipcMain.on("tab:previewDrop", (event, payload) => {
@@ -1227,6 +1260,22 @@ ipcMain.handle("autosave:write", async (event, payload = {}) => {
       return { success: false, error: error.message, code: error.code || "AUTOSAVE_WRITE_FAILED" };
     }
   });
+});
+
+ipcMain.handle("tab:get-source-path", async (_event, payload = {}) => {
+  await autosaveReadyPromise;
+  let sourcePath = null;
+  if (payload.noteId && isSafeNoteId(payload.noteId)) {
+    const notesDir = await ensureNotesDir();
+    const index = await readNotesIndex();
+    const note = index.notes.find((entry) => entry.id === payload.noteId);
+    if (note) sourcePath = getNoteDiskPath(notesDir, note);
+  } else if (typeof payload.filePath === "string" && payload.filePath) {
+    sourcePath = path.join(getAutosaveDirs().files, `${getPathBackupId(payload.filePath)}.txt`);
+  } else if (isSafeAutosaveId(payload.draftId)) {
+    sourcePath = path.join(getAutosaveDirs().drafts, `${payload.draftId}.txt`);
+  }
+  return sourcePath && await pathExists(sourcePath) ? sourcePath : null;
 });
 
 ipcMain.handle("autosave:get-file-backup", async (event, filePath) => {
@@ -2712,13 +2761,18 @@ ipcMain.on("window:setTitleBarOverlay", (event, options = {}) => {
 });
 
 // call window close from toolbar button
-ipcMain.on("window:close", (event) => {
+ipcMain.handle("window:close", async (event) => {
   const window = BrowserWindow.fromWebContents(event.sender);
-  if (window) {
-    sessionClosePending.delete(window.id);
-    sessionCloseRetention.delete(window.id);
+  if (!window) return { success: false };
+  try {
+    if (isSessionRestoreEnabled() && sessionCloseRetention.get(window.id) !== true) {
+      await sessionManager.saveWindow(getSessionWindowId(window), { tabs: [], discardWindow: true });
+    }
+    window.destroy();
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message };
   }
-  window?.destroy();
 });
 
 // print
@@ -2836,6 +2890,17 @@ if (!gotTheLock) {
   });
 
   app.whenReady().then(async () => {
+    // Install the already downloaded update offline, before creating any editor windows.
+    if (app.isPackaged && process.platform === "win32") {
+      try {
+        if (await pendingUpdate.launch(app.getVersion(), process.resourcesPath)) {
+          app.quit();
+          return;
+        }
+      } catch (error) {
+        log.error("[update] deferred install failed; opening the editor:", error);
+      }
+    }
     // create theme folder if not exist
     const userThemesPath = path.join(app.getPath("userData"), "themes");
     if (!fs.existsSync(userThemesPath)) {
@@ -2851,7 +2916,7 @@ if (!gotTheLock) {
 
     sessionRestoreMode = normalizeSessionRestoreMode(
       store.get("sessionRestoreMode"),
-      store.get("sessionRestoreEnabled") === true,
+      store.get("sessionRestoreEnabled"),
     );
     store.set("sessionRestoreMode", sessionRestoreMode);
     store.delete("sessionRestoreEnabled");
@@ -2860,7 +2925,7 @@ if (!gotTheLock) {
       await sessionManager.initialize();
     } catch (error) {
       log.error("[session] initialization failed; starting without session restore:", error);
-      sessionRestoreMode = "none";
+      sessionStorageAvailable = false;
     }
     const launchWindow = await createWindowsForLaunchSafely();
 
@@ -2889,22 +2954,32 @@ if (!gotTheLock) {
     }
 
     if (autoUpdater) {
+      autoUpdater.autoInstallOnAppQuit = false;
+      autoUpdater.on("error", (error) => log.warn("[update]", error.message));
+      autoUpdater.on("update-downloaded", async (info) => {
+        try {
+          await pendingUpdate.stage(info, app.getVersion());
+          const owner = getPreferredWindow();
+          if (!owner) return;
+          const { response } = await dialog.showMessageBox(owner, {
+            type: "info",
+            buttons: ["Install now", "Install on next launch"],
+            defaultId: 0,
+            cancelId: 1,
+            title: "Update Ready",
+            message: "A new version is ready. Install now, or automatically before Monapad opens next time.",
+          });
+          if (response === 0) {
+            // Close through the normal save/backup flow before starting the installer.
+            installUpdateAfterClose = true;
+            app.quit();
+          }
+        } catch (error) {
+          log.error("[update] could not prepare update:", error);
+        }
+      });
       autoUpdater.checkForUpdates().catch((error) => {
         log.warn("autoUpdater check failed:", error.message);
-      });
-
-      autoUpdater.on("update-downloaded", async () => {
-        const { response } = await dialog.showMessageBox(mainWindow, {
-          type: "info",
-          buttons: ["Restart now", "Later"],
-          defaultId: 0,
-          cancelId: 1,
-          title: "Update Ready",
-          message: "A new version has been downloaded. Restart the app now to apply the update?",
-        });
-        if (response === 0) {
-          autoUpdater.quitAndInstall();
-        }
       });
     }
 
@@ -2915,6 +2990,17 @@ if (!gotTheLock) {
 
   app.on("window-all-closed", function () {
     if (process.platform !== "darwin") app.quit();
+  });
+
+  // app.quit() can skip window-all-closed. will-quit runs after every renderer has
+  // finished its save/backup flow, and must be held while the installer is started.
+  app.on("will-quit", (event) => {
+    if (!installUpdateAfterClose) return;
+    event.preventDefault();
+    installUpdateAfterClose = false;
+    pendingUpdate.launch(app.getVersion(), process.resourcesPath)
+      .catch((error) => log.error("[update] install failed; will retry on next launch:", error))
+      .finally(() => app.quit());
   });
 
   app.on("before-quit", () => {

@@ -18,6 +18,8 @@
       "src/main.js",
       "src/recovery-policy.js",
       "src/session-manager.js",
+      "src/settings-store.js",
+      "src/pending-update.js",
       "src/vscode-theme-loader.js",
       "src/preload.js",
       "src/preload-cursor.js",

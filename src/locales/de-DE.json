@@ -1,4 +1,8 @@
 {
+  "tabMove": {
+    "failed": "Der Tab konnte nicht verschoben werden. Der ursprüngliche Tab bleibt erhalten.",
+    "alreadyOpen": "Dieser Tab ist im Zielfenster bereits geöffnet."
+  },
   "file": {
     "untitled": "Unbenannt"
   },
@@ -115,6 +119,8 @@
     "markdownMode": "Markdown-Modus"
   },
   "tabMenu": {
+    "copyBackupPath": "Backup-Pfad kopieren",
+    "openBackupPath": "Backup-Pfad öffnen",
     "close": "Schließen",
     "closeOthers": "Andere schließen",
     "closeToRight": "Rechte schließen",
@@ -136,7 +142,7 @@
     "sessionRestoreOne": "Fenster wiederherstellen: Eines",
     "sessionRestoreNone": "Fenster wiederherstellen: Keine",
     "sessionRestoreAllTooltip": "Stellt alle Fenster wieder her, die am Ende der vorherigen Sitzung noch geöffnet waren. Einzeln geschlossene Fenster werden nicht wiederhergestellt.",
-    "sessionRestoreOneTooltip": "Stellt nur das Fenster wieder her, das in der vorherigen Sitzung zuletzt aktiv war.",
+    "sessionRestoreOneTooltip": "Stellt das zuletzt aktive Fenster wieder her. Andere Fenster mit ungespeicherten Änderungen werden separat wiederhergestellt, um Datenverlust zu vermeiden.",
     "sessionRestoreNoneTooltip": "Stellt die vorherige Sitzung nicht wieder her. Beim Schließen eines Fensters mit ungespeicherten Änderungen wird nach dem Speichern gefragt.",
     "highlightLine": "Aktuelle Zeile hervorheben",
     "lineNumbers": "Zeilennummern",

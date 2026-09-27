@@ -2,6 +2,7 @@ const { contextBridge, ipcRenderer, webUtils, shell } = require("electron");
 const log = require("electron-log");
 
 contextBridge.exposeInMainWorld("electronAPI", {
+  getTabSourcePath: (payload) => ipcRenderer.invoke("tab:get-source-path", payload),
   getAppVersion: () => ipcRenderer.invoke("get-app-version"),
   getAppSessionId: () => ipcRenderer.invoke("get-app-session-id"),
   getSessionWindowState: () => ipcRenderer.invoke("session:get-window-state"),
@@ -27,7 +28,15 @@ contextBridge.exposeInMainWorld("electronAPI", {
   // open tab in new window
   createNewWindowWithTab: (tabData, position) => ipcRenderer.invoke("window:createNewWithTab", tabData, position),
   // receive tab data on new window
-  onLoadTabData: (callback) => ipcRenderer.on("load-tab-data", (event, tabData) => callback(tabData)),
+  onLoadTabData: (callback) => ipcRenderer.on("load-tab-data", (_event, tabData) => {
+    Promise.resolve().then(() => callback(tabData)).then(
+      () => { if (tabData.transferId) ipcRenderer.send("tab:received", tabData.transferId, { success: true }); },
+      (error) => {
+        if (tabData.transferId) ipcRenderer.send("tab:received", tabData.transferId, { success: false, error: error.message });
+        else console.error("Failed to receive tab:", error);
+      },
+    );
+  }),
   // external tab drop preview
   onShowExternalDropIndicator: (callback) =>
     ipcRenderer.on("show-external-drop-indicator", (event, payload) => callback(payload)),
@@ -35,6 +44,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   // assign each window id
   onAssignWindowId: (callback) => ipcRenderer.on("assign-window-id", (_, id) => callback(id)),
   // get window id
+  getWindowId: () => ipcRenderer.invoke("window:getMyId"),
   getWindowIdAt: (point) => ipcRenderer.invoke("window:getIdAt", point),
   getCursorScreenPoint: () => ipcRenderer.invoke("cursor:getScreenPoint"),
   // get window bounds
@@ -98,7 +108,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   minimizeWindow: () => ipcRenderer.send("window:minimize"),
   toggleMaximizeWindow: () => ipcRenderer.send("window:toggleMaximize"),
   isWindowMaximized: () => ipcRenderer.invoke("window:isMaximized"),
-  closeWindow: () => ipcRenderer.send("window:close"),
+  closeWindow: () => ipcRenderer.invoke("window:close"),
   setTitleBarOverlay: (options) => ipcRenderer.send("window:setTitleBarOverlay", options),
 
   // printContent: (text) => ipcRenderer.send("print-content", text),

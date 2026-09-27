@@ -233,7 +233,7 @@ test("filters an automatic placeholder without disturbing meaningful tab order",
   });
 });
 
-test("selects all, one, or no windows according to the restore mode", async () => {
+test("one-window restore also recovers unsaved windows separately", async () => {
   await withManager(async (manager) => {
     await manager.saveWindow(
       "window_a1",
@@ -253,9 +253,25 @@ test("selects all, one, or no windows according to the restore mode", async () =
     );
     assert.deepEqual(
       manager.getWindowStates("one").windows.map((windowState) => windowState.id),
-      ["window_a1"],
+      ["window_a1", "window_b1"],
     );
     assert.deepEqual(manager.getWindowStates("none").windows, []);
+  });
+});
+
+test("one-window mode omits other clean windows but retains each dirty window", async () => {
+  await withManager(async (manager) => {
+    await manager.saveWindow("window_a1", {
+      tabs: [{ id: "tab_aaaa1", kind: "file", path: "clean.txt", dirty: false }],
+    });
+    await manager.saveWindow("window_b1", {
+      tabs: [{ id: "tab_bbbb1", kind: "file", path: "edited.txt", dirty: true, content: "edits" }],
+    });
+    await manager.saveWindow("window_c1", {
+      tabs: [{ id: "tab_cccc1", kind: "file", path: "active.txt", dirty: false }],
+    }, { active: true });
+    assert.deepEqual(manager.getWindowStates("one").windows.map(window => window.id), ["window_b1", "window_c1"]);
+    assert.equal(manager.getWindowStates("one").lastActiveWindowId, "window_c1");
   });
 });
 
@@ -282,15 +298,16 @@ test("pruning to one restored window prevents stale windows from returning", asy
   });
 });
 
-test("manual secondary closes are discarded while the last pending close is retained", () => {
+test("only the last actual window or an application quit retains the session", () => {
   const windowIds = [1, 2, 3];
+  assert.equal(shouldRetainSessionWindowOnClose({ windowIds: [3], windowId: 3 }), true);
   assert.equal(
     shouldRetainSessionWindowOnClose({ windowIds, pendingWindowIds: [], windowId: 1 }),
     false,
   );
   assert.equal(
     shouldRetainSessionWindowOnClose({ windowIds, pendingWindowIds: [1, 2], windowId: 3 }),
-    true,
+    false,
   );
   assert.equal(
     shouldRetainSessionWindowOnClose({
@@ -304,6 +321,7 @@ test("manual secondary closes are discarded while the last pending close is reta
 });
 
 test("normalizes current and legacy restore settings", () => {
+  assert.equal(normalizeSessionRestoreMode(undefined), "all");
   assert.equal(normalizeSessionRestoreMode("all"), "all");
   assert.equal(normalizeSessionRestoreMode("one"), "one");
   assert.equal(normalizeSessionRestoreMode("none"), "none");

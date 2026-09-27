@@ -35,8 +35,8 @@ function normalizeBounds(value) {
   return Number.isFinite(bounds.width) && Number.isFinite(bounds.height) ? bounds : null;
 }
 
-function normalizeSessionRestoreMode(value, legacyEnabled = false) {
-  return SESSION_RESTORE_MODES.has(value) ? value : legacyEnabled === true ? "all" : "none";
+function normalizeSessionRestoreMode(value, legacyEnabled) {
+  return SESSION_RESTORE_MODES.has(value) ? value : legacyEnabled === false ? "none" : "all";
 }
 
 function isEmptySessionTab(tab) {
@@ -58,8 +58,8 @@ function isDisposableSessionTab(tab, { allowLegacyEmpty = false } = {}) {
 
 function shouldRetainSessionWindowOnClose({ windowIds = [], pendingWindowIds = [], windowId, quitRequested = false }) {
   if (quitRequested) return true;
-  const pending = new Set(pendingWindowIds);
-  return !windowIds.some((id) => id !== windowId && !pending.has(id));
+  // A pending save dialog can still be cancelled: only actual window closure counts.
+  return !windowIds.some((id) => id !== windowId);
 }
 
 function validateManifest(value) {
@@ -140,7 +140,11 @@ class SessionManager {
     if (restoreMode === "none") return { windows: [], lastActiveWindowId: null };
     if (restoreMode === "one") {
       const selected = windows.find((windowState) => windowState.id === activeId) || windows.at(-1);
-      return { windows: selected ? [selected] : [], lastActiveWindowId: selected?.id || null };
+      // Like VS Code, recovery of unsaved work takes precedence over the window preference.
+      const recoverable = windows.filter((windowState) => windowState === selected || windowState.tabs.some(
+        (tab) => tab.dirty || (["draft", "pendingNote"].includes(tab.kind) && Boolean(tab.contentRef)),
+      ));
+      return { windows: recoverable, lastActiveWindowId: selected?.id || null };
     }
     return { windows, lastActiveWindowId: activeId };
   }

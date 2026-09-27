@@ -1,4 +1,8 @@
 {
+  "tabMove": {
+    "failed": "Não foi possível mover a aba. A aba original foi mantida.",
+    "alreadyOpen": "Esta aba já está aberta na janela de destino."
+  },
   "file": {
     "untitled": "Sem título"
   },
@@ -115,6 +119,8 @@
     "markdownMode": "Modo Markdown"
   },
   "tabMenu": {
+    "copyBackupPath": "Copiar caminho do backup",
+    "openBackupPath": "Abrir caminho do backup",
     "close": "Fechar",
     "closeOthers": "Fechar outras",
     "closeToRight": "Fechar à direita",
@@ -169,7 +175,7 @@
     "sessionRestoreOne": "Restaurar janelas: Uma",
     "sessionRestoreNone": "Restaurar janelas: Nenhuma",
     "sessionRestoreAllTooltip": "Restaura todas as janelas que ainda estavam abertas ao fim da sessão anterior. Janelas fechadas individualmente não são restauradas.",
-    "sessionRestoreOneTooltip": "Restaura apenas a janela que esteve ativa mais recentemente na sessão anterior.",
+    "sessionRestoreOneTooltip": "Restaura a última janela ativa. Outras janelas com alterações não salvas são recuperadas separadamente para evitar perda de dados.",
     "sessionRestoreNoneTooltip": "Não restaura a sessão anterior. Ao fechar uma janela com alterações não salvas, pergunta se deseja salvá-las.",
     "highlightLine": "Realce da linha",
     "lineNumbers": "Números de linha",

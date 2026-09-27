@@ -1,4 +1,8 @@
 {
+  "tabMove": {
+    "failed": "タブを移動できませんでした。元のタブは保持されています。",
+    "alreadyOpen": "移動先のウィンドウには既にこのタブがあります。"
+  },
   "file": {
     "untitled": "無題"
   },
@@ -115,6 +119,8 @@
     "markdownMode": "Markdownモード"
   },
   "tabMenu": {
+    "copyBackupPath": "バックアップのパスをコピー",
+    "openBackupPath": "バックアップのパスを開く",
     "close": "閉じる",
     "closeOthers": "他を閉じる",
     "closeToRight": "右側を閉じる",
@@ -136,7 +142,7 @@
     "sessionRestoreOne": "ウィンドウを復元：1つ",
     "sessionRestoreNone": "ウィンドウを復元：なし",
     "sessionRestoreAllTooltip": "前回のセッション終了時に開いていたすべてのウィンドウを復元します。個別に閉じたウィンドウは復元しません。",
-    "sessionRestoreOneTooltip": "前回のセッションで最後に使用したウィンドウだけを復元します。",
+    "sessionRestoreOneTooltip": "最後にアクティブだったウィンドウを復元します。未保存の変更がある他のウィンドウも、データを失わないよう個別に復旧します。",
     "sessionRestoreNoneTooltip": "前回のセッションを復元しません。未保存の変更があるウィンドウを閉じると、保存するか確認します。",
     "highlightLine": "現在行をハイライト",
     "lineNumbers": "行番号",

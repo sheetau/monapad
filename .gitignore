@@ -29,3 +29,5 @@ _temp_backup/
 # Local browser test artifacts
 /output/playwright/
 
+# Development notes
+docs/
