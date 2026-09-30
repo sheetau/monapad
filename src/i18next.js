@@ -71,6 +71,7 @@ export function updateStaticUiText({
   state,
   callbacks,
 }) {
+  document.querySelectorAll("[data-split-label]").forEach(el => { el.textContent = t(`split.${el.dataset.splitLabel}`); });
   setTexts(t, [
     ["#newTabBtn .label", "menu.new"],
     ["#newNoteBtn .label", "menu.newNote"],

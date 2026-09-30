@@ -1,4 +1,13 @@
 {
+  "split": {
+    "menu": "分割表示",
+    "left": "左に分割",
+    "right": "右に分割",
+    "top": "上に分割",
+    "bottom": "下に分割",
+    "clear": "分割を解除",
+    "focusOther": "もう一方のペインに移動"
+  },
   "external": {
     "diff": "差分表示",
     "exitDiff": "差分表示を終了",

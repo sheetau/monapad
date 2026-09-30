@@ -52,7 +52,7 @@ module.exports = async ({first:win,profile,phase,evaluate,until,type,menu,delay}
   await until(async()=>await wrapLines("original")===4 && await wrapLines("modified")===4,"both diff panes stop wrapping immediately");
   await q('document.querySelector("[data-action=wordWrap]").click()');
   await until(async()=>await wrapLines("original")>4 && await wrapLines("modified")>4,"both diff panes resume wrapping");
-  assert.equal(await q('document.querySelector("#editor .glyph-margin").style.width'),normalMargin);
+  assert.equal(await q('document.querySelector("#editor .glyph-margin")'),null, "hidden normal editor releases its model");
   await until(()=>q('Boolean(document.querySelector("#file-diff-view .char-insert, #file-diff-view .line-insert"))'),"diff highlights");
   await capture("diff-no-toolbar.png");
   win.setSize(700,750);
@@ -78,7 +78,9 @@ module.exports = async ({first:win,profile,phase,evaluate,until,type,menu,delay}
   await action("mergeChanges");assert.equal((await content(merged)).dirty,true); await noDialog();
   assert.equal(fs.readFileSync(file,"utf8"),"\ufeff"+disk);
   await menu(win);assert.equal(await q('document.querySelector("[data-action=mergeChanges]").disabled'),true);
-  await action("diffView");await key("z",["control"]);await content(local);await key("y",["control"]);await content(merged);
+  await action("diffView");
+  assert.equal(await until(()=>q('document.querySelector("#editor .glyph-margin")?.style.width'), "normal gutter restored"), normalMargin);
+  await key("z",["control"]);await content(local);await key("y",["control"]);await content(merged);
   const backup=await q(`window.electronAPI.getFileAutosaveBackup(${JSON.stringify(file)})`);assert.equal(backup.meta.mergeBaseContent,disk);
   const trash=path.join(profile,"autosave","trash-current");assert.ok(fs.readdirSync(trash).some(f=>f.endsWith(".txt")&&fs.readFileSync(path.join(trash,f),"utf8")===local));
   const overlap=`EXTERNAL alpha\r\n${longLine}\r\ngamma\r\nDISK delta`;

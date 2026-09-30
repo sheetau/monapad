@@ -18,6 +18,7 @@
       "src/main.js",
       "src/recovery-policy.js",
       "src/session-manager.js",
+      "src/split-view.js",
       "src/settings-store.js",
       "src/pending-update.js",
       "src/vscode-theme-loader.js",

@@ -56,7 +56,7 @@ module.exports = async ({ first: win, profile, evaluate, until, type, menu, dela
   }
   async function checkBorder() {
     assert.equal(await q(`(() => {
-      const pane = document.querySelector('#file-diff-view').getBoundingClientRect();
+      const pane = document.querySelector('#editor-area').getBoundingClientRect();
       const tab = document.querySelector('.tab.active').getBoundingClientRect();
       return Boolean(document.elementFromPoint((tab.left + tab.right) / 2, pane.top + .25)?.closest('.tab.active'));
     })()`), true, "active tab covers the editor's top border");
@@ -76,6 +76,7 @@ module.exports = async ({ first: win, profile, evaluate, until, type, menu, dela
     const number = document.querySelector('#editor .line-numbers').getBoundingClientRect();
     return margin.right - number.right;
   })()`), 26, 'normal editor reserves 26px after line numbers for folding');
+  const normalNumberFont = await q('getComputedStyle(document.querySelector("#editor .line-numbers")).fontFamily');
   await menu(win);
   await until(() => q('!document.querySelector("[data-action=diffView]").disabled'), "comparison available");
   await q('document.querySelector("[data-action=diffView]").click()');
@@ -83,7 +84,7 @@ module.exports = async ({ first: win, profile, evaluate, until, type, menu, dela
   await until(() => q('document.querySelector("#file-diff-view")?.hidden === false'), "comparison visible");
   await key("End");
   await until(() => q('Array.from(document.querySelectorAll("#file-diff-view .modified .line-numbers")).some(n => n.textContent === "1100")'), "four digit numbers visible");
-  assert.equal(await q('getComputedStyle(document.querySelector("#file-diff-view .line-numbers")).fontFamily === getComputedStyle(document.querySelector("#editor .line-numbers")).fontFamily'),true,"keep the normal line-number font");
+  assert.equal(await q('getComputedStyle(document.querySelector("#file-diff-view .line-numbers")).fontFamily'),normalNumberFont,"keep the normal line-number font");
   await checkNumbers(); await checkBorder(); await capture("diff-inline-four-digits.png");
   await key("Home");
   await until(async () => (await numbers()).some(n => n.number === 1), "short numbers visible");

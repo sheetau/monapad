@@ -1,4 +1,13 @@
 {
+  "split": {
+    "menu": "Geteilte Ansicht",
+    "left": "Nach links teilen",
+    "right": "Nach rechts teilen",
+    "top": "Nach oben teilen",
+    "bottom": "Nach unten teilen",
+    "clear": "Geteilte Ansicht schließen",
+    "focusOther": "Anderen Bereich fokussieren"
+  },
   "external": {
     "diff": "Diff-Ansicht",
     "exitDiff": "Diff-Ansicht schließen",

@@ -303,14 +303,14 @@
         display: none !important;
       } */
       .monaco-hover.workbench-hover {
-        bottom: -33px !important;
-        transform: translateX(calc(var(--editor-line-number-offset) + var(--editor-side-panel-offset))) !important;
+        bottom: auto !important;
+        transform: none !important;
       }
       /* tooltip arrow */
       .workbench-hover-pointer {
         display: none !important;
-        margin-bottom: -33px !important;
-        transform: translateX(calc(var(--editor-line-number-offset) + var(--editor-side-panel-offset))) !important;
+        margin-bottom: auto !important;
+        transform: none !important;
       }
 
       line,
@@ -464,6 +464,7 @@
       #menu,
       #custom-context-menu,
       #tab-context-menu,
+      #tab-split-menu,
       #note-context-menu,
       #theme-menu,
       #recent-menu,
@@ -537,12 +538,14 @@
         display: none;
         opacity: 1;
       }
-      #theme-menu button .checkmark {
+      #theme-menu button .checkmark,
+      #tab-split-menu button .checkmark {
         display: inline-flex;
         opacity: 0;
         margin-left: 20px;
       }
-      #theme-menu button.active .checkmark {
+      #theme-menu button.active .checkmark,
+      #tab-split-menu button.active .checkmark {
         opacity: 1;
       }
       .menu-chevron,
@@ -777,7 +780,8 @@
         pointer-events: none;
       }
       /* tab with reload button */
-      .tab.has-reload-button {
+      .tab.has-reload-button,
+      .tab.has-split-button {
         padding-left: 0;
       }
       .tab-content {
@@ -790,7 +794,8 @@
         height: 100%;
         padding: 0 10px;
       }
-      .tab.has-reload-button .tab-content {
+      .tab.has-reload-button .tab-content,
+      .tab.has-split-button .tab-content {
         padding-left: 10px;
       }
 
@@ -980,7 +985,8 @@
         color: var(--highlight);
         opacity: 1;
       }
-      .tab.has-reload-button .file-icon {
+      .tab.has-reload-button .file-icon,
+      .tab.has-split-button .file-icon {
         margin-left: -5px;
       }
       #tabs:not(.compact) .tab:hover .name-wrap,
@@ -1012,7 +1018,8 @@
         opacity: 1;
       }
       /* reload button */
-      .tab .reload-button {
+      .tab .reload-button,
+      .tab .split-button {
         opacity: 1;
         flex: 0 0 20px;
         width: 20px;
@@ -1031,13 +1038,16 @@
         transform: translateX(-5px);
         color: var(--highlight);
       }
-      .tab .reload-button:hover {
+      .tab .reload-button:hover,
+      .tab .split-button:hover {
         background: var(--color3);
       }
-      .tab:not(.active) .reload-button {
+      .tab:not(.active) .reload-button,
+      .tab:not(.active) .split-button {
         opacity: 0.5;
       }
-      .tab:not(.active):hover .reload-button {
+      .tab:not(.active):hover .reload-button,
+      .tab:not(.active):hover .split-button {
         opacity: 1;
       }
 
@@ -1078,32 +1088,64 @@
       #editor:focus {
         outline: none;
       }
-      #editor {
+      #editor-area {
         flex: 1;
+        min-height: 0;
+        min-width: 0;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
+        grid-template-rows: minmax(0, 1fr);
         box-sizing: border-box;
-        background: var(--color1);
-        color: var(--editorText);
-        border: none;
-        resize: none;
         margin-top: calc(var(--toolbar-height) + var(--window-top-safe-area));
         border-top: 1px solid var(--color3);
+        background: var(--color3);
         transition: margin-left 180ms ease;
       }
-      #editor::before {
-        content: "";
-        position: fixed;
-        top: calc(var(--toolbar-height) + var(--window-top-safe-area));
-        bottom: 0;
-        left: var(--editor-side-panel-offset);
-        width: var(--editor-line-number-offset);
-        background: var(--editor-gutter-background);
-        border-top: 1px solid var(--color3);
-        box-sizing: border-box;
-        pointer-events: none;
-        transition: left 180ms ease;
+      #editor-area[data-split="left"],
+      #editor-area[data-split="right"] {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        column-gap: 1px;
       }
-      body.status-bar-visible #editor::before {
-        bottom: var(--status-bar-height);
+      #editor-area[data-split="top"],
+      #editor-area[data-split="bottom"] {
+        grid-template-rows: repeat(2, minmax(0, 1fr));
+        row-gap: 1px;
+      }
+      #editor-area[data-split="left"] > [data-pane="split"],
+      #editor-area[data-split="top"] > [data-pane="split"] {
+        order: -1;
+      }
+      .editor-pane {
+        position: relative;
+        min-width: 0;
+        min-height: 0;
+        overflow: hidden;
+        background: var(--editor-gutter-background);
+      }
+      .editor-pane[hidden],
+      .file-diff-host[hidden] {
+        display: none;
+      }
+      .editor-surface {
+        height: 100%;
+        width: calc(100% - var(--editor-line-number-offset));
+        margin-left: var(--editor-line-number-offset);
+        background: var(--color1);
+        color: var(--editorText);
+        outline: none;
+      }
+      .editor-pane.showing-diff > .editor-surface {
+        visibility: hidden;
+      }
+      /* Keep command/quick-open labels readable even in a narrow split pane. */
+      #editor-area:not([data-split=""]) .quick-input-widget {
+        position: fixed !important;
+        top: calc(var(--toolbar-height) + var(--window-top-safe-area) + 6px) !important;
+        left: calc(50% + var(--editor-side-panel-offset) / 2) !important;
+        width: min(600px, calc(100vw - var(--editor-side-panel-offset) - 32px)) !important;
+        margin-left: 0 !important;
+        transform: translateX(-50%);
+        z-index: 1000;
       }
 
       /* read-only file comparison */
@@ -1111,13 +1153,13 @@
         box-shadow: none !important;
       }
       .file-diff-host {
-        position: fixed;
+        position: absolute;
+        inset: 0;
         z-index: 0;
         display: flex;
         flex-direction: column;
         box-sizing: border-box;
         padding-left: 20px; /* Diff line numbers stay visible regardless of the editor setting. */
-        border-top: 1px solid var(--color3);
         background: var(--editor-gutter-background);
         color: var(--editorText);
       }
@@ -1128,8 +1170,8 @@
         background: var(--color1);
       }
 
-      #file-diff-view .insert-sign,
-      #file-diff-view .delete-sign {
+      .file-diff-host .insert-sign,
+      .file-diff-host .delete-sign {
         justify-content: center;
       }
 
@@ -1642,6 +1684,7 @@
       /* context menus */
       #custom-context-menu.menu,
       #tab-context-menu.menu,
+      #tab-split-menu.menu,
       #note-context-menu.menu {
         overflow-y: auto;
         max-height: calc(100vh - 12.5px - 35px);
@@ -1660,6 +1703,21 @@
       #tab-context-menu.menu {
         width: 240px;
       }
+      #tab-split-menu.menu {
+        position: fixed;
+        width: max-content;
+        min-width: 240px;
+        max-width: calc(100vw - 10px);
+      }
+      #tab-split-menu .label {
+        margin-right: 20px;
+      }
+      #tab-split-menu .shortcut {
+        margin-left: auto;
+      }
+      #tab-split-menu button {
+        white-space: nowrap;
+      }
       #note-context-menu.menu {
         width: fit-content;
         min-width: 130px;
@@ -1668,6 +1726,7 @@
       #tab-context-menu button,
       #note-context-menu button {
         display: flex;
+        align-items: center;
         flex: 0 0 26px;
         position: relative;
         background: none;
@@ -1782,8 +1841,7 @@
       body.side-panel-resizing #side-panel,
       body.side-panel-resizing #toolbar,
       body.side-panel-resizing #tabs-container,
-      body.side-panel-resizing #editor,
-      body.side-panel-resizing #editor::before {
+      body.side-panel-resizing #editor-area {
         transition: none !important;
       }
       body.side-panel-resizing {
@@ -3221,7 +3279,9 @@
       </div>
 
       <!-- editor -->
-      <div id="editor"></div>
+      <div id="editor-area">
+        <section class="editor-pane"><div id="editor" class="editor-surface"></div></section>
+      </div>
 
       <!-- status bar -->
       <div id="status-bar" style="display: none">
@@ -3324,7 +3384,9 @@
           <span class="label">Close to the Right</span>
         </button>
         <div class="hr"></div>
-        <button data-action="diffView"><span class="label">Diff View</span><span class="shortcut">Ctrl + Alt + D</span></button>
+        <button data-action="diffView">
+          <span class="label">Diff View</span><span class="shortcut">Ctrl + Alt + D</span>
+        </button>
         <button data-action="mergeChanges"><span class="label">Merge Changes</span></button>
         <button data-action="reloadDisk"><span class="label">Reload from Disk</span></button>
         <div class="hr"></div>
@@ -3349,6 +3411,32 @@
           <span class="label">Pin</span>
           <span class="shortcut">Ctrl + K, Shift + Enter</span>
         </button>
+        <div class="hr"></div>
+        <button data-action="openSplitMenu" aria-haspopup="menu" aria-expanded="false" aria-controls="tab-split-menu">
+          <span class="label" data-split-label="menu">Split View</span>
+          <span class="menu-chevron codicon codicon-chevron-right"></span>
+        </button>
+        <button data-action="clearSplit" class="disabled" disabled>
+          <span class="label" data-split-label="clear">Close Split View</span>
+        </button>
+        <div id="tab-split-menu" class="menu scrollable" role="menu" style="display: none">
+          <button data-action="splitView" data-split-side="top" role="menuitemradio" aria-checked="false">
+            <span class="label" data-split-label="top">Split Up</span><span class="shortcut">Ctrl + K, Ctrl + \</span
+            ><span class="checkmark codicon codicon-check"></span>
+          </button>
+          <button data-action="splitView" data-split-side="bottom" role="menuitemradio" aria-checked="false">
+            <span class="label" data-split-label="bottom">Split Down</span
+            ><span class="checkmark codicon codicon-check"></span>
+          </button>
+          <button data-action="splitView" data-split-side="left" role="menuitemradio" aria-checked="false">
+            <span class="label" data-split-label="left">Split Left</span
+            ><span class="checkmark codicon codicon-check"></span>
+          </button>
+          <button data-action="splitView" data-split-side="right" role="menuitemradio" aria-checked="false">
+            <span class="label" data-split-label="right">Split Right</span><span class="shortcut">Ctrl + \</span
+            ><span class="checkmark codicon codicon-check"></span>
+          </button>
+        </div>
         <div class="hr"></div>
         <button data-action="reopenClosedTab" class="disabled">
           <span class="label">Reopen Closed Tab</span>

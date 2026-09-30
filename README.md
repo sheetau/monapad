@@ -15,6 +15,7 @@ With the same core editor used in VSCode and its own language designed for text 
 
 - A clean, modern interface for distraction-free writing.
 - Smooth and responsive tab management, just like Chromium browser experience.
+- Split the editor equally to the left, right, top or bottom from a tab's **Split View** menu. One tab stays fixed while other tabs open in the remaining pane; select **Close Split View** to return to the active document. Comparisons use inline diffs while split, and the layout is included in session restoration.
 - Supports many of the same keyboard shortcuts and functionalities as VSCode.
 - Its own language and syntax highlighting includes:
   - Lines starting with `#`, `##`, and `###` are highlighted and can be folded by heading level.

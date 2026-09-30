@@ -1,4 +1,13 @@
 {
+  "split": {
+    "menu": "拆分视图",
+    "left": "向左拆分",
+    "right": "向右拆分",
+    "top": "向上拆分",
+    "bottom": "向下拆分",
+    "clear": "关闭拆分视图",
+    "focusOther": "聚焦另一窗格"
+  },
   "external": {
     "diff": "差异视图",
     "exitDiff": "退出差异视图",

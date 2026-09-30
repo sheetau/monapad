@@ -1,4 +1,5 @@
 const crypto = require("crypto");
+const { normalizeSplitLayout } = require("./split-view");
 const fs = require("fs");
 const path = require("path");
 const {
@@ -247,10 +248,13 @@ class SessionManager {
         typeof payload.activeTabId === "string" && tabs.some((tab) => tab.id === payload.activeTabId)
           ? payload.activeTabId
           : tabs[0]?.id || null,
+      editorLayout: normalizeSplitLayout(payload.editorLayout, tabs, payload.activeTabId),
       tabs,
       closedAt: payload.closing ? Date.now() : null,
       updatedAt: Date.now(),
     };
+
+    if (![windowState.editorLayout.primaryTabId, windowState.editorLayout.split?.tabId].includes(windowState.activeTabId)) windowState.activeTabId = windowState.editorLayout.primaryTabId;
 
     if (existingIndex === -1) next.windows.push(windowState);
     else next.windows[existingIndex] = windowState;

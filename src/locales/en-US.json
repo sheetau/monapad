@@ -1,4 +1,13 @@
 {
+  "split": {
+    "menu": "Split View",
+    "left": "Split Left",
+    "right": "Split Right",
+    "top": "Split Up",
+    "bottom": "Split Down",
+    "clear": "Close Split View",
+    "focusOther": "Focus Other Pane"
+  },
   "external": {
     "diff": "Diff View",
     "exitDiff": "Exit Diff View",

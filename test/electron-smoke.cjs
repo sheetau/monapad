@@ -81,7 +81,9 @@ async function until(predicate, label) {
   }
   throw new Error(`Timed out: ${label}`);
 }
-const evaluate = (win, expression) => win.webContents.executeJavaScript(expression, true);
+const evaluate = (win, expression) => win.webContents.executeJavaScript(expression, true).catch(error => {
+  throw new Error(`Renderer expression failed: ${expression}`, { cause: error });
+});
 async function ready(win) {
   await until(() => !win.webContents.isLoading(), "window loaded");
   await until(() => evaluate(win, 'Boolean(document.querySelector(".monaco-editor textarea") && window.electronAPI)'), "editor initialized");
@@ -129,6 +131,11 @@ ipcMain.handle = registerHandler;
     app.once("will-quit", () => pass());
     app.quit();
     return;
+  }
+  if (["split", "split-restore", "split-edges", "split-audit", "split-followup"].includes(process.env.MONAPAD_SMOKE_PHASE)) {
+    await require("./electron-split-checks.cjs")({ first, profile, phase: process.env.MONAPAD_SMOKE_PHASE, evaluate, until, delay, ready,
+      expectMoveFailure: () => { expectedMoveFailure = true; }, moveFailures: () => moveFailureCount });
+    assert.deepEqual(failures, []); pass(); return;
   }
   if (process.env.MONAPAD_SMOKE_PHASE === "transfer") {
     await require("./electron-transfer-checks.cjs")({ first, profile, evaluate, until, ready, type, menu, delay,

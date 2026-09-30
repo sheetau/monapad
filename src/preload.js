@@ -83,6 +83,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   getAutosaveTrashPreviousPath: () => ipcRenderer.invoke("autosave:get-trash-previous-path"),
   createNote: (payload) => ipcRenderer.invoke("notes:create", payload),
   writeNote: (payload) => ipcRenderer.invoke("notes:write", payload),
+  onNoteChanged: callback => ipcRenderer.on("notes:changed", (_event, info) => callback(info)),
   readNote: (noteId) => ipcRenderer.invoke("notes:read", noteId),
   deleteNote: (noteId) => ipcRenderer.invoke("notes:delete", noteId),
   trashNote: (noteId) => ipcRenderer.invoke("notes:trash", noteId),

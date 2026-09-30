@@ -1,4 +1,13 @@
 {
+  "split": {
+    "menu": "Exibição dividida",
+    "left": "Dividir à esquerda",
+    "right": "Dividir à direita",
+    "top": "Dividir acima",
+    "bottom": "Dividir abaixo",
+    "clear": "Fechar exibição dividida",
+    "focusOther": "Focar no outro painel"
+  },
   "external": {
     "diff": "Visualizar diferenças",
     "exitDiff": "Sair da visualização de diferenças",

@@ -5,10 +5,15 @@ const path = require("node:path");
 module.exports = async ({ first: win, profile, evaluate, until, type, menu, delay }) => {
   const q = expression => evaluate(win, expression);
   const base = Array.from({length: 4000}, (_, i) => `${i + 1}: ${"a wrapped comparison line ".repeat(5)}`).join("\n");
-  const viewport = () => q(`['original','modified'].map(side => {
+  const viewport = async () => {
+    // Hidden Electron windows can leave the original gutter's DOM one paint
+    // behind its scroll state. Compare painted positions on both sides.
+    await win.webContents.capturePage(undefined, { stayHidden: true, stayAwake: true });
+    return q(`['original','modified'].map(side => {
     const n = document.querySelector('#file-diff-view .' + side + ' .margin-view-overlays .line-numbers');
     return {line:n?.textContent,top:n?.getBoundingClientRect().top};
   })`);
+  };
   async function action(name) {
     await menu(win);
     await until(() => q(`!document.querySelector('[data-action="${name}"]').disabled`), name);

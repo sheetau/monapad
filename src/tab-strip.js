@@ -455,7 +455,9 @@ export function createTabStripController({
   }
 
   function observeTabsResize() {
-    const tabsResizeObserver = new ResizeObserver(() => {
+    let resizeFrame = null;
+    const updateSize = () => {
+      resizeFrame = null;
       if (!tabs.isConnected) return;
       const availableWidth = getAvailableWidthForTabs({ ignoreClosingMode: true });
       if (lastObservedAvailableWidth === null) {
@@ -470,6 +472,9 @@ export function createTabStripController({
       }
       tabClosingModeAvailableWidth = null;
       layoutTabs({ animate: false });
+    };
+    const tabsResizeObserver = new ResizeObserver(() => {
+      if (resizeFrame === null) resizeFrame = requestAnimationFrame(updateSize);
     });
     tabsResizeObserver.observe(tabsContainer);
     return tabsResizeObserver;

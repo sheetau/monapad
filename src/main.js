@@ -1742,6 +1742,11 @@ ipcMain.handle("notes:write", async (event, payload = {}) => {
     await fs.promises.mkdir(path.dirname(notePath), { recursive: true });
     await fs.promises.writeFile(notePath, content, "utf8");
     const meta = await upsertNoteIndexEntry(payload.noteId, content, { title: payload.title, folderPath });
+    for (const window of BrowserWindow.getAllWindows()) {
+      if (window.webContents.id !== event.sender.id && !window.webContents.isDestroyed()) {
+        window.webContents.send("notes:changed", { noteId: payload.noteId });
+      }
+    }
     return { success: true, id: payload.noteId, path: notePath, meta };
   } catch (error) {
     return { success: false, error: error.message };

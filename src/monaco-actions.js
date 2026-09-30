@@ -1,10 +1,10 @@
-let formattingActionDisposables = [];
-let quickInputActionDisposables = [];
+const formattingRegistrations = new WeakMap();
+const quickInputRegistrations = new WeakMap();
 let diffViewActionDisposable;
 
 // Standalone Monaco's global addEditorAction does not add palette entries.
 // Register on each editor, including cached and newly created DiffEditor panes.
-export function registerMonacoDiffViewAction({ monaco, t, toggleDiffView }) {
+export function registerMonacoDiffViewAction({ monaco, t, toggleDiffView, focusOtherPane, clearSplitView, splitView }) {
   diffViewActionDisposable?.dispose();
   const registrations = new Map();
   let disposed = false;
@@ -16,7 +16,16 @@ export function registerMonacoDiffViewAction({ monaco, t, toggleDiffView }) {
       keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyMod.Alt | monaco.KeyCode.KeyD],
       run: toggleDiffView,
     });
-    const cleanup = () => { action.dispose(); listener.dispose(); registrations.delete(editor); };
+    const paneActions = [["focusOtherPane", "focusOther", focusOtherPane], ["clearSplit", "clear", clearSplitView]]
+      .map(([id, key, run]) => editor.addAction({ id: `monapad.${id}`, label: t(`split.${key}`), run }));
+    for (const [side, keybinding] of [
+      ["top", monaco.KeyMod.chord(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyK, monaco.KeyMod.CtrlCmd | monaco.KeyCode.Backslash)],
+      ["bottom", null], ["left", null], ["right", monaco.KeyMod.CtrlCmd | monaco.KeyCode.Backslash],
+    ]) paneActions.push(editor.addAction({
+      id: `monapad.split.${side}`, label: t(`split.${side}`),
+      keybindings: keybinding ? [keybinding] : [], run: source => splitView(source, side),
+    }));
+    const cleanup = () => { action.dispose(); paneActions.forEach(item => item.dispose()); listener.dispose(); registrations.delete(editor); };
     const listener = editor.onDidDispose(cleanup);
     registrations.set(editor, cleanup);
   };
@@ -101,7 +110,9 @@ export function registerMonacoFormattingActions({
   toggleWordWrap,
 }) {
   if (!monacoEditor) return;
-  disposeMonacoActions(formattingActionDisposables);
+  disposeMonacoActions(formattingRegistrations.get(monacoEditor) || []);
+  const formattingActionDisposables = [];
+  formattingRegistrations.set(monacoEditor, formattingActionDisposables);
 
   formattingActionDisposables.push(
     monacoEditor.addAction({
@@ -221,7 +232,9 @@ export function registerMonacoFormattingActions({
 
 export function registerMonacoQuickInputActions({ monaco, monacoEditor, t, openQuickOpenPicker, triggerShowCommands }) {
   if (!monacoEditor) return;
-  disposeMonacoActions(quickInputActionDisposables);
+  disposeMonacoActions(quickInputRegistrations.get(monacoEditor) || []);
+  const quickInputActionDisposables = [];
+  quickInputRegistrations.set(monacoEditor, quickInputActionDisposables);
 
   quickInputActionDisposables.push(
     monacoEditor.addAction({

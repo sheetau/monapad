@@ -1,4 +1,7 @@
 import * as monaco from "monaco-editor";
+import { createEditorPanes } from "./editor-panes.js";
+import { normalizeSplitLayout, transitionSplitLayout } from "./split-view.js";
+import { installEditorBehavior } from "./editor-behavior.js";
 import { StandaloneServices } from "monaco-editor/esm/vs/editor/standalone/browser/standaloneServices.js";
 import { INotificationService } from "monaco-editor/esm/vs/platform/notification/common/notification.js";
 import { IQuickInputService } from "monaco-editor/esm/vs/platform/quickinput/common/quickInput.js";
@@ -45,6 +48,7 @@ const tabs = document.getElementById("tabs");
 const dropIndicator = document.getElementById("drop-indicator");
 const windowControls = document.getElementById("window-controls");
 const editor = document.getElementById("editor");
+const editorArea = document.getElementById("editor-area");
 const addTabButton = document.getElementById("add-tab");
 const menuButton = document.getElementById("menu-button");
 const menu = document.getElementById("menu");
@@ -93,8 +97,6 @@ let scrollLocked = false; // focusin procss ongoing or not
 let scrollAdjustQueue = []; // what scroll adjusting process to run after preventing focus() auto scroll
 
 // font size
-let wheelListener = null;
-let wheelListenerElement = null;
 const fontSizeValue = document.getElementById("font-size-value");
 const fontSizeDecrease = document.getElementById("font-size-decrease");
 const fontSizeIncrease = document.getElementById("font-size-increase");
@@ -217,6 +219,11 @@ const settings = { ...defaultSettings, ...storedSettings };
 let selectedFontFamily = localStorage.getItem("selectedFontFamily") || "Iosevka";
 let monacoEditor = null;
 let externalChanges = null;
+let editorPanes = null;
+let splitLayout = { primaryTabId: null, split: null };
+let tabActivationHistory = [];
+const editorBehaviors = new Map();
+let editorMenuTarget = null;
 const WRAP_MEASURE_OPTIONS = {
   wrappingStrategy: "advanced",
   disableMonospaceOptimizations: true,
@@ -300,15 +307,16 @@ const {
 } = tabStrip;
 tabStrip.observeTabsResize();
 
-// watch only active tab, remove old watcher when tab switched (switchTab)
-let currentWatchedFilePath = null;
+// Keep both displayed file tabs watched, including the inactive pane.
+let currentWatchedFilePaths = new Set();
 // watch css file used as current theme
 let currentWatchedCssFile = null;
 
 function releaseWatchedFileForTab(tab) {
-  if (!tab?.path || currentWatchedFilePath !== tab.path) return;
-  window.electronAPI.unwatchFile(currentWatchedFilePath);
-  currentWatchedFilePath = null;
+  if (!tab?.path || !currentWatchedFilePaths.has(tab.path)) return;
+  if (editorPanes?.panes.some(p => p.tab && p.tab !== tab && p.tab.path === tab.path)) return;
+  window.electronAPI.unwatchFile(tab.path);
+  currentWatchedFilePaths.delete(tab.path);
 }
 
 // get window id
@@ -908,7 +916,9 @@ function createCustomTheme() {
 monaco.editor.defineTheme("custom-theme", createCustomTheme());
 
 installLineNumberLayout(monaco);
-monacoEditor = monaco.editor.create(editor, {
+function createNormalEditor(host) {
+  return monaco.editor.create(host, {
+  model: null,
   language: "monapad",
   wordWrap: "on",
   ...WRAP_MEASURE_OPTIONS,
@@ -916,9 +926,9 @@ monacoEditor = monaco.editor.create(editor, {
   renderLineHighlight: settings.lineHighlight ? "line" : "none",
   lineNumbers: settings.lineNumbers ? "on" : "off",
   lineNumbersMinChars: 1,
-  automaticLayout: true,
+  automaticLayout: false,
   scrollBeyondLastLine: false,
-  padding: { top: 12, bottom: editor.clientHeight / 2 },
+  padding: { top: 12, bottom: host.clientHeight / 2 },
   occurrencesHighlight: false,
   stickyScroll: { enabled: false },
   quickSuggestions: false,
@@ -946,18 +956,27 @@ monacoEditor = monaco.editor.create(editor, {
   foldingStrategy: "auto",
   copyWithSyntaxHighlighting: false,
   cursorSmoothCaretAnimation: false,
-});
+  });
+}
+monacoEditor = createNormalEditor(editor);
 
 externalChanges = createExternalChangesController({
-  monaco, editor: monacoEditor, host: editor,
+  monaco,
+  panes: () => editorPanes?.panes || [],
+  split: () => Boolean(splitLayout.split),
+  activate: activateTab,
+  selectionChanged: updateStatusBar,
+  focusOtherPane, clearSplitView,
+  viewChanged: scheduleSessionSnapshot,
+  reconcile: () => applySplitLayout(),
   t: (key, options) => i18next.t(key, options),
   currentTab: () => currentTab, switchTab,
   isDirty: tabHasUnsavedContent,
   reportError: (message, detail) => window.electronAPI.showMessageBox({ type: "error", buttons: ["OK"], title: "Monapad", message, detail }),
   readFile: readFileWithEncodingInfo,
   editorOptions: tab => ({ fontSize: tab.fontSize || persistentFontSize,
-    fontFamily: String(monacoEditor.getOption(monaco.editor.EditorOption.fontFamily)),
-    fontLigatures: monacoEditor.getOption(monaco.editor.EditorOption.fontLigatures),
+    fontFamily: String(editorPanes?.panes[0].editor.getOption(monaco.editor.EditorOption.fontFamily) || selectedFontFamily),
+    fontLigatures: editorPanes?.panes[0].editor.getOption(monaco.editor.EditorOption.fontLigatures) ?? true,
     wordWrap: tab.wordWrap === false ? "off" : "on", ...WRAP_MEASURE_OPTIONS,
     scrollbar: { horizontal: tab.wordWrap === false ? "auto" : "hidden" }, tabSize }),
   checkpoint: async tab => {
@@ -1061,281 +1080,14 @@ function localizeMonacoStatusMessage(message) {
   return text;
 }
 
-// Japanese word handling
-let setKuromojiEnabled = () => {};
+function setKuromojiEnabled(value) {
+  for (const behavior of editorBehaviors.values()) behavior.setKuromojiEnabled(value);
+}
 
-(function setupJapaneseWordHandling() {
-  // fallback based on character category
-  function getCharCategory(ch) {
-    if (!ch) return null;
-    const cp = ch.codePointAt(0);
-    if ((cp >= 0x30 && cp <= 0x39) || (cp >= 0x41 && cp <= 0x5a) || (cp >= 0x61 && cp <= 0x7a)) return "ascii_alnum";
-    if (cp === 0x20 || cp === 0x09) return "space";
-    if (cp >= 0x21 && cp <= 0x7e) return "ascii_symbol_" + cp;
-    if (cp >= 0x3041 && cp <= 0x309f) return "hiragana";
-    if ((cp >= 0x30a0 && cp <= 0x30ff) || cp === 0xff70 || (cp >= 0xff65 && cp <= 0xff9f)) return "katakana";
-    if (
-      (cp >= 0x4e00 && cp <= 0x9fff) ||
-      (cp >= 0x3400 && cp <= 0x4dbf) ||
-      (cp >= 0xf900 && cp <= 0xfaff) ||
-      (cp >= 0x20000 && cp <= 0x2a6df)
-    )
-      return "kanji";
-    if (
-      (cp >= 0x3000 && cp <= 0x303f) ||
-      (cp >= 0xff01 && cp <= 0xff0f) ||
-      (cp >= 0xff1a && cp <= 0xff20) ||
-      (cp >= 0xff3b && cp <= 0xff40) ||
-      (cp >= 0xff5b && cp <= 0xff65)
-    )
-      return "jp_punct_" + cp;
-    if (cp >= 0xff10 && cp <= 0xff19) return "fw_digit";
-    if (cp >= 0xff21 && cp <= 0xff3a) return "fw_upper";
-    if (cp >= 0xff41 && cp <= 0xff5a) return "fw_lower";
-    return "other_" + cp;
-  }
-
-  function isSingleCharCategory(cat) {
-    return cat && (cat.startsWith("ascii_symbol_") || cat.startsWith("jp_punct_") || cat === "space");
-  }
-
-  function getWordRangeFallback(lineText, col0) {
-    const len = lineText.length;
-    if (len === 0) return { start: 0, end: 0 };
-    const c = Math.min(col0, len - 1);
-    const pivotCat = getCharCategory(lineText[c]);
-    if (isSingleCharCategory(pivotCat)) return { start: c, end: c + 1 };
-    let start = c;
-    while (start > 0 && getCharCategory(lineText[start - 1]) === pivotCat) start--;
-    let end = c + 1;
-    while (end < len && getCharCategory(lineText[end]) === pivotCat) end++;
-    return { start, end };
-  }
-
-  // kuromoji tokenization with caching, token boundaries only
-  let tokenCache = { text: null, boundaries: null };
-
-  let kuromojiEnabled = settings.kuromojiEnabled;
-
-  setKuromojiEnabled = (val) => {
-    kuromojiEnabled = val;
-    tokenCache = { text: null, boundaries: null };
-  };
-
-  async function getBoundaries(lineText) {
-    if (!kuromojiEnabled) return null;
-    if (tokenCache.text === lineText) return tokenCache.boundaries;
-    const tokens = await window.electronAPI.tokenize(lineText);
-    if (!tokens) return null;
-    const boundaries = [];
-    let pos = 0;
-    for (const surface of tokens) {
-      boundaries.push(pos);
-      pos += surface.length;
-    }
-    boundaries.push(pos);
-    tokenCache = { text: lineText, boundaries };
-    return boundaries;
-  }
-
-  function findTokenRange(boundaries, col0) {
-    for (let i = 0; i < boundaries.length - 1; i++) {
-      if (col0 >= boundaries[i] && col0 < boundaries[i + 1]) {
-        return { start: boundaries[i], end: boundaries[i + 1] };
-      }
-    }
-    const last = boundaries[boundaries.length - 1];
-    return { start: last, end: last };
-  }
-
-  function nextBoundary(boundaries, col0) {
-    for (const b of boundaries) {
-      if (b > col0) return b;
-    }
-    return boundaries[boundaries.length - 1];
-  }
-
-  function prevBoundary(boundaries, col0) {
-    let prev = 0;
-    for (const b of boundaries) {
-      if (b >= col0) return prev;
-      prev = b;
-    }
-    return prev;
-  }
-
-  // public API
-  async function getWordRange(lineText, col0) {
-    const boundaries = await getBoundaries(lineText);
-    if (!boundaries) return getWordRangeFallback(lineText, col0);
-    return findTokenRange(boundaries, col0);
-  }
-
-  async function moveRight(lineText, col0) {
-    const len = lineText.length;
-    if (col0 >= len) return len;
-    const boundaries = await getBoundaries(lineText);
-    if (!boundaries) {
-      const cat = getCharCategory(lineText[col0]);
-      if (isSingleCharCategory(cat)) return col0 + 1;
-      let i = col0 + 1;
-      while (i < len && getCharCategory(lineText[i]) === cat) i++;
-      return i;
-    }
-    return nextBoundary(boundaries, col0);
-  }
-
-  async function moveLeft(lineText, col0) {
-    if (col0 <= 0) return 0;
-    const boundaries = await getBoundaries(lineText);
-    if (!boundaries) {
-      const cat = getCharCategory(lineText[col0 - 1]);
-      if (isSingleCharCategory(cat)) return col0 - 1;
-      let i = col0 - 1;
-      while (i > 0 && getCharCategory(lineText[i - 1]) === cat) i--;
-      return i;
-    }
-    return prevBoundary(boundaries, col0);
-  }
-
-  // ctrl + arror, ctrl + shift + arrow, ctrl + delete/backspace
-  async function execJapaneseWordMove(mode, select, del) {
-    if (del && monacoEditor.getOption(monaco.editor.EditorOption.readOnly)) return;
-    const model = monacoEditor.getModel();
-    if (!model) return;
-    const selections = monacoEditor.getSelections();
-
-    if (del) {
-      const edits = (
-        await Promise.all(
-          selections.map(async (sel) => {
-            const curLine = sel.positionLineNumber;
-            const curCol1 = sel.positionColumn;
-            const lineText = model.getLineContent(curLine);
-            const lineLen = lineText.length;
-
-            if (del === "deleteRight") {
-              if (!sel.isEmpty()) return { range: sel, text: "" };
-              if (curCol1 - 1 >= lineLen) {
-                const lineCount = model.getLineCount();
-                if (curLine >= lineCount) return null;
-                return { range: new monaco.Range(curLine, curCol1, curLine + 1, 1), text: "" };
-              }
-              const end0 = await moveRight(lineText, curCol1 - 1);
-              return { range: new monaco.Range(curLine, curCol1, curLine, end0 + 1), text: "" };
-            } else {
-              if (!sel.isEmpty()) return { range: sel, text: "" };
-              if (curCol1 === 1) {
-                if (curLine <= 1) return null;
-                const prevLineLen = model.getLineContent(curLine - 1).length;
-                return { range: new monaco.Range(curLine - 1, prevLineLen + 1, curLine, 1), text: "" };
-              }
-              const start0 = await moveLeft(lineText, curCol1 - 1);
-              return { range: new monaco.Range(curLine, start0 + 1, curLine, curCol1), text: "" };
-            }
-          }),
-        )
-      ).filter(Boolean);
-
-      if (edits.length) {
-        monacoEditor.pushUndoStop();
-        monacoEditor.executeEdits("japanese-word-delete", edits);
-        monacoEditor.pushUndoStop();
-      }
-      return;
-    }
-
-    const newSelections = await Promise.all(
-      selections.map(async (sel) => {
-        let curLine = sel.positionLineNumber;
-        let curCol1 = sel.positionColumn;
-        const lineText = model.getLineContent(curLine);
-        const lineLen = lineText.length;
-        let newCol1;
-
-        if (mode === "right") {
-          if (curCol1 - 1 >= lineLen) {
-            const lineCount = model.getLineCount();
-            if (curLine < lineCount) {
-              curLine++;
-              newCol1 = 1;
-            } else newCol1 = curCol1;
-          } else {
-            newCol1 = (await moveRight(lineText, curCol1 - 1)) + 1;
-          }
-        } else {
-          if (curCol1 === 1) {
-            if (curLine > 1) {
-              curLine--;
-              newCol1 = model.getLineContent(curLine).length + 1;
-            } else newCol1 = 1;
-          } else {
-            newCol1 = (await moveLeft(lineText, curCol1 - 1)) + 1;
-          }
-        }
-
-        if (select) {
-          return new monaco.Selection(sel.selectionStartLineNumber, sel.selectionStartColumn, curLine, newCol1);
-        }
-        return new monaco.Selection(curLine, newCol1, curLine, newCol1);
-      }),
-    );
-
-    monacoEditor.setSelections(newSelections);
-  }
-
-  monacoEditor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.RightArrow, () =>
-    execJapaneseWordMove("right", false, null),
-  );
-  monacoEditor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.LeftArrow, () =>
-    execJapaneseWordMove("left", false, null),
-  );
-  monacoEditor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.RightArrow, () =>
-    execJapaneseWordMove("right", true, null),
-  );
-  monacoEditor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.LeftArrow, () =>
-    execJapaneseWordMove("left", true, null),
-  );
-  monacoEditor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Delete, () =>
-    execJapaneseWordMove("right", false, "deleteRight"),
-  );
-  monacoEditor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Backspace, () =>
-    execJapaneseWordMove("left", false, "deleteLeft"),
-  );
-
-  // double click
-
-  monacoEditor.onMouseDown((e) => {
-    if (e.event.detail !== 2) return;
-
-    const CONTENT_TEXT = monaco.editor.MouseTargetType.CONTENT_TEXT;
-    const CONTENT_EMPTY = monaco.editor.MouseTargetType.CONTENT_EMPTY;
-    if (e.target.type !== CONTENT_TEXT && e.target.type !== CONTENT_EMPTY) return;
-
-    const pos = e.target.position;
-    if (!pos) return;
-
-    e.event.preventDefault();
-
-    const model = monacoEditor.getModel();
-    if (!model) return;
-    const lineText = model.getLineContent(pos.lineNumber);
-    const col0 = pos.column - 1;
-
-    const fallback = getWordRangeFallback(lineText, col0);
-    monacoEditor.setSelection(new monaco.Range(pos.lineNumber, fallback.start + 1, pos.lineNumber, fallback.end + 1));
-
-    getWordRange(lineText, col0).then(({ start, end }) => {
-      const cur = monacoEditor.getSelection();
-      if (cur && cur.startLineNumber === pos.lineNumber) {
-        monacoEditor.setSelection(new monaco.Range(pos.lineNumber, start + 1, pos.lineNumber, end + 1));
-      }
-    });
-  });
-})();
-
-async function toggleCurrentDiffView() {
-  const tab = currentTab;
+async function toggleCurrentDiffView(sourceEditor) {
+  const tab = sourceEditor && typeof sourceEditor.getModel === "function"
+    ? editorPanes?.panes.find(p => p.editor === sourceEditor)?.tab || externalChanges.tabForEditor(sourceEditor)
+    : currentTab;
   if (!tab || tab._diffTogglePending) return;
   tab._diffTogglePending = true;
   try {
@@ -1352,203 +1104,30 @@ async function toggleCurrentDiffView() {
 }
 
 function registerMonacoFormattingActions() {
-  registerMonacoDiffViewAction({ monaco, t: i18next.t.bind(i18next), toggleDiffView: toggleCurrentDiffView });
+  for (const pane of editorPanes?.panes || [{ editor: monacoEditor }]) registerFormattingForEditor(pane.editor);
+}
+function registerFormattingForEditor(targetEditor) {
+  registerMonacoDiffViewAction({ monaco, t: i18next.t.bind(i18next), toggleDiffView: toggleCurrentDiffView, focusOtherPane, clearSplitView,
+    splitView: (sourceEditor, side) => setSplitTab(
+      editorPanes?.panes.find(p => p.editor === sourceEditor)?.tab || externalChanges.tabForEditor(sourceEditor), side),
+  });
   registerMonacoFormattingEditorActions({
     monaco,
-    monacoEditor,
+    monacoEditor: targetEditor,
     t: i18next.t.bind(i18next),
-    getCurrentTab: () => currentTab,
+    getCurrentTab: () => editorPanes?.panes.find(p => p.editor === targetEditor)?.tab || currentTab,
     keepOpenNoteTab,
     toggleTabPinned,
-    toggleWordWrap,
+    toggleWordWrap: () => toggleWordWrap(editorPanes?.panes.find(p => p.editor === targetEditor)?.tab),
   });
 }
 registerMonacoFormattingActions();
 
-let currentDecorations = [];
-let decorationFrameId = null;
-const DECORATION_BUFFER_LINES = 100;
-const CODE_BLOCK_CHECKPOINT_LINES = 500;
-const DECORATION_MATCHERS = [/^#\s[^#]/, /^##\s[^#]/, /^###\s[^#]/, /^-#\s[^#]/, /^>\s/];
-let decorationCoverage = { model: null, versionId: null, ranges: [] };
-let codeBlockCheckpointModel = null;
-let codeBlockCheckpointVersion = null;
-let codeBlockCheckpoints = new Map([[1, false]]);
-
-function mergeLineRanges(ranges) {
-  const sortedRanges = ranges.slice().sort((a, b) => a.startLineNumber - b.startLineNumber);
-  const mergedRanges = [];
-
-  for (const range of sortedRanges) {
-    const lastRange = mergedRanges.at(-1);
-    if (!lastRange || range.startLineNumber > lastRange.endLineNumber + 1) {
-      mergedRanges.push({ ...range });
-      continue;
-    }
-
-    lastRange.endLineNumber = Math.max(lastRange.endLineNumber, range.endLineNumber);
-  }
-
-  return mergedRanges;
-}
-
-function getVisibleLineRanges(model) {
-  const lineCount = model.getLineCount();
-  return mergeLineRanges(
-    monacoEditor.getVisibleRanges().map((range) => ({
-      startLineNumber: Math.max(1, Math.min(lineCount, range.startLineNumber)),
-      endLineNumber: Math.max(1, Math.min(lineCount, range.endLineNumber)),
-    })),
-  );
-}
-
-function getDecorationLineRanges(model, visibleRanges) {
-  const lineCount = model.getLineCount();
-
-  return mergeLineRanges(
-    visibleRanges.map((range) => ({
-      startLineNumber: Math.max(1, range.startLineNumber - DECORATION_BUFFER_LINES),
-      endLineNumber: Math.min(lineCount, range.endLineNumber + DECORATION_BUFFER_LINES),
-    })),
-  );
-}
-
-function areLineRangesCovered(visibleRanges, coveredRanges) {
-  return visibleRanges.every((visibleRange) =>
-    coveredRanges.some(
-      (coveredRange) =>
-        coveredRange.startLineNumber <= visibleRange.startLineNumber &&
-        coveredRange.endLineNumber >= visibleRange.endLineNumber,
-    ),
-  );
-}
-
-function resetDecorationCoverage() {
-  decorationCoverage = { model: null, versionId: null, ranges: [] };
-}
-
-function resetCodeBlockCheckpoints(model) {
-  codeBlockCheckpointModel = model;
-  codeBlockCheckpointVersion = model?.getVersionId?.() ?? null;
-  codeBlockCheckpoints = new Map([[1, false]]);
-}
-
-function invalidateCodeBlockCheckpoints(model, fromLineNumber) {
-  if (!model || codeBlockCheckpointModel !== model) return;
-  codeBlockCheckpointVersion = model.getVersionId();
-  for (const lineNumber of codeBlockCheckpoints.keys()) {
-    if (lineNumber > fromLineNumber) codeBlockCheckpoints.delete(lineNumber);
-  }
-}
-
-function isInsideCodeBlockBeforeLine(model, lineNumber) {
-  const versionId = model.getVersionId();
-  if (codeBlockCheckpointModel !== model || codeBlockCheckpointVersion !== versionId) {
-    resetCodeBlockCheckpoints(model);
-  }
-
-  let checkpointLine = Math.floor((lineNumber - 1) / CODE_BLOCK_CHECKPOINT_LINES) * CODE_BLOCK_CHECKPOINT_LINES + 1;
-  while (checkpointLine > 1 && !codeBlockCheckpoints.has(checkpointLine)) {
-    checkpointLine -= CODE_BLOCK_CHECKPOINT_LINES;
-  }
-
-  let insideCodeBlock = codeBlockCheckpoints.get(checkpointLine) || false;
-
-  for (let i = checkpointLine; i < lineNumber; i++) {
-    const trimmed = model.getLineContent(i).trimStart();
-    if ((insideCodeBlock ? CLOSE_FENCE : OPEN_FENCE).test(trimmed)) {
-      insideCodeBlock = !insideCodeBlock;
-    }
-    const nextLine = i + 1;
-    if ((nextLine - 1) % CODE_BLOCK_CHECKPOINT_LINES === 0) {
-      codeBlockCheckpoints.set(nextLine, insideCodeBlock);
-    }
-  }
-
-  return insideCodeBlock;
-}
-
 function applyDecorations() {
-  if (decorationFrameId !== null) {
-    cancelAnimationFrame(decorationFrameId);
-    decorationFrameId = null;
-  }
-
-  const model = monacoEditor.getModel();
-  if (!model) return;
-
-  if (!settings.syntaxHighlight) {
-    currentDecorations = monacoEditor.deltaDecorations(currentDecorations, []);
-    resetDecorationCoverage();
-    return;
-  }
-
-  const decorations = [];
-
-  if (model.getLanguageId() !== "monapad") {
-    currentDecorations = monacoEditor.deltaDecorations(currentDecorations, []);
-    resetDecorationCoverage();
-    return;
-  }
-
-  const visibleRanges = getVisibleLineRanges(model);
-  if (!visibleRanges.length) return;
-
-  const versionId = model.getVersionId();
-  if (
-    decorationCoverage.model === model &&
-    decorationCoverage.versionId === versionId &&
-    areLineRangesCovered(visibleRanges, decorationCoverage.ranges)
-  ) {
-    return;
-  }
-
-  const lineRanges = getDecorationLineRanges(model, visibleRanges);
-
-  for (const range of lineRanges) {
-    let insideCodeBlock = isInsideCodeBlockBeforeLine(model, range.startLineNumber);
-
-    for (let lineNumber = range.startLineNumber; lineNumber <= range.endLineNumber; lineNumber++) {
-      const line = model.getLineContent(lineNumber);
-      const trimmed = line.trimStart();
-      const leadingSpaces = line.length - trimmed.length;
-
-      if ((insideCodeBlock ? CLOSE_FENCE : OPEN_FENCE).test(trimmed)) {
-        insideCodeBlock = !insideCodeBlock;
-        continue;
-      }
-
-      if (insideCodeBlock) continue;
-
-      for (const regex of DECORATION_MATCHERS) {
-        const match = trimmed.match(regex);
-        if (match) {
-          const markerLength = match[0].length;
-          const startColumn = leadingSpaces + 1;
-          const endColumn = startColumn + markerLength - 1;
-
-          decorations.push({
-            range: new monaco.Range(lineNumber, startColumn, lineNumber, endColumn),
-            options: { inlineClassName: "marker-transparent" },
-          });
-
-          break;
-        }
-      }
-    }
-  }
-
-  currentDecorations = monacoEditor.deltaDecorations(currentDecorations, decorations);
-  decorationCoverage = { model, versionId, ranges: lineRanges };
+  for (const behavior of editorBehaviors.values()) behavior.applyDecorations();
 }
-
 function scheduleApplyDecorations() {
-  if (decorationFrameId !== null) return;
-
-  decorationFrameId = requestAnimationFrame(() => {
-    decorationFrameId = null;
-    applyDecorations();
-  });
+  for (const behavior of editorBehaviors.values()) behavior.scheduleApplyDecorations();
 }
 
 function getCurrentEditorText() {
@@ -1753,6 +1332,16 @@ function getFileSaveOptions(tab, { preserveBom = true } = {}) {
 }
 
 async function writeNoteTab(tab, content = null, force = false) {
+  if (!tab?.isNote || isTabModelDisposed(tab)) return false;
+  const requested = content ?? tab.model.getValue();
+  const previous = tab._noteSavePromise || Promise.resolve();
+  const pending = previous.catch(() => {}).then(() => performNoteWrite(tab, requested, force));
+  tab._noteSavePromise = pending;
+  try { return await pending; }
+  finally { if (tab._noteSavePromise === pending) delete tab._noteSavePromise; }
+}
+
+async function performNoteWrite(tab, content = null, force = false) {
   if (!tab?.isNote) return false;
   const nextContent = content ?? tab.model?.getValue() ?? tab.content ?? "";
 
@@ -1822,9 +1411,10 @@ async function writeNoteTab(tab, content = null, force = false) {
     tab.noteCreatedAt = result.meta?.createdAt || tab.noteCreatedAt;
     tab.originalContent = nextContent;
     tab.mergeBaseContent = nextContent;
-    tab.content = nextContent;
+    tab.content = tab.model?.isDisposed() ? nextContent : tab.model.getValue();
     tab.isFileSaved = true;
-    tab.noteDirty = false;
+    tab.noteDirty = !isNoteContentSaved(tab, tab.content);
+    if (tab.noteDirty) scheduleTabAutosave(tab, tab.content);
     const close = tab.element?.querySelector(".close");
     if (close) close.classList.remove("show-unsaved");
     updatePinnedTabIcon(tab);
@@ -1856,7 +1446,7 @@ function getReusableEmptyTab({ includeNotes = false } = {}) {
   if (tab.path || tab.isWarned || tab.isPinned) return null;
   if (tab.isNote && !includeNotes) return null;
   const content =
-    monacoEditor && tab === currentTab ? monacoEditor.getValue() : (tab.model?.getValue() ?? tab.content ?? "");
+    tab.model?.getValue() ?? tab.content ?? "";
   return content.trim() ? null : tab;
 }
 
@@ -2216,7 +1806,7 @@ function confirmAutosaveRestore(fileName) {
 function applyRestoredAutosaveContent(tab, savedContent, restoredContent, backupInfo = {}) {
   if (!tab?.model) return;
 
-  tab._ignoreUnsavedCheck = true;
+  withTabModelUpdate(tab, () => {
   tab.model.setValue(savedContent);
   const eol = backupInfo.eol || (restoredContent.includes("\r\n") ? "\r\n" : restoredContent.includes("\n") ? "\n" : tab.model.getEOL());
   tab.model.setEOL(eol === "\r\n" ? 1 : 0);
@@ -2244,7 +1834,8 @@ function applyRestoredAutosaveContent(tab, savedContent, restoredContent, backup
 
   const modelContent = tab.model.getValue();
   tab.content = modelContent;
-  tab._ignoreUnsavedCheck = false;
+  });
+  const modelContent = tab.model.getValue();
   syncTabSaveState(tab, modelContent);
   scheduleTabAutosave(tab, modelContent);
 }
@@ -2358,7 +1949,7 @@ function updatePinnedTabIcon(tab) {
 
 function tabHasUnsavedContent(tab) {
   if (!tab || tab.isNote) return false;
-  const content = tab === currentTab ? monacoEditor?.getValue() : (tab.model?.getValue() ?? tab.content ?? "");
+  const content = tab.model?.getValue() ?? tab.content ?? "";
   return hasUnsavedChanges(tab, content);
 }
 
@@ -2385,7 +1976,7 @@ function replaceModelContentPreservingUndo(tab, content) {
 }
 
 function isTabControlTarget(target) {
-  return Boolean(target?.closest?.(".close, .reload-button"));
+  return Boolean(target?.closest?.(".close, .reload-button, .split-button"));
 }
 
 function setTabPinned(tab, pinned, options = {}) {
@@ -2494,93 +2085,33 @@ function updateCurrentTabStatusBar() {
   if (currentTab) updateStatusBar();
 }
 
-// detect change in editor
-monacoEditor.onDidChangeModelContent((event) => {
-  const active = currentTab;
-  if (!active || monacoEditor.getModel() !== active.model) return;
-
-  const firstChangedLine = event.changes.reduce(
-    (lineNumber, change) => Math.min(lineNumber, change.range.startLineNumber),
-    Number.POSITIVE_INFINITY,
-  );
-  if (Number.isFinite(firstChangedLine)) invalidateCodeBlockCheckpoints(active.model, firstChangedLine);
-  else resetCodeBlockCheckpoints(active.model);
-
-  const currentContent = monacoEditor.getValue();
-  active.content = currentContent;
-  updateTabHeadingIcon(active, currentContent);
-
-  // use active._ignoreUnsavedCheck = ture before monacoEditor.getValue() when this process is unnecessary
-  if (active._ignoreUnsavedCheck) {
-    active._ignoreUnsavedCheck = false;
-    return;
-  }
-
-  active.isAutoPlaceholder = false;
-
-  if (active.isNotePreview) keepOpenNoteTab(active);
-  syncTabSaveState(active, currentContent);
-  if (active.isNote && !active.noteId && currentContent.trim()) writeNoteTab(active, currentContent, true);
-  scheduleTabAutosave(active, currentContent);
-
-  updateStatusBar();
-  updateDeviceShareButtonState();
-  scheduleApplyDecorations();
-  if (isGlobalSearchActive()) scheduleGlobalSearch();
-  externalChanges?.sync(active);
-  scheduleSessionSnapshot();
-});
-monacoEditor.onDidScrollChange(() => {
-  scheduleApplyDecorations();
-  scheduleSessionSnapshot();
-});
-monacoEditor.onDidLayoutChange(() => scheduleApplyDecorations());
-applyDecorations();
-
-// prevent monaco error that occurs when try to delete all selection includes folding
-monacoEditor.onKeyDown((e) => {
-  if (currentTab?.isDiffView) return;
-  const code = e.browserEvent.code;
-  if (code !== "Delete" && code !== "Backspace") return;
-
-  const model = monacoEditor.getModel();
-  const sel = monacoEditor.getSelection();
-  const full = model.getFullModelRange();
-
-  const isFull =
-    sel.startLineNumber === full.startLineNumber &&
-    sel.startColumn === full.startColumn &&
-    sel.endLineNumber === full.endLineNumber &&
-    sel.endColumn === full.endColumn;
-
-  if (!isFull) return;
-
-  // check if folding exists
-  const foldingController = monacoEditor.getContribution("editor.contrib.folding");
-  foldingController?.foldingModelPromise.then((fm) => {
-    if (!fm) return;
-    const hasCollapsed = Array.from({ length: fm.regions.length }).some((_, i) => fm.regions.isCollapsed(i));
-    if (hasCollapsed) {
-      e.preventDefault();
-      e.stopPropagation();
-
-      const act = monacoEditor.getAction("editor.unfoldAll");
-      if (act) {
-        act.run().then(() => {
-          const selection = monacoEditor.getSelection();
-          if (selection && !selection.isEmpty()) {
-            monacoEditor.executeEdits("deleteAfterUnfold", [
-              {
-                range: selection,
-                text: "", // delete
-              },
-            ]);
-          }
-        });
-      }
-    }
+function observeTabModel(tab) {
+  const listener = tab.model.onDidChangeContent(() => {
+    if (tab._ignoreUnsavedCheck || tab._closing || tab._autosaveDisabled) return;
+    const content = tab.model.getValue();
+    tab.content = content;
+    tab.isAutoPlaceholder = false;
+    updateTabHeadingIcon(tab, content);
+    if (tab.isNotePreview) keepOpenNoteTab(tab);
+    syncTabSaveState(tab, content);
+    if (tab.isNote && !tab.noteId && content.trim()) writeNoteTab(tab, content, true);
+    scheduleTabAutosave(tab, content);
+    if (tab === currentTab) { updateStatusBar(); updateDeviceShareButtonState(); }
+    if (isGlobalSearchActive()) scheduleGlobalSearch();
+    externalChanges?.sync(tab);
+    scheduleSessionSnapshot();
   });
-});
+  tab.model.onWillDispose(() => listener.dispose());
+}
+
+function withTabModelUpdate(tab, operation) {
+  const previous = tab._ignoreUnsavedCheck;
+  tab._ignoreUnsavedCheck = true;
+  try { return operation(); }
+  finally { tab._ignoreUnsavedCheck = previous; }
+}
+
+function setTabModelValue(tab, value) { return withTabModelUpdate(tab, () => tab.model.setValue(value)); }
 
 // font dropdown
 const fontDropdown = new CustomSelect(fontFamilySelect, {
@@ -2814,14 +2345,15 @@ function applyFontToMonaco() {
 
   const finalFont = cssFont && cssFont.trim() ? cssFont : `"${cleanFontFamily}", "Migu 1M", monospace`;
 
-  monacoEditor.updateOptions({
+  for (const ed of normalEditors()) ed.updateOptions({
     fontFamily: finalFont,
     fontLigatures: /figtree/i.test(finalFont) ? '"liga", "calt", "tnum"' : true,
     ...WRAP_MEASURE_OPTIONS,
   });
   document.fonts.ready.then(() => {
     monaco.editor.remeasureFonts();
-    monacoEditor.render(true);
+    for (const ed of normalEditors()) ed.render(true);
+    externalChanges?.sync();
   });
 }
 
@@ -2843,7 +2375,8 @@ function updatePersistentFontSize(newSize) {
   });
 
   fontSize = persistentFontSize;
-  monacoEditor.updateOptions({ fontSize });
+  editorPanes?.updateOptions();
+  externalChanges?.sync();
 
   fontSizeDecrease.classList.toggle("disabled", persistentFontSize <= 8);
   fontSizeIncrease.classList.toggle("disabled", persistentFontSize >= 40);
@@ -2869,36 +2402,15 @@ document.querySelector("#settings-menu .font .reset").addEventListener("click", 
 });
 
 // update font size with ctrl + mouse wheel / + - (temporary)
-const updateFontSize = (newSize) => {
-  fontSize = Math.max(8, Math.min(40, newSize));
-  monacoEditor.updateOptions({ fontSize });
-  if (currentTab) currentTab.fontSize = fontSize;
+const updateFontSize = (newSize, tab = currentTab) => {
+  if (!tab) return;
+  tab.fontSize = Math.max(8, Math.min(40, newSize));
+  if (tab === currentTab) fontSize = tab.fontSize;
+  editorPanes?.updateOptions();
+  externalChanges?.sync(tab);
   updateStatusBar();
+  scheduleSessionSnapshot();
 };
-
-// Ctrl + mouse wheel
-function attachCtrlWheelListener() {
-  const editorDomNode = monacoEditor.getDomNode();
-  if (!editorDomNode) return;
-  const scrollElement = editorDomNode.querySelector(".monaco-scrollable-element");
-  if (!scrollElement) return;
-  if (wheelListenerElement === scrollElement && wheelListener) return;
-
-  // remove last listner
-  if (wheelListener && wheelListenerElement) {
-    wheelListenerElement.removeEventListener("wheel", wheelListener);
-  }
-
-  wheelListener = (e) => {
-    if (e.ctrlKey || e.metaKey) {
-      e.preventDefault();
-      updateFontSize(fontSize + (e.deltaY < 0 ? 1 : -1));
-    }
-  };
-
-  scrollElement.addEventListener("wheel", wheelListener, { passive: false });
-  wheelListenerElement = scrollElement;
-}
 
 // Ctrl + + / -
 window.addEventListener("keydown", (e) => {
@@ -2918,7 +2430,7 @@ window.addEventListener("keydown", (e) => {
 
 // editor settings
 function applySettings() {
-  monacoEditor.updateOptions({
+  for (const ed of normalEditors()) ed.updateOptions({
     renderLineHighlight: settings.lineHighlight ? "line" : "none",
     lineNumbers: settings.lineNumbers ? "on" : "off",
     minimap: {
@@ -2956,18 +2468,19 @@ function applySettings() {
     document.body.classList.add("status-bar-visible");
     statusBar.style.display = "flex";
     checkmark.style.display = "inline-flex";
-    editor.style.height = "calc(100vh - 35px - 25px - var(--window-top-safe-area))";
+    editorArea.style.height = "calc(100vh - 35px - 25px - var(--window-top-safe-area))";
     settingsMenu.style.height = "calc(100vh - 35px - 25px - var(--window-top-safe-area))";
   } else {
     document.body.classList.remove("status-bar-visible");
     statusBar.style.display = "none";
     checkmark.style.display = "none";
-    editor.style.height = "calc(100vh - 35px - var(--window-top-safe-area))";
+    editorArea.style.height = "calc(100vh - 35px - var(--window-top-safe-area))";
     settingsMenu.style.height = "calc(100vh - 35px - var(--window-top-safe-area))";
   }
 
   if (monacoEditor) {
-    setTimeout(() => monacoEditor.layout(), 0);
+    editorPanes?.layoutNow();
+    for (const ed of normalEditors()) ed.render(true);
   }
 }
 
@@ -3073,7 +2586,7 @@ function updateTabSize(newSize) {
   tabSize = Math.min(10, Math.max(1, newSize));
   tabSizeValue.textContent = tabSize;
   localStorage.setItem("tabSize", tabSize);
-  monacoEditor.updateOptions({ tabSize });
+  for (const ed of normalEditors()) ed.updateOptions({ tabSize });
   for (const tab of tabData) tab.model?.updateOptions({ tabSize });
   refreshFolding();
 
@@ -3100,14 +2613,6 @@ document.getElementById("openThemeFolder").addEventListener("click", async () =>
 
 // initial editor theme
 monaco.editor.setTheme("custom-theme");
-
-// update ln & col
-monacoEditor.onDidChangeCursorPosition(() => {
-  updateStatusBar();
-});
-monacoEditor.onDidChangeCursorSelection(() => {
-  updateStatusBar();
-});
 
 // call Find from menu
 function triggerFind() {
@@ -3155,9 +2660,12 @@ window.triggerShowCommands = triggerShowCommands;
 document.getElementById("triggerShowCommandsBtn").addEventListener("click", triggerShowCommands);
 
 function registerMonacoQuickInputActions() {
+  for (const pane of editorPanes?.panes || [{ editor: monacoEditor }]) registerQuickInputForEditor(pane.editor);
+}
+function registerQuickInputForEditor(targetEditor) {
   registerMonacoQuickInputEditorActions({
     monaco,
-    monacoEditor,
+    monacoEditor: targetEditor,
     t: i18next.t.bind(i18next),
     openQuickOpenPicker,
     triggerShowCommands,
@@ -3376,6 +2884,7 @@ function createSessionWindowSnapshot({ closing = false } = {}) {
     closing,
     discardWindow,
     activeTabId: currentTab?.sessionTabId || null,
+    editorLayout: splitLayout,
     tabs: discardWindow ? [] : tabData.map(createSessionTabSnapshot),
   };
 }
@@ -3501,8 +3010,7 @@ async function restoreSessionTab(state) {
     if (note?.exists) {
       tab = await createNoteTab(note.content || "", null, note, { preview: false });
       if (state.dirty && typeof state.content === "string" && state.content !== note.content) {
-        tab._ignoreUnsavedCheck = true;
-        tab.model.setValue(state.content);
+        setTabModelValue(tab, state.content);
         tab.content = state.content;
         syncTabSaveState(tab, state.content);
         scheduleTabAutosave(tab, state.content);
@@ -3546,7 +3054,8 @@ async function restoreSessionWindow(snapshot) {
     if (!restoredTabs.length) return false;
     normalizePinnedTabs();
     const active = restoredTabs.find((tab) => tab.sessionTabId === snapshot.activeTabId) || restoredTabs[0];
-    switchTab(active);
+    splitLayout = normalizeSplitLayout(snapshot.editorLayout, restoredTabs, active.sessionTabId);
+    applySplitLayout(active.sessionTabId, true);
     return true;
   } finally {
     isRestoringSession = false;
@@ -3561,6 +3070,25 @@ async function initializeSessionRestore() {
   localStorage.setItem("editorSettings", JSON.stringify(settings));
   applySettings();
 }
+
+editorPanes = createEditorPanes({
+  root: editorArea, host: editor, editor: monacoEditor,
+  createEditor: createNormalEditor,
+  options: getTabEditorOptions,
+  activate: activateTab,
+  install: (ed, pane) => {
+    editorBehaviors.set(ed, installEditorBehavior(monaco, ed, { settings }));
+    registerFormattingForEditor(ed); registerQuickInputForEditor(ed);
+    pane.element.addEventListener("wheel", event => {
+      if (!(event.ctrlKey || event.metaKey) || !pane.tab) return;
+      event.preventDefault();
+      updateFontSize((pane.tab.fontSize || persistentFontSize) + (event.deltaY < 0 ? 1 : -1), pane.tab);
+    }, { passive: false, capture: true });
+  },
+  selectionChanged: pane => { if (pane.tab === currentTab) updateStatusBar(); scheduleSessionSnapshot(); },
+  viewChanged: scheduleSessionSnapshot,
+  layoutDiff: () => externalChanges?.layout(),
+});
 
 // initial tab create
 createDefaultEmptyTab({ switchTo: false, isAutoPlaceholder: true });
@@ -3599,7 +3127,7 @@ function setSidePanelWidth(width, options = {}) {
   if (!Number.isFinite(nextWidth)) return getSidePanelWidth();
   document.documentElement.style.setProperty("--side-panel-width", `${nextWidth}px`);
   updateEditorLeftMargin();
-  monacoEditor?.layout();
+  editorPanes?.layout();
   if (options.persist) localStorage.setItem(SIDE_PANEL_WIDTH_STORAGE_KEY, String(Math.round(nextWidth)));
   return nextWidth;
 }
@@ -3625,7 +3153,7 @@ function setSidePanelOpen(open, options = {}) {
     recentMenu.style.display = "none";
     setMenuButtonsPointerEvents("auto");
   }
-  setTimeout(() => monacoEditor?.layout(), 190);
+  setTimeout(() => editorPanes?.layout(), 190);
 }
 
 function getSidePanelWidth() {
@@ -3639,7 +3167,8 @@ function updateEditorLeftMargin() {
   const panelOffset = document.body.classList.contains("side-panel-open") ? getSidePanelWidth() : 0;
   document.documentElement.style.setProperty("--editor-line-number-offset", `${lineNumberOffset}px`);
   document.documentElement.style.setProperty("--editor-side-panel-offset", `${panelOffset}px`);
-  editor.style.marginLeft = `${lineNumberOffset + panelOffset}px`;
+  editorArea.style.marginLeft = `${panelOffset}px`;
+  editorPanes?.layout();
 }
 
 function toggleSidePanel() {
@@ -3690,7 +3219,7 @@ function startSidePanelResize(e) {
       resizeFrame = null;
     }
     setSidePanelWidth(latestWidth, { persist: true });
-    monacoEditor?.layout();
+    editorPanes?.layout();
     scheduleGlobalSearchFilePathUpdate();
     scheduleGlobalSearchPreviewUpdate();
   };
@@ -3817,7 +3346,7 @@ document.addEventListener("click", (e) => {
   if (customContextMenu.contains(e.target) && button) {
     customContextMenu.style.display = "none";
   }
-  if (tabContextMenu.contains(e.target) && button) {
+  if (tabContextMenu.contains(e.target) && button && button.dataset.action !== "openSplitMenu") {
     tabContextMenu.style.display = "none";
     rightClickedTab = null;
   }
@@ -3890,14 +3419,7 @@ window.addEventListener("resize", () => {
   scheduleGlobalSearchPreviewUpdate();
   scheduleGlobalSearchFilePathUpdate();
 
-  // update editor padding
-  const editorHeight = editor.clientHeight;
-  monacoEditor.updateOptions({
-    padding: {
-      top: 12,
-      bottom: editor.clientHeight / 2,
-    },
-  });
+  editorPanes?.layout();
 });
 
 // recent menu display
@@ -4393,7 +3915,8 @@ function updateStatusBar() {
 
   const position = monacoEditor.getPosition();
   const model = monacoEditor.getModel();
-  const eol = model.getEOL();
+  if (!model || !position || !currentTab?.model || currentTab.model.isDisposed()) return;
+  const eol = currentTab.model.getEOL();
   const currentEncoding = currentTab?.sourceEncoding || "UTF-8";
   const isEncodingValid = currentTab?.isUtf8Valid !== false;
 
@@ -4822,35 +4345,7 @@ function enableTabDragging(tab, data) {
   }
 
   function finalizeDraggedTabRemovalAfterExternalDrop(targetTabData, fallbackIndex) {
-    const index = tabData.indexOf(targetTabData);
-    const switchIndex = index === -1 ? Math.max(0, Math.min(fallbackIndex, tabData.length - 1)) : index;
-
-    targetTabData._autosaveDisabled = true;
-    queueMicrotask(() => disposeTabModel(targetTabData));
-    releaseWatchedFileForTab(targetTabData);
-    clearAutosaveTimer(targetTabData);
-    if (index !== -1) tabData.splice(index, 1);
-    if (targetTabData.element?.parentElement === tabs) tabs.removeChild(targetTabData.element);
-    updateTabDisambiguationLabels();
-    layoutTabs({ animate: true });
-    scheduleAllUnsavedTabAutosaves();
-    scheduleGlobalSearchAfterTabSetChange();
-
-    const wasActive = targetTabData.element?.classList.contains("active") || currentTab === targetTabData;
-    if (!wasActive) {
-      updateTabAdjacencyClasses();
-      return;
-    }
-
-    if (tabData.length) {
-      switchTab(tabData[Math.max(0, Math.min(switchIndex, tabData.length - 1))]);
-      setTimeout(() => monacoEditor?.focus(), 0);
-    } else {
-      currentTab = null;
-      createDefaultEmptyTab({ switchTo: false, isAutoPlaceholder: true });
-      switchTab(tabData[0]);
-      setTimeout(() => monacoEditor?.focus(), 0);
-    }
+    removeTabAndAdjustUI(targetTabData, fallbackIndex);
   }
 
   function onMouseMove(e) {
@@ -5180,7 +4675,7 @@ async function moveTabToWindow(tab, deliver, remove) {
   await tab?._fileSaveFinished;
   if (!tab || tab._transferring || tab.isPinned) return false;
   tab._transferring = true;
-  if (currentTab === tab) monacoEditor.updateOptions({ readOnly: true });
+  editorPanes?.updateOptions();
   try {
     const payload = await getOpenTabPayload(tab);
     const version = tab.model.getVersionId();
@@ -5192,7 +4687,7 @@ async function moveTabToWindow(tab, deliver, remove) {
     return true;
   } finally {
     tab._transferring = false;
-    if (currentTab === tab) monacoEditor.updateOptions({ readOnly: Boolean(tab.isDiffView) });
+    editorPanes?.updateOptions();
   }
 }
 
@@ -5214,21 +4709,26 @@ async function openTabInNewWindow(targetTabData, position) {
   }
 }
 
-function removeTabAndAdjustUI(targetTabData) {
+function removeTabAndAdjustUI(targetTabData, fallbackIndex = 0) {
   const index = tabData.indexOf(targetTabData);
-  if (index === -1) return;
+  // A dragged tab is already absent from tabData, but still owns its pane/model.
+  if (index === -1 && targetTabData.element?.parentElement !== tabs) return;
 
   targetTabData._autosaveDisabled = true;
   queueMicrotask(() => disposeTabModel(targetTabData));
   releaseWatchedFileForTab(targetTabData);
   clearAutosaveTimer(targetTabData);
-  tabs.removeChild(targetTabData.element);
-  tabData.splice(index, 1);
+  if (targetTabData.element?.parentElement === tabs) tabs.removeChild(targetTabData.element);
+  if (index !== -1) tabData.splice(index, 1);
   updateTabDisambiguationLabels();
   layoutTabs({ animate: true });
   scheduleAllUnsavedTabAutosaves();
   scheduleGlobalSearchAfterTabSetChange();
 
+  if (splitLayout.split) {
+    applySplitLayout(currentTab?.sessionTabId, true);
+    return;
+  }
   const isActive = targetTabData.element.classList.contains("active");
 
   if (!isActive) {
@@ -5238,7 +4738,8 @@ function removeTabAndAdjustUI(targetTabData) {
 
   // Active tab was removed → switch or create
   if (tabData.length) {
-    const newIndex = index === tabData.length ? Math.max(index - 1, 0) : index;
+    const newIndex = index === -1 ? Math.max(0, Math.min(fallbackIndex, tabData.length - 1))
+      : index === tabData.length ? Math.max(index - 1, 0) : index;
     switchTab(tabData[newIndex]);
     setTimeout(() => monacoEditor?.focus(), 0);
   } else {
@@ -5291,7 +4792,9 @@ function finishClosedTabState(data, index, options = {}) {
   scheduleGlobalSearchAfterTabSetChange();
   syncRecentlyClosedFilesState();
 
-  if (wasActive) {
+  if (splitLayout.split) {
+    applySplitLayout(currentTab?.sessionTabId, true);
+  } else if (wasActive) {
     if (tabData.length) {
       const newIndex = index === tabData.length ? Math.max(index - 1, 0) : index;
       switchTab(tabData[newIndex]);
@@ -5390,6 +4893,7 @@ function createTab(name, content = "", path = null, insertIndex = null, options 
     sessionTabId: options.sessionTabId || createAutosaveId(),
     isAutoPlaceholder: Boolean(options.isAutoPlaceholder),
   };
+  observeTabModel(data);
 
   if (targetInsertIndex !== null && targetInsertIndex >= 0 && targetInsertIndex < tabData.length) {
     const referenceTab = tabData[targetInsertIndex].element;
@@ -5421,8 +4925,7 @@ function createTab(name, content = "", path = null, insertIndex = null, options 
 
   tab.onclick = (e) => {
     if (isTabControlTarget(e.target)) return;
-    if (currentTab !== data) switchTab(data);
-    else if (!data.isDiffView) monacoEditor.focus();
+    switchTab(data);
   };
 
   // tab middle click
@@ -5509,8 +5012,7 @@ async function createNoteTab(content = "", insertIndex = null, existingNote = nu
   const reusableTab = getReusableEmptyTab({ includeNotes: true });
   if (reusableTab) {
     await prepareReusableEmptyTabForReplacement(reusableTab);
-    reusableTab._ignoreUnsavedCheck = true;
-    reusableTab.model.setValue(noteContent);
+    setTabModelValue(reusableTab, noteContent);
     if (note) {
       applyNoteDataToTab(reusableTab, note, noteContent, options);
     } else {
@@ -5548,7 +5050,7 @@ async function saveAsNote() {
   const active = tabData.find((t) => t.element.classList.contains("active"));
   if (!active || active.isNote || !monacoEditor) return false;
 
-  const content = monacoEditor.getValue();
+  const content = active.model.getValue();
   if (!content.trim()) {
     if (!active.path && !active.isNote) {
       const previousDraftId = active.draftId;
@@ -6156,34 +5658,22 @@ function disposeTabModel(tab) {
   tab.model?.dispose();
 }
 
+function normalEditors() { return editorPanes?.panes.map(p => p.editor) || [monacoEditor].filter(Boolean); }
+
 function saveCurrentTabViewState() {
+  editorPanes?.saveAll();
   externalChanges?.saveView();
-  const activeTab =
-    currentTab && monacoEditor.getModel() === currentTab.model
-      ? currentTab
-      : tabData.find((tab) => tab.element.classList.contains("active"));
-  if (!activeTab?.model || monacoEditor.getModel() !== activeTab.model) return;
-  activeTab.content = activeTab.model.getValue();
-  if (!activeTab.isDiffView) activeTab.viewState = monacoEditor.saveViewState();
-  activeTab.fontSize = fontSize;
-  activeTab.wordWrap = isWordWrapOn;
 }
 
 function getTabEditorOptions(tab) {
-  fontSize = tab.fontSize || persistentFontSize; // font size for each tabs
-  isWordWrapOn = tab.wordWrap ?? true;
-  isMarkdownOn = tab.isMarkdown ?? false;
-
   return {
-    fontSize,
+    fontSize: tab.fontSize || persistentFontSize,
     readOnly: Boolean(tab._transferring || tab.isDiffView),
-    automaticLayout: !tab.isDiffView,
-    wordWrap: !tab.isDiffView && isWordWrapOn ? "on" : "off",
+    automaticLayout: false,
+    wordWrap: tab.wordWrap === false ? "off" : "on",
     ...WRAP_MEASURE_OPTIONS,
-    scrollbar: {
-      horizontal: isWordWrapOn ? "hidden" : "auto",
-    },
-    autoClosingBrackets: isMarkdownOn ? "always" : "never",
+    scrollbar: { horizontal: tab.wordWrap === false ? "auto" : "hidden" },
+    autoClosingBrackets: tab.isMarkdown ? "always" : "never",
   };
 }
 
@@ -6199,54 +5689,89 @@ function updateEditorModeUi() {
   if (markdownCheckmark) markdownCheckmark.style.display = isMarkdownOn ? "inline-flex" : "none";
 }
 
-function syncActiveFileWatcher(data) {
-  // stop watching previously active file
-  if (currentWatchedFilePath && currentWatchedFilePath !== data.path) {
-    window.electronAPI.unwatchFile(currentWatchedFilePath);
-    currentWatchedFilePath = null;
-  }
+function syncActiveFileWatcher() {
+  const paths = new Set((editorPanes?.panes || []).map(p => p.tab).filter(t => t?.path && !t.isNote && !t._closing).map(t => t.path));
+  for (const path of currentWatchedFilePaths) if (!paths.has(path)) window.electronAPI.unwatchFile(path);
+  for (const path of paths) if (!currentWatchedFilePaths.has(path)) window.electronAPI.watchFile(path);
+  currentWatchedFilePaths = paths;
+}
 
-  // watch active file
-  if (data.path && currentWatchedFilePath !== data.path) {
-    window.electronAPI.watchFile(data.path);
-    currentWatchedFilePath = data.path;
+function activateTab(tab, sourceEditor, focus = false) {
+  if (!tab || !tabData.includes(tab) || !editorPanes?.find(tab)) return;
+  updateActiveTabElement(tab);
+  currentTab = tab;
+  monacoEditor = sourceEditor || externalChanges.editorFor(tab) || editorPanes.find(tab).editor;
+  fontSize = tab.fontSize || persistentFontSize;
+  isWordWrapOn = tab.wordWrap !== false;
+  isMarkdownOn = Boolean(tab.isMarkdown);
+  currentFilePath = tab.isNote ? `Note: ${tab.name}` : tab.path || tab.name;
+  tabActivationHistory = [tab.sessionTabId, ...tabActivationHistory.filter(id => id !== tab.sessionTabId && tabData.some(t => t.sessionTabId === id))];
+  for (const pane of editorPanes.panes) pane.element.classList.toggle("active-pane", pane.tab === tab);
+  externalChanges?.activeChanged();
+  updateMainMenuState(); updateDeviceShareButtonState(); updateActiveNoteListItem();
+  updateStatusBar(); updateEditorModeUi();
+  if (focus) monacoEditor.focus();
+  scheduleSessionSnapshot();
+}
+
+function applySplitLayout(activeId = currentTab?.sessionTabId, focus = false) {
+  if (!editorPanes) return;
+  saveCurrentTabViewState();
+  splitLayout = normalizeSplitLayout(splitLayout, tabData, activeId, tabActivationHistory);
+  for (const tab of tabData) {
+    const side = splitLayout.split?.tabId === tab.sessionTabId ? splitLayout.split.side : "";
+    tab.element.dataset.split = side;
+    updateSplitButton(tab);
+    if (editorPanes.find(tab) || tab.sessionTabId === splitLayout.primaryTabId || tab.sessionTabId === splitLayout.split?.tabId) {
+      const language = tab.isMarkdown ? "markdown" : "monapad";
+      if (tab.model.getLanguageId() !== language) monaco.editor.setModelLanguage(tab.model, language);
+    }
   }
+  editorPanes.apply(splitLayout, tabData);
+  externalChanges?.sync();
+  syncActiveFileWatcher();
+  const visible = [splitLayout.primaryTabId, splitLayout.split?.tabId];
+  const tab = tabData.find(t => t.sessionTabId === (visible.includes(activeId) ? activeId : splitLayout.primaryTabId));
+  if (tab) activateTab(tab, null, focus);
 }
 
 function switchTab(data) {
-  if (!monacoEditor || !data?.model) return;
-
-  if (currentTab !== data) saveCurrentTabViewState();
-
-  const editorOptions = getTabEditorOptions(data);
-  const languageId = isMarkdownOn ? "markdown" : "monapad";
-  monaco.editor.setModelLanguage(data.model, languageId);
-  updateActiveTabElement(data);
-
-  // update tab content
-  monacoEditor.updateOptions(editorOptions);
-  monacoEditor.setModel(data.model);
-  attachCtrlWheelListener();
-
-  currentTab = data;
-  currentFilePath = data.isNote ? `Note: ${data.name}` : data.path || data.name;
-  updateMainMenuState();
-  updateDeviceShareButtonState();
-  updateActiveNoteListItem();
-
-  // restore selection, scroll position
-  if (!data.isDiffView) {
-    if (data.viewState) monacoEditor.restoreViewState(data.viewState);
-    monacoEditor.focus();
+  if (!data?.model || data.model.isDisposed() || !tabData.includes(data)) return;
+  const visible = editorPanes?.find(data);
+  if (visible) {
+    const language = data.isMarkdown ? "markdown" : "monapad";
+    if (data.model.getLanguageId() !== language) monaco.editor.setModelLanguage(data.model, language);
+    editorPanes.updateOptions();
   }
-
-  updateStatusBar();
-  updateEditorModeUi();
-  if (!data.isDiffView) applyDecorations();
-  syncActiveFileWatcher(data);
-  externalChanges?.sync(data);
+  if (visible && visible.editor.getModel() === (data.isDiffView ? null : data.model)) {
+    // Focus changes never reconnect models or re-layout the other pane.
+    activateTab(data, null, true);
+  } else {
+    const next = transitionSplitLayout(splitLayout, tabData, currentTab?.sessionTabId, tabActivationHistory, { type: "select", tabId: data.sessionTabId });
+    splitLayout = next.layout;
+    applySplitLayout(next.activeTabId, true);
+  }
+  syncActiveFileWatcher();
   refreshFileTabStateOnActivate(data);
-  scheduleSessionSnapshot();
+}
+
+function setSplitTab(tab, side) {
+  const next = transitionSplitLayout(splitLayout, tabData, currentTab?.sessionTabId, tabActivationHistory, { type: "split", tabId: tab?.sessionTabId, side });
+  if (!next.layout.split) return;
+  keepOpenNoteTab(tab);
+  splitLayout = next.layout;
+  applySplitLayout(next.activeTabId, true);
+  for (const pane of editorPanes.panes) if (pane.tab) refreshFileTabStateOnActivate(pane.tab);
+}
+
+function clearSplitView() {
+  splitLayout = { primaryTabId: currentTab?.sessionTabId, split: null };
+  applySplitLayout(currentTab?.sessionTabId, true);
+}
+
+function focusOtherPane() {
+  const other = editorPanes?.panes.find(p => p.tab && p.tab !== currentTab);
+  if (other) activateTab(other.tab, null, true);
 }
 
 function updateTabAdjacencyClasses(activeTab = currentTab) {
@@ -6300,8 +5825,9 @@ async function handleFileChange(tab, filePath, { afterSave = false } = {}) {
 function applyFileContentToEditor(tab, content, fileInfo = null) {
   if (!tab?.model || content === null || content === undefined) return false;
 
+  const pane = editorPanes?.find(tab);
+  if (pane) editorPanes.save(pane);
   const active = tab === currentTab;
-  if (active) tab.viewState = monacoEditor.saveViewState();
   if (fileInfo) applyFileEncodingInfo(tab, fileInfo);
   updateExternalFileSnapshot(tab, content, fileInfo || { hasBom: tab.hasUtf8Bom, isUtf8Valid: tab.isUtf8Valid });
   tab.originalContent = content;
@@ -6314,10 +5840,7 @@ function applyFileContentToEditor(tab, content, fileInfo = null) {
   tab.mergeBaseContent = modelContent;
   tab.isFileSaved = !hasUnsavedChanges(tab, modelContent);
 
-  if (active) {
-    monacoEditor.restoreViewState(tab.viewState);
-    monacoEditor.focus();
-  }
+  if (pane && !tab.isDiffView && tab.viewState) pane.editor.restoreViewState(tab.viewState);
 
   const close = tab.element.querySelector(".close");
   if (close) close.classList.toggle("show-unsaved", !tab.isFileSaved);
@@ -6329,10 +5852,30 @@ function applyFileContentToEditor(tab, content, fileInfo = null) {
 
   updateStatusBar();
   applyDecorations();
-  showMessage("file-updated");
+  if (active) showMessage("file-updated");
   reloadButton(tab, null, "remove");
   console.log("handleFileChange: content updated");
   return true;
+}
+
+function updateSplitButton(tab) {
+  const side = splitLayout.split?.tabId === tab.sessionTabId ? splitLayout.split.side : "";
+  const visible = Boolean(side) && !tab.element.querySelector(".reload-button");
+  tab.element.classList.toggle("has-split-button", visible);
+  let button = tab.element.querySelector(".split-button");
+  if (!visible) { button?.remove(); return; }
+  if (!button) {
+    button = document.createElement("button");
+    button.type = "button";
+    button.className = "split-button codicon";
+    button.addEventListener("mousedown", event => { event.preventDefault(); event.stopPropagation(); });
+    button.addEventListener("click", event => { event.preventDefault(); event.stopPropagation(); clearSplitView(); });
+    tab.element.querySelector(".name-wrap").prepend(button);
+  }
+  button.classList.toggle("codicon-split-horizontal", side === "left" || side === "right");
+  button.classList.toggle("codicon-split-vertical", side === "top" || side === "bottom");
+  button.title = i18next.t("split.clear");
+  button.setAttribute("aria-label", button.title);
 }
 
 function reloadButton(tab, filePath, mode) {
@@ -6341,6 +5884,7 @@ function reloadButton(tab, filePath, mode) {
   if (mode === "remove") {
     if (existing) existing.remove();
     tab.element.classList.remove("has-reload-button");
+    updateSplitButton(tab);
     if (tab === currentTab) updateStatusBar();
     return;
   }
@@ -6368,6 +5912,7 @@ function reloadButton(tab, filePath, mode) {
     const nameEl = tab.element.querySelector(".name");
     const referenceEl = iconEl || nameEl;
     if (referenceEl?.parentElement) referenceEl.parentElement.insertBefore(button, referenceEl);
+    updateSplitButton(tab);
     if (tab === currentTab) updateStatusBar();
   }
 }
@@ -6433,8 +5978,7 @@ async function loadFileByPath(filePath, insertIndex = null, options = {}) {
       if (close) close.classList.remove("show-unsaved");
 
       reloadButton(singleTab, null, "remove");
-      singleTab._ignoreUnsavedCheck = true;
-      singleTab.model.setValue(content);
+      setTabModelValue(singleTab, content);
       const modelContent = singleTab.model.getValue();
       singleTab.content = modelContent;
       singleTab.originalContent = modelContent;
@@ -6590,8 +6134,7 @@ async function openNoteById(noteId, options = {}) {
       const previewTab = tabData.find((tab) => tab.isNotePreview);
       if (previewTab) {
         moveTabToIndex(previewTab, getActiveTabInsertIndex(previewTab));
-        previewTab._ignoreUnsavedCheck = true;
-        previewTab.model.setValue(note.content || "");
+        setTabModelValue(previewTab, note.content || "");
         applyNoteDataToTab(previewTab, note, note.content || "", { preview: true });
         noteTab = previewTab;
       }
@@ -6760,12 +6303,38 @@ function syncOpenNoteTabsWithNotesIndex(notes = notesIndexCache) {
 
 let notesWindowFocusRefreshPromise = null;
 
+async function refreshVisibleNoteTabs(noteId = null) {
+  for (const pane of editorPanes?.panes || []) {
+    const tab = pane.tab;
+    if (!tab?.isNote || !tab.noteId || (noteId && tab.noteId !== noteId) || tab.noteDirty || tab._noteSavePromise || tab._transferring) continue;
+    const version = tab.model.getVersionId(), id = tab.noteId;
+    const note = await window.electronAPI.readNote(id);
+    if (!note?.exists || isTabModelDisposed(tab) || tab.noteId !== id || tab.model.getVersionId() !== version || tab.noteDirty || tab._noteSavePromise) continue;
+    editorPanes.save(pane);
+    withTabModelUpdate(tab, () => replaceModelContentPreservingUndo(tab, note.content || ""));
+    const markdown = tab.isMarkdown;
+    applyNoteDataToTab(tab, note, note.content || "", { preview: tab.isNotePreview });
+    tab.isMarkdown = markdown;
+    if (tab.viewState && pane.tab === tab) pane.editor.restoreViewState(tab.viewState);
+    if (tab === currentTab) { currentFilePath = `Note: ${tab.name}`; updateStatusBar(); }
+    scheduleGlobalSearch(); scheduleSessionSnapshot();
+  }
+}
+window.electronAPI.onNoteChanged(({ noteId }) => {
+  void (async () => {
+    await refreshVisibleNoteTabs(noteId);
+    globalSearchController?.clearNoteContentCache();
+    await renderNotesList();
+  })().catch(error => console.warn("Failed to refresh changed note:", error));
+});
+
 async function refreshNotesOnWindowFocus() {
   if (notesWindowFocusRefreshPromise) return notesWindowFocusRefreshPromise;
   notesWindowFocusRefreshPromise = (async () => {
     const notes = await window.electronAPI.listNotes();
     notesIndexCache = sortNotesForPanel(Array.isArray(notes) ? notes : []);
     syncOpenNoteTabsWithNotesIndex(notesIndexCache);
+    await refreshVisibleNoteTabs();
     globalSearchController?.clearNoteContentCache();
     await renderNotesList({ scheduleSearch: false });
     await populateRecentMenu();
@@ -7072,6 +6641,11 @@ function restoreTransferredEditorState(tab, payload) {
   tab.wordWrap = payload.wordWrap ?? tab.wordWrap;
   tab.isMarkdown = payload.isMarkdown ?? tab.isMarkdown;
   tab.sessionTabId = payload.sessionTabId || tab.sessionTabId;
+  const pane = editorPanes?.find(tab);
+  if (pane && !tab.isDiffView) {
+    pane.editor.updateOptions(getTabEditorOptions(tab));
+    if (tab.viewState) pane.editor.restoreViewState(tab.viewState);
+  }
 }
 
 async function createNoteTabFromPayload(payload, insertIndex = null, placement = null) {
@@ -8417,9 +7991,9 @@ async function saveFileTab(tab, filePath, content, options) {
     const dirty = syncTabSaveState(tab, tab.content, { cleanupAutosave: false });
     updateTabTitleDisplay(tab);
     reloadButton(tab, null, "remove");
+    syncActiveFileWatcher();
     if (tab === currentTab) {
       currentFilePath = filePath;
-      syncActiveFileWatcher(tab);
       updateStatusBar();
       showMessage("file-saved");
     }
@@ -8713,6 +8287,7 @@ async function openTabContextMenu(contextTab, pageX, pageY, externalOnly = false
   updateTabContextMenuState(tabContextMenu, contextTab);
 
   // menu position
+  hideTabSplitMenu();
   tabContextMenu.style.display = "block";
   tabContextMenu.style.visibility = "hidden";
 
@@ -8763,6 +8338,21 @@ function updateTabContextMenuState(menu, tab) {
     if (action === "diffView") button.querySelector(".label").textContent = i18next.t(tab?.isDiffView ? "external.exitDiff" : "external.diff");
     if (action === "mergeChanges") button.title = typeof tab?.mergeBaseContent === "string" ? "" : i18next.t("external.noBase");
   }
+  for (const button of menu.querySelectorAll("[data-split-side]")) {
+    button.disabled = Boolean(tab?._transferring) || !tabData.some(t => t !== tab && !t._closing && !t._transferring);
+    button.classList.toggle("disabled", button.disabled);
+    const checked = splitLayout.split?.tabId === tab?.sessionTabId && splitLayout.split?.side === button.dataset.splitSide;
+    button.classList.toggle("active", checked);
+    button.setAttribute("aria-checked", String(checked));
+  }
+  const clearButton = menu.querySelector('[data-action="clearSplit"]');
+  if (clearButton) {
+    clearButton.disabled = !splitLayout.split;
+    clearButton.classList.toggle("disabled", clearButton.disabled);
+  }
+  const splitButton = menu.querySelector('[data-action="openSplitMenu"]');
+  splitButton.disabled = menu.querySelector("[data-split-side]").disabled;
+  splitButton.classList.toggle("disabled", splitButton.disabled);
   const copyPathBtn = menu.querySelector('[data-action="copyPath"]');
   const openPathBtn = menu.querySelector('[data-action="openPath"]');
   const openInNewWindowBtn = menu.querySelector('[data-action="openInNewWindow"]');
@@ -8788,7 +8378,7 @@ function updateTabContextMenuState(menu, tab) {
     togglePinBtn.querySelector(".label").textContent = i18next.t(tab?.isPinned ? "tabMenu.unpin" : "tabMenu.pin");
   if (menu.dataset.externalOnly === "true") {
     for (const button of menu.querySelectorAll("button")) {
-      if (["diffView", "mergeChanges", "reloadDisk"].includes(button.dataset.action)) continue;
+      if (["diffView", "mergeChanges", "reloadDisk", "clearSplit"].includes(button.dataset.action)) continue;
       button.dataset.externalDisabled = String(button.disabled);
       button.disabled = true;
       button.classList.add("external-action-disabled");
@@ -8813,18 +8403,54 @@ async function closeTabsSequentially(tabsToClose) {
   }
 }
 
+const tabSplitMenu = document.querySelector("#tab-split-menu");
+const tabSplitMenuButton = tabContextMenu.querySelector('[data-action="openSplitMenu"]');
+function hideTabSplitMenu() {
+  tabSplitMenu.style.display = "none";
+  tabSplitMenuButton.setAttribute("aria-expanded", "false");
+}
+function positionTabSplitMenu() {
+  if (tabSplitMenu.style.display !== "flex") return;
+  const parent = tabContextMenu.getBoundingClientRect();
+  const trigger = tabSplitMenuButton.getBoundingClientRect();
+  const width = tabSplitMenu.offsetWidth;
+  const right = parent.right - 1;
+  tabSplitMenu.style.left = `${right + width <= innerWidth - SUBMENU_VIEWPORT_MARGIN ? right
+    : Math.max(SUBMENU_VIEWPORT_MARGIN, parent.left - width + 1)}px`;
+  positionSubmenu(tabSplitMenu, trigger.top - 5);
+}
+function showTabSplitMenu() {
+  if (tabSplitMenuButton.disabled || tabContextMenu.style.display === "none") return;
+  tabSplitMenu.style.display = "flex";
+  tabSplitMenuButton.setAttribute("aria-expanded", "true");
+  positionTabSplitMenu();
+}
+function deferHideTabSplitMenu() {
+  setTimeout(() => {
+    if (!tabSplitMenu.matches(":hover") && !tabSplitMenuButton.matches(":hover")) hideTabSplitMenu();
+  }, 100);
+}
+tabSplitMenuButton.addEventListener("mouseenter", showTabSplitMenu);
+tabSplitMenuButton.addEventListener("mouseleave", deferHideTabSplitMenu);
+tabSplitMenu.addEventListener("mouseleave", deferHideTabSplitMenu);
+tabContextMenu.addEventListener("scroll", positionTabSplitMenu, { passive: true });
+window.addEventListener("resize", positionTabSplitMenu);
+
 // Tab context menu click handler
 tabContextMenu.addEventListener("click", async (e) => {
   const button = e.target.closest("button");
   const action = button?.dataset.action;
   if (!action || !rightClickedTab || button.disabled || button.classList.contains("disabled")) return;
 
+  if (action === "openSplitMenu") { showTabSplitMenu(); return; }
   const targetTab = rightClickedTab;
 
   tabContextMenu.style.display = "none";
   rightClickedTab = null;
 
   switch (action) {
+    case "splitView": setSplitTab(targetTab, button.dataset.splitSide); break;
+    case "clearSplit": clearSplitView(); break;
     case "diffView": await externalChanges.toggle(targetTab).catch(externalChanges.showError); break;
     case "mergeChanges": await externalChanges.merge(targetTab).catch(externalChanges.showError); break;
     case "reloadDisk": await externalChanges.reload(targetTab).catch(externalChanges.showError); break;
@@ -8901,22 +8527,21 @@ function updateWordWrapMenuState() {
   if (wordWrapCheckmark) wordWrapCheckmark.style.display = isWordWrapOn ? "inline-flex" : "none";
 }
 
-function toggleWordWrap() {
-  isWordWrapOn = !isWordWrapOn;
-  if (currentTab) currentTab.wordWrap = isWordWrapOn;
-  monacoEditor.updateOptions({
-    wordWrap: isWordWrapOn ? "on" : "off",
-    ...WRAP_MEASURE_OPTIONS,
-    scrollbar: {
-      horizontal: isWordWrapOn ? "hidden" : "auto",
-    },
-  });
-  externalChanges?.sync(currentTab);
-  updateWordWrapMenuState();
+function toggleWordWrap(tab = currentTab) {
+  if (!tab) return;
+  tab.wordWrap = tab.wordWrap === false;
+  if (tab === currentTab) isWordWrapOn = tab.wordWrap;
+  editorPanes?.updateOptions(); externalChanges?.sync(tab);
+  updateWordWrapMenuState(); scheduleSessionSnapshot();
 }
 
 // editor context menu display & position handler
-editor.addEventListener("contextmenu", (e) => {
+editorArea.addEventListener("contextmenu", (e) => {
+  if (e.target.closest(".file-diff-host")) return;
+  const pane = editorPanes.panes.find(p => p.element.contains(e.target));
+  if (!pane?.tab) return;
+  activateTab(pane.tab, pane.editor);
+  editorMenuTarget = { editor: pane.editor, tab: pane.tab };
   e.preventDefault();
 
   tabContextMenu.style.display = "none";
@@ -8963,14 +8588,22 @@ customContextMenu.addEventListener("click", async (e) => {
     return;
   }
 
-  const model = monacoEditor.getModel();
+  const target = customContextMenu.style.display !== "none" && editorMenuTarget
+    ? editorMenuTarget : { editor: monacoEditor, tab: currentTab };
+  if (!target?.tab || target.tab.model.isDisposed() || target.editor.getModel() !== target.tab.model) return;
+  const targetEditor = target.editor;
+  const model = target.tab.model;
+  const version = model.getVersionId();
+  const selectionState = JSON.stringify(targetEditor.getSelections());
+  const valid = () => !model.isDisposed() && targetEditor.getModel() === model && model.getVersionId() === version &&
+    !targetEditor.getOption(monaco.editor.EditorOption.readOnly) && JSON.stringify(targetEditor.getSelections()) === selectionState;
 
-  if (currentTab?.isDiffView && ["cut", "paste", "undo", "redo"].includes(action)) return;
+  if (target.tab.isDiffView && ["cut", "paste", "undo", "redo"].includes(action)) return;
   switch (action) {
     case "copy": {
       try {
-        const selections = monacoEditor.getSelections();
-        const model = monacoEditor.getModel();
+        const selections = targetEditor.getSelections();
+        const model = targetEditor.getModel();
         let textToCopy = "";
 
         if (selections && selections.length > 0) {
@@ -8986,14 +8619,16 @@ customContextMenu.addEventListener("click", async (e) => {
 
     case "cut": {
       try {
-        const selections = monacoEditor.getSelections();
-        const model = monacoEditor.getModel();
+        const selections = targetEditor.getSelections();
+        const model = targetEditor.getModel();
         let textToCut = "";
 
         if (selections && selections.length > 0) {
           textToCut = selections.map((sel) => model.getValueInRange(sel)).join("\n");
           await navigator.clipboard.writeText(textToCut);
-          monacoEditor.executeEdits(
+          if (!valid()) return;
+          targetEditor.pushUndoStop();
+          targetEditor.executeEdits(
             "cut",
             selections.map((sel) => ({
               range: sel,
@@ -9011,36 +8646,37 @@ customContextMenu.addEventListener("click", async (e) => {
     case "paste":
       try {
         const text = await navigator.clipboard.readText();
-        monacoEditor.trigger("keyboard", "type", { text });
+        if (!valid()) return;
+        targetEditor.trigger("keyboard", "type", { text });
       } catch (err) {
         console.error("Paste failed:", err);
       }
       break;
 
     case "undo":
-      monacoEditor.trigger("keyboard", "undo", null);
+      targetEditor.trigger("keyboard", "undo", null);
       break;
 
     case "redo":
-      monacoEditor.trigger("keyboard", "redo", null);
+      targetEditor.trigger("keyboard", "redo", null);
       break;
 
     case "selectAll":
-      monacoEditor.trigger("keyboard", "editor.action.selectAll", null);
+      targetEditor.trigger("keyboard", "editor.action.selectAll", null);
       break;
 
     case "wordWrap":
-      toggleWordWrap();
+      toggleWordWrap(target.tab);
       break;
 
     case "toggleMarkdown":
-      const currentLang = monaco.editor.getModel(monacoEditor.getModel().uri).getLanguageId();
-      isMarkdownOn = currentLang !== "markdown";
-      if (currentTab) currentTab.isMarkdown = isMarkdownOn;
-      monaco.editor.setModelLanguage(model, isMarkdownOn ? "markdown" : "monapad");
-      monacoEditor.updateOptions({ autoClosingBrackets: isMarkdownOn ? "always" : "never" });
+      target.tab.isMarkdown = model.getLanguageId() !== "markdown";
+      if (target.tab === currentTab) isMarkdownOn = target.tab.isMarkdown;
+      monaco.editor.setModelLanguage(model, target.tab.isMarkdown ? "markdown" : "monapad");
+      editorPanes.updateOptions();
       applyDecorations();
       updateEditorModeUi();
+      scheduleSessionSnapshot();
       break;
   }
 
@@ -9159,7 +8795,7 @@ settingsButton.addEventListener("click", (e) => {
   e.stopPropagation();
   openSettingsMenu();
 });
-editor.addEventListener("click", () => {
+editorArea.addEventListener("click", () => {
   closeSettingsMenu();
 });
 settingsMenu.addEventListener("click", (e) => {

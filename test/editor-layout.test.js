@@ -11,15 +11,13 @@ function getRule(selector) {
   return html.match(new RegExp(`${escapedSelector}\\s*\\{([^}]*)\\}`))?.[1] || "";
 }
 
-test("Monaco hover keeps the established viewport compensation", () => {
-  assert.match(getRule(".monaco-hover.workbench-hover"), /bottom:\s*-33px\s*!important/);
-  assert.match(getRule(".monaco-hover.workbench-hover"), /transform:\s*translateX/);
-});
-
-test("gutter background does not make the editor a tooltip containing block", () => {
-  assert.doesNotMatch(getRule("#editor"), /position:\s*(?:relative|absolute|fixed|sticky)/);
-  assert.match(getRule("#editor::before"), /position:\s*fixed/);
-  assert.match(getRule("#editor::before"), /left:\s*var\(--editor-side-panel-offset\)/);
+test("split panes own their positioning and share one border below the overlapping tabs", () => {
+  assert.match(getRule("#editor-area"), /border-top:\s*1px solid/);
+  assert.match(getRule(".editor-pane"), /position:\s*relative/);
+  assert.doesNotMatch(getRule(".editor-pane"), /border-top/);
+  assert.doesNotMatch(getRule(".file-diff-host"), /border-top/);
+  assert.match(getRule(".tab.active"), /height:\s*36px/);
+  assert.match(getRule(".monaco-hover.workbench-hover"), /transform:\s*none/);
 });
 
 test("warned tabs strike only the title without overriding state opacity", () => {
