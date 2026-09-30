@@ -1,5 +1,34 @@
 let formattingActionDisposables = [];
 let quickInputActionDisposables = [];
+let diffViewActionDisposable;
+
+// Standalone Monaco's global addEditorAction does not add palette entries.
+// Register on each editor, including cached and newly created DiffEditor panes.
+export function registerMonacoDiffViewAction({ monaco, t, toggleDiffView }) {
+  diffViewActionDisposable?.dispose();
+  const registrations = new Map();
+  let disposed = false;
+  const register = editor => {
+    if (disposed || registrations.has(editor) || !monaco.editor.getEditors().includes(editor)) return;
+    const action = editor.addAction({
+      id: "monapad.toggleDiffView",
+      label: t("monaco.actions.toggleDiffView"),
+      keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyMod.Alt | monaco.KeyCode.KeyD],
+      run: toggleDiffView,
+    });
+    const cleanup = () => { action.dispose(); listener.dispose(); registrations.delete(editor); };
+    const listener = editor.onDidDispose(cleanup);
+    registrations.set(editor, cleanup);
+  };
+  // Creation fires during the base constructor; wait until addAction is initialized.
+  const created = monaco.editor.onDidCreateEditor(editor => queueMicrotask(() => register(editor)));
+  monaco.editor.getEditors().forEach(register);
+  diffViewActionDisposable = { dispose() {
+    disposed = true;
+    created.dispose();
+    for (const cleanup of registrations.values()) cleanup();
+  } };
+}
 
 function disposeMonacoActions(disposables) {
   disposables.forEach((disposable) => disposable?.dispose?.());
@@ -19,6 +48,7 @@ function createToggleHeadingAction({ monaco, t }, level) {
     precondition: null,
     keybindingContext: null,
     run: function (ed) {
+      if (ed.getOption(monaco.editor.EditorOption.readOnly)) return;
       const model = ed.getModel();
       const selections = ed.getSelections();
 
@@ -81,6 +111,7 @@ export function registerMonacoFormattingActions({
       precondition: null,
       keybindingContext: null,
       run: function (ed) {
+        if (ed.getOption(monaco.editor.EditorOption.readOnly)) return;
         const model = ed.getModel();
         const selections = ed.getSelections();
 

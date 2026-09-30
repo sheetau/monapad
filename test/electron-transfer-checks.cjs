@@ -6,6 +6,7 @@ const { app, BrowserWindow } = require("electron");
 module.exports = async function ({ first, profile, evaluate, until, ready, type, menu, delay, expectMoveFailure, moveFailures }) {
   async function key(win, keyCode, modifiers = []) {
     win.webContents.focus();
+    await evaluate(win, 'document.querySelector("#editor .native-edit-context, #editor textarea.inputarea").focus()');
     win.webContents.sendInputEvent({ type: "keyDown", keyCode, modifiers });
     win.webContents.sendInputEvent({ type: "keyUp", keyCode, modifiers });
     await delay(80);
@@ -34,6 +35,7 @@ module.exports = async function ({ first, profile, evaluate, until, ready, type,
   first.webContents.send("open-file", file);
   await until(() => evaluate(first, 'document.querySelector(".tab.active .tab-name-label").textContent === "history.txt"'), "file loaded");
   await type(first, "A");
+  await content(first, `A${savedContent}`, file);
   await key(first, "End", ["control"]);
   await type(first, "B");
   await content(first, `A${savedContent}B`, file);

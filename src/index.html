@@ -199,18 +199,21 @@
       :lang(de-DE) body,
       :lang(ja) body,
       :lang(ja-JP) body {
-        font-family: "Figtree", "Yu Gothic UI", "Meiryo", "Hiragino Sans", sans-serif;
+        --ui-font-family: "Figtree", "Yu Gothic UI", "Meiryo", "Hiragino Sans", sans-serif;
+        font-family: var(--ui-font-family);
       }
 
       :lang(it) body,
       :lang(es) body,
       :lang(pt) body {
-        font-family: "Figtree", "Segoe UI", "Arial", sans-serif;
+        --ui-font-family: "Figtree", "Segoe UI", "Arial", sans-serif;
+        font-family: var(--ui-font-family);
       }
 
       :lang(zh) body,
       :lang(zh-CN) body {
-        font-family: "Figtree", "Microsoft YaHei UI", "Yu Gothic UI", sans-serif;
+        --ui-font-family: "Figtree", "Microsoft YaHei UI", "Yu Gothic UI", sans-serif;
+        font-family: var(--ui-font-family);
       }
 
       body {
@@ -328,15 +331,19 @@
         font-size: 13px;
         line-height: 26px;
       }
-      .disabled {
+      .disabled,
+      .external-action-disabled {
         color: var(--grayOut) !important;
         pointer-events: none;
       }
       .disabled line,
-      .disabled polyline {
+      .disabled polyline,
+      .external-action-disabled line,
+      .external-action-disabled polyline {
         stroke: var(--grayOut) !important;
       }
-      .disabled .codicon {
+      .disabled .codicon,
+      .external-action-disabled .codicon {
         color: var(--grayOut) !important;
       }
       #container {
@@ -1098,6 +1105,33 @@
         bottom: var(--status-bar-height);
       }
 
+      /* read-only file comparison */
+      .monaco-diff-editor.side-by-side .editor.modified {
+        box-shadow: none !important;
+      }
+      .file-diff-host {
+        position: fixed;
+        z-index: 0;
+        display: flex;
+        flex-direction: column;
+        box-sizing: border-box;
+        padding-left: var(--editor-line-number-offset);
+        border-top: 1px solid var(--color3);
+        background: var(--editor-gutter-background);
+        color: var(--editorText);
+      }
+      .file-diff-surface {
+        flex: 1;
+        min-height: 0;
+        overflow: hidden;
+        background: var(--color1);
+      }
+
+      #file-diff-view .insert-sign,
+      #file-diff-view .delete-sign {
+        justify-content: center;
+      }
+
       /* status bar */
       #status-bar {
         height: var(--status-bar-height);
@@ -1666,6 +1700,60 @@
       }
       #custom-context-menu button svg {
         display: inline-block;
+      }
+
+      /* Keep Monaco's diff actions (including the lightbulb menu), with app menu styling. */
+      body .monaco-menu-container {
+        font-family: var(--ui-font-family, "Figtree", sans-serif);
+      }
+      body .monaco-menu-container > .monaco-scrollable-element {
+        background: var(--color2) !important;
+        color: var(--editorText) !important;
+        outline: none !important;
+        border: 1px solid var(--color3);
+        border-radius: 5px !important;
+        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.7) !important;
+      }
+      body .monaco-menu-container .monaco-menu {
+        min-width: 220px;
+        font-family: inherit;
+        font-size: 13px;
+      }
+      body .monaco-menu-container .monaco-action-bar.vertical {
+        padding: 5px 0;
+      }
+      body .monaco-menu-container .monaco-action-bar.vertical .action-menu-item {
+        height: 26px;
+        margin: 0;
+        border-radius: 0;
+        color: var(--editorText) !important;
+      }
+      body .monaco-menu-container .monaco-action-bar.vertical .action-item.focused {
+        background: var(--color3) !important;
+      }
+      body .monaco-menu-container .monaco-action-bar.vertical .action-item.focused .action-menu-item {
+        background: var(--color3) !important;
+      }
+      body .monaco-menu-container .monaco-action-bar.vertical .action-label:not(.separator),
+      body .monaco-menu-container .monaco-action-bar.vertical .keybinding {
+        padding: 0 10px;
+        line-height: 26px;
+      }
+      body .monaco-menu-container .monaco-action-bar.vertical .keybinding,
+      body .monaco-menu-container .monaco-action-bar.vertical .action-item.disabled .action-label,
+      body .monaco-menu-container .monaco-action-bar.vertical .action-item.disabled .submenu-indicator {
+        color: var(--grayOut) !important;
+        opacity: 1;
+      }
+      body .monaco-menu-container .monaco-action-bar.vertical .action-label.separator {
+        margin: 5px 10px !important;
+        border-bottom-color: var(--color3) !important;
+      }
+      body .monaco-menu-container .monaco-action-bar.vertical .action-menu-item:has(.separator) {
+        height: auto;
+      }
+      body .monaco-menu-container .monaco-action-bar.vertical .action-menu-item.checked .action-label {
+        padding-left: 26px;
       }
 
       /* side panel */
@@ -3234,6 +3322,10 @@
         <button data-action="closeToRight">
           <span class="label">Close to the Right</span>
         </button>
+        <div class="hr"></div>
+        <button data-action="diffView"><span class="label">Diff View</span><span class="shortcut">Ctrl + Alt + D</span></button>
+        <button data-action="mergeChanges"><span class="label">Merge Changes</span></button>
+        <button data-action="reloadDisk"><span class="label">Reload from Disk</span></button>
         <div class="hr"></div>
         <button data-action="copyPath">
           <span class="label">Copy Path</span>

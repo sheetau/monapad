@@ -178,6 +178,10 @@ class SessionManager {
         }
       }
 
+      if (tab.baselineKnown) {
+        try { tab.originalContent = tab.baselineRef ? await fs.promises.readFile(this.resolveContentRef(tab.baselineRef), "utf8") : ""; }
+        catch { tab.baselineKnown = false; }
+      }
       if (tab.kind === "file" && tab.path && tab.fileBaselineHash) {
         try {
           const buffer = await fs.promises.readFile(tab.path);
@@ -301,9 +305,12 @@ class SessionManager {
       fontSize: Number.isFinite(rawTab.fontSize) ? rawTab.fontSize : null,
       wordWrap: rawTab.wordWrap !== false,
       isMarkdown: Boolean(rawTab.isMarkdown),
+      isDiffView: Boolean(rawTab.isDiffView) && rawTab.kind === "file",
+      diffViewState: isObject(rawTab.diffViewState) ? rawTab.diffViewState : null,
       sourceEncoding: typeof rawTab.sourceEncoding === "string" ? rawTab.sourceEncoding : "UTF-8",
       isUtf8Valid: rawTab.isUtf8Valid !== false,
       hasBom: Boolean(rawTab.hasBom),
+      eol: rawTab.eol === "\r\n" ? "\r\n" : rawTab.eol === "\n" ? "\n" : null,
       viewState: isObject(rawTab.viewState) ? rawTab.viewState : null,
       hasReloadButton: Boolean(rawTab.hasReloadButton),
       isAutoPlaceholder: Boolean(rawTab.isAutoPlaceholder),
@@ -312,6 +319,17 @@ class SessionManager {
     if (tab.kind === "file" && typeof rawTab.originalContent === "string") {
       tab.fileBaselineHash = crypto.createHash("sha256").update(rawTab.originalContent).digest("hex");
       tab.fileBaselineHasBom = Boolean(rawTab.originalHasBom);
+      tab.baselineKnown = true;
+      tab.baselineBytes = assertRecoveryItemSize(rawTab.originalContent, this.maxItemBytes);
+      if (rawTab.originalContent.length) {
+        tab.baselineRef = `content/base-${tab.fileBaselineHash}.txt`;
+        const baselinePath = this.resolveContentRef(tab.baselineRef);
+        try { await fs.promises.access(baselinePath); }
+        catch (error) {
+          if (error.code !== "ENOENT") throw error;
+          await this.writeNewFile(baselinePath, rawTab.originalContent);
+        }
+      } else tab.baselineRef = null;
     }
 
     if (Object.prototype.hasOwnProperty.call(rawTab, "content")) {
@@ -356,7 +374,7 @@ class SessionManager {
         if (contentBytes > this.maxItemBytes) {
           throw new Error(`Existing session content exceeds the ${this.maxItemBytes}-byte item limit.`);
         }
-        totalBytes += contentBytes;
+        totalBytes += contentBytes + (tab.baselineBytes || 0);
       }
     }
 
@@ -375,6 +393,7 @@ class SessionManager {
         }
       }
       totalBytes += contentBytes;
+      if (rawTab.kind === "file" && typeof rawTab.originalContent === "string") totalBytes += assertRecoveryItemSize(rawTab.originalContent, this.maxItemBytes);
     }
 
     assertRecoveryTotalSize(totalBytes, this.maxTotalBytes);
@@ -436,6 +455,12 @@ class SessionManager {
   async isUsableManifest(manifest) {
     for (const windowState of manifest.windows) {
       for (const tab of windowState.tabs) {
+        if (tab.baselineRef) {
+          try {
+            const base = await fs.promises.readFile(this.resolveContentRef(tab.baselineRef), "utf8");
+            if (crypto.createHash("sha256").update(base).digest("hex") !== tab.fileBaselineHash) return false;
+          } catch { return false; }
+        }
         if (!tab.contentRef) continue;
         try {
           const content = await fs.promises.readFile(this.resolveContentRef(tab.contentRef), "utf8");
@@ -476,6 +501,7 @@ class SessionManager {
       for (const windowState of candidate.value.windows) {
         for (const tab of windowState.tabs) {
           if (tab.contentRef) referenced.add(path.basename(tab.contentRef));
+          if (tab.baselineRef) referenced.add(path.basename(tab.baselineRef));
         }
       }
     }

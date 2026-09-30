@@ -1,4 +1,17 @@
 {
+  "external": {
+    "diff": "差异视图",
+    "exitDiff": "退出差异视图",
+    "merge": "合并更改",
+    "reload": "从磁盘重新加载",
+    "choose": "检测到外部更改：请选择重新加载、合并或比较。",
+    "noBase": "此旧备份没有共同基础版本。请比较差异并手动编辑文档。",
+    "missing": "文件不可用，正在编辑的内容已保留。",
+    "failed": "无法完成操作",
+    "backupFailed": "无法保护正在编辑的内容，未应用任何更改。",
+    "stale": "文档或磁盘文件已更改，未应用任何更改。请使用最新内容重试。",
+    "tooLarge": "更改过大或过于复杂，无法自动合并。请使用差异视图并手动编辑文档。"
+  },
   "tabMove": {
     "failed": "无法移动标签页，原标签页已保留。",
     "alreadyOpen": "目标窗口中已打开此标签页。"
@@ -66,6 +79,7 @@
       "scrollLineUp": "向上滚动一行",
       "scrollLineDown": "向下滚动一行",
       "toggleWordWrap": "切换自动换行",
+      "toggleDiffView": "切换差异视图",
       "quickOpen": "快速打开",
       "showCommands": "显示命令"
     },
@@ -81,8 +95,7 @@
     "fileUpdated": "文件已重载",
     "fileModified": "文件已被外部程序修改！",
     "fileNotFound": "文件未找到",
-    "autosaveRestored": "已恢复未保存的更改",
-    "ReloadButtonTooltip": "重新加载文件"
+    "autosaveRestored": "已恢复未保存的更改"
   },
   "deviceShare": {
     "title": "分享到其他设备",

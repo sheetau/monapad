@@ -1,4 +1,17 @@
 {
+  "external": {
+    "diff": "Visualizar diferenças",
+    "exitDiff": "Sair da visualização de diferenças",
+    "merge": "Mesclar alterações",
+    "reload": "Recarregar do disco",
+    "choose": "Alterações externas: recarregar, mesclar ou comparar.",
+    "noBase": "Este backup antigo não contém a base comum. Compare as alterações e edite o documento manualmente.",
+    "missing": "O arquivo não está disponível. A cópia de trabalho foi mantida.",
+    "failed": "Não foi possível concluir a operação",
+    "backupFailed": "Não foi possível proteger a cópia de trabalho. Nenhuma alteração foi aplicada.",
+    "stale": "O documento ou o arquivo mudou. Nenhuma alteração foi aplicada. Tente novamente com o conteúdo atual.",
+    "tooLarge": "A alteração é grande ou complexa demais. Use a visualização de diferenças e edite o documento manualmente."
+  },
   "tabMove": {
     "failed": "Não foi possível mover a aba. A aba original foi mantida.",
     "alreadyOpen": "Esta aba já está aberta na janela de destino."
@@ -66,6 +79,7 @@
       "scrollLineUp": "Rolar linha para cima",
       "scrollLineDown": "Rolar linha para baixo",
       "toggleWordWrap": "Alternar quebra automática de linha",
+      "toggleDiffView": "Alternar visualização de diferenças",
       "quickOpen": "Abertura rápida",
       "showCommands": "Lista de comandos"
     },
@@ -81,8 +95,7 @@
     "fileUpdated": "Arquivo recarregado",
     "fileModified": "Arquivo modificado externamente!",
     "fileNotFound": "Arquivo não encontrado",
-    "autosaveRestored": "Alterações não salvas restauradas",
-    "ReloadButtonTooltip": "Recarregar arquivo"
+    "autosaveRestored": "Alterações não salvas restauradas"
   },
   "deviceShare": {
     "title": "Compartilhar com outros dispositivos",

@@ -1,4 +1,17 @@
 {
+  "external": {
+    "diff": "Vista de diferencias",
+    "exitDiff": "Salir de la vista de diferencias",
+    "merge": "Combinar cambios",
+    "reload": "Recargar desde el disco",
+    "choose": "Cambios externos: recargar, combinar o comparar.",
+    "noBase": "Este respaldo antiguo no contiene la base común. Compara los cambios y edita el documento manualmente.",
+    "missing": "El archivo no está disponible. Se ha conservado la copia de trabajo.",
+    "failed": "No se pudo completar la operación",
+    "backupFailed": "No se pudo proteger la copia de trabajo. No se aplicaron cambios.",
+    "stale": "El documento o el archivo ha cambiado. No se aplicó ningún cambio. Vuelva a intentarlo con el contenido actual.",
+    "tooLarge": "El cambio es demasiado grande o complejo. Usa la vista de diferencias y edita el documento manualmente."
+  },
   "tabMove": {
     "failed": "No se pudo mover la pestaña. Se ha conservado la pestaña original.",
     "alreadyOpen": "Esta pestaña ya está abierta en la ventana de destino."
@@ -66,6 +79,7 @@
       "scrollLineUp": "Desplazar línea hacia arriba",
       "scrollLineDown": "Desplazar línea hacia abajo",
       "toggleWordWrap": "Ajuste de línea",
+      "toggleDiffView": "Alternar vista de diferencias",
       "quickOpen": "Apertura rápida",
       "showCommands": "Lista de comandos"
     },
@@ -81,8 +95,7 @@
     "fileUpdated": "Archivo recargado",
     "fileModified": "¡Archivo modificado externamente!",
     "fileNotFound": "Archivo no encontrado",
-    "autosaveRestored": "Cambios no guardados restaurados",
-    "ReloadButtonTooltip": "Recargar archivo"
+    "autosaveRestored": "Cambios no guardados restaurados"
   },
   "deviceShare": {
     "title": "Compartir con otros dispositivos",

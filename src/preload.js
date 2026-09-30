@@ -2,6 +2,7 @@ const { contextBridge, ipcRenderer, webUtils, shell } = require("electron");
 const log = require("electron-log");
 
 contextBridge.exposeInMainWorld("electronAPI", {
+  checkpointFile: (payload) => ipcRenderer.invoke("autosave:checkpoint-file", payload),
   getTabSourcePath: (payload) => ipcRenderer.invoke("tab:get-source-path", payload),
   getAppVersion: () => ipcRenderer.invoke("get-app-version"),
   getAppSessionId: () => ipcRenderer.invoke("get-app-session-id"),

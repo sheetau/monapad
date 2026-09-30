@@ -1,4 +1,17 @@
 {
+  "external": {
+    "diff": "Diff View",
+    "exitDiff": "Exit Diff View",
+    "merge": "Merge Changes",
+    "reload": "Reload from Disk",
+    "choose": "External changes: reload, merge, or compare.",
+    "noBase": "The common base is unavailable for this older backup. Compare the changes and edit the document manually.",
+    "missing": "The file is unavailable. Your working copy has been kept.",
+    "failed": "Could not complete this operation",
+    "backupFailed": "Could not protect the working copy. No changes were applied.",
+    "stale": "The document or disk file changed. No changes were applied. Try again with the latest contents.",
+    "tooLarge": "This change is too large or complex to merge automatically. Use Diff View and edit the document manually."
+  },
   "tabMove": {
     "failed": "The tab could not be moved. The original tab has been kept.",
     "alreadyOpen": "This tab is already open in the destination window."
@@ -66,6 +79,7 @@
       "scrollLineUp": "Scroll Line Up",
       "scrollLineDown": "Scroll Line Down",
       "toggleWordWrap": "Toggle Word Wrap",
+      "toggleDiffView": "Toggle Diff View",
       "quickOpen": "Quick Open",
       "showCommands": "Command List"
     },
@@ -81,8 +95,7 @@
     "fileUpdated": "File reloaded",
     "fileModified": "File modified externally!",
     "fileNotFound": "File not found",
-    "autosaveRestored": "Unsaved changes restored",
-    "ReloadButtonTooltip": "Reload File"
+    "autosaveRestored": "Unsaved changes restored"
   },
   "deviceShare": {
     "title": "Share to other devices",

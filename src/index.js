@@ -6,6 +6,7 @@ import "monaco-editor/esm/vs/base/browser/ui/codicons/codicon/codicon.css";
 import { CustomSelect } from "./custom-select.js";
 import { createDeviceShareController } from "./device-share.js";
 import {
+  registerMonacoDiffViewAction,
   registerMonacoFormattingActions as registerMonacoFormattingEditorActions,
   registerMonacoQuickInputActions as registerMonacoQuickInputEditorActions,
 } from "./monaco-actions.js";
@@ -33,6 +34,7 @@ import {
 } from "./app-utils.js";
 import i18next from "i18next";
 import { OPEN_FENCE, CLOSE_FENCE, scanStructure, computeFoldingRanges } from "./monapad-structure.js";
+import { createExternalChangesController } from "./external-changes.js";
 import { captureEditorHistory, restoreEditorHistory } from "./editor-transfer.js";
 import { getTransferredExternalState, restoreTransferredExternalState } from "./tab-transfer.js";
 
@@ -213,6 +215,7 @@ delete storedSettings.sessionRestore;
 const settings = { ...defaultSettings, ...storedSettings };
 let selectedFontFamily = localStorage.getItem("selectedFontFamily") || "Iosevka";
 let monacoEditor = null;
+let externalChanges = null;
 const WRAP_MEASURE_OPTIONS = {
   wrappingStrategy: "advanced",
   disableMonospaceOptimizations: true,
@@ -943,6 +946,43 @@ monacoEditor = monaco.editor.create(editor, {
   cursorSmoothCaretAnimation: false,
 });
 
+externalChanges = createExternalChangesController({
+  monaco, editor: monacoEditor, host: editor,
+  t: (key, options) => i18next.t(key, options),
+  currentTab: () => currentTab, switchTab,
+  isDirty: tabHasUnsavedContent,
+  reportError: (message, detail) => window.electronAPI.showMessageBox({ type: "error", buttons: ["OK"], title: "Monapad", message, detail }),
+  readFile: readFileWithEncodingInfo,
+  editorOptions: tab => ({ fontSize: tab.fontSize || persistentFontSize,
+    fontFamily: String(monacoEditor.getOption(monaco.editor.EditorOption.fontFamily)),
+    fontLigatures: monacoEditor.getOption(monaco.editor.EditorOption.fontLigatures),
+    wordWrap: tab.wordWrap === false ? "off" : "on", ...WRAP_MEASURE_OPTIONS,
+    scrollbar: { horizontal: tab.wordWrap === false ? "auto" : "hidden" }, tabSize }),
+  checkpoint: async tab => {
+    const result = await window.electronAPI.checkpointFile({ filePath: tab.path, name: tab.name,
+      content: tab.model.getValue(), mergeBaseContent: tab.mergeBaseContent, hasBom: tab.hasUtf8Bom });
+    if (!result?.success) throw new Error(result?.error || "backupFailed");
+  },
+  reload: applyFileContentToEditor,
+  merge: async (tab, result, disk) => {
+    tab.originalContent = disk.content;
+    tab.mergeBaseContent = disk.content;
+    updateExternalFileSnapshot(tab, disk.content, disk);
+    // Keep the document's existing EOL and BOM choices. Undo changes the text,
+    // while the latest acknowledged disk version remains the saved baseline.
+    replaceModelContentPreservingUndo(tab, result);
+    syncTabSaveState(tab, tab.model.getValue());
+    reloadButton(tab, null, "remove");
+    const backup = await writeTabAutosave(tab, tab.model.getValue(), { verify: true });
+    if (!backup?.success) throw new Error(backup?.error || "backupFailed");
+    externalChanges.observe(tab, disk);
+  },
+  changed: () => {
+    scheduleSessionSnapshot(); updateStatusBar();
+    if (rightClickedTab && tabContextMenu.style.display !== "none") updateTabContextMenuState(tabContextMenu, rightClickedTab);
+  },
+});
+
 function installMonacoStatusBarBridge() {
   if (!chordStatusEl) return;
 
@@ -1158,6 +1198,7 @@ let setKuromojiEnabled = () => {};
 
   // ctrl + arror, ctrl + shift + arrow, ctrl + delete/backspace
   async function execJapaneseWordMove(mode, select, del) {
+    if (del && monacoEditor.getOption(monaco.editor.EditorOption.readOnly)) return;
     const model = monacoEditor.getModel();
     if (!model) return;
     const selections = monacoEditor.getSelections();
@@ -1291,7 +1332,25 @@ let setKuromojiEnabled = () => {};
   });
 })();
 
+async function toggleCurrentDiffView() {
+  const tab = currentTab;
+  if (!tab || tab._diffTogglePending) return;
+  tab._diffTogglePending = true;
+  try {
+    await externalChanges.toggle(tab);
+    if (currentTab === tab) {
+      if (tab.isDiffView) externalChanges.focus();
+      else monacoEditor.focus();
+    }
+  } catch (error) {
+    await externalChanges.showError(error);
+  } finally {
+    delete tab._diffTogglePending;
+  }
+}
+
 function registerMonacoFormattingActions() {
+  registerMonacoDiffViewAction({ monaco, t: i18next.t.bind(i18next), toggleDiffView: toggleCurrentDiffView });
   registerMonacoFormattingEditorActions({
     monaco,
     monacoEditor,
@@ -1658,43 +1717,6 @@ function isTabModelDisposed(tab) {
   return Boolean(tab?.model?.isDisposed?.());
 }
 
-function markPendingSelfSave(tab, content) {
-  if (!tab || !tab.path) return;
-  if (tab._pendingSelfSaveTimer) clearTimeout(tab._pendingSelfSaveTimer);
-  tab._pendingSelfSaveContent = content;
-  tab._pendingSelfSaveTimer = setTimeout(() => {
-    tab._pendingSelfSaveContent = null;
-    tab._pendingSelfSaveTimer = null;
-  }, 1500);
-}
-
-function clearPendingSelfSave(tab) {
-  if (!tab) return;
-  if (tab._pendingSelfSaveTimer) clearTimeout(tab._pendingSelfSaveTimer);
-  tab._pendingSelfSaveTimer = null;
-  tab._pendingSelfSaveContent = null;
-}
-
-function isPendingSelfSaveContent(tab, content) {
-  if (!tab || typeof tab._pendingSelfSaveContent !== "string") return false;
-  return normalizeTextForModelComparison(content) === normalizeTextForModelComparison(tab._pendingSelfSaveContent);
-}
-
-function acceptSelfSaveFileChange(tab, content, fileInfo = null) {
-  tab.originalContent = content;
-  tab.content = content;
-  tab.isFileSaved = true;
-  tab.isWarned = false;
-  updateExternalFileSnapshot(tab, content, fileInfo);
-  applyFileEncodingInfo(tab, fileInfo);
-  updateTabHeadingIcon(tab, content);
-  clearPendingSelfSave(tab);
-  tab.element.querySelector(".name")?.classList.remove("warn");
-  tab.element.querySelector(".close")?.classList.remove("show-unsaved");
-  reloadButton(tab, null, "remove");
-  if (tab === currentTab) updateStatusBar();
-}
-
 async function readFileWithEncodingInfo(filePath) {
   const result =
     typeof window.electronAPI.readFileWithEncoding === "function"
@@ -1719,38 +1741,7 @@ function updateExternalFileSnapshot(tab, content, fileInfo = null) {
   tab._lastExternalFileSize = Number.isFinite(fileInfo?.fileSize) ? fileInfo.fileSize : null;
   tab._lastExternalModifiedTimeMs = Number.isFinite(fileInfo?.modifiedTimeMs) ? fileInfo.modifiedTimeMs : null;
   tab._lastExternalChangedTimeMs = Number.isFinite(fileInfo?.changedTimeMs) ? fileInfo.changedTimeMs : null;
-}
-
-function isSameExternalFileSnapshot(tab, content, fileInfo = null) {
-  if (!tab || content !== tab._lastExternalContent) return false;
-  return (
-    Boolean(fileInfo?.hasBom) === Boolean(tab._lastExternalHasBom) &&
-    (fileInfo?.isUtf8Valid !== false) === (tab._lastExternalIsUtf8Valid !== false)
-  );
-}
-
-function isSameExternalFileMetadata(tab, fileInfo) {
-  return Boolean(
-    tab &&
-      Number.isFinite(tab._lastExternalFileSize) &&
-      Number.isFinite(tab._lastExternalModifiedTimeMs) &&
-      Number.isFinite(tab._lastExternalChangedTimeMs) &&
-      Number.isFinite(fileInfo?.fileSize) &&
-      Number.isFinite(fileInfo?.modifiedTimeMs) &&
-      Number.isFinite(fileInfo?.changedTimeMs) &&
-      tab._lastExternalFileSize === fileInfo.fileSize &&
-      tab._lastExternalModifiedTimeMs === fileInfo.modifiedTimeMs &&
-      tab._lastExternalChangedTimeMs === fileInfo.changedTimeMs,
-  );
-}
-
-async function refreshTabEncodingInfoFromDisk(tab) {
-  if (!tab?.path) return null;
-  const fileInfo = await readFileWithEncodingInfo(tab.path);
-  if (!fileInfo) return null;
-  applyFileEncodingInfo(tab, fileInfo);
-  if (tab === currentTab) updateStatusBar();
-  return fileInfo;
+  externalChanges?.observe(tab, { ...fileInfo, content });
 }
 
 function getFileSaveOptions(tab, { preserveBom = true } = {}) {
@@ -1769,6 +1760,7 @@ async function writeNoteTab(tab, content = null, force = false) {
     if (!nextContent.trim()) {
       tab.content = nextContent;
       tab.originalContent = "";
+      tab.mergeBaseContent = "";
       tab.isFileSaved = true;
       tab.noteDirty = false;
       updateNoteTabTitle(tab, nextContent);
@@ -1827,6 +1819,7 @@ async function writeNoteTab(tab, content = null, force = false) {
     tab.noteUpdatedAt = result.meta?.updatedAt || Date.now();
     tab.noteCreatedAt = result.meta?.createdAt || tab.noteCreatedAt;
     tab.originalContent = nextContent;
+    tab.mergeBaseContent = nextContent;
     tab.content = nextContent;
     tab.isFileSaved = true;
     tab.noteDirty = false;
@@ -1918,6 +1911,7 @@ function applyNoteDataToTab(tab, note, content, options = {}) {
   tab.name = title;
   tab.content = content;
   tab.originalContent = content;
+  tab.mergeBaseContent = content;
   tab.isFileSaved = true;
   tab.isWarned = false;
   tab.isMarkdown = false;
@@ -1947,6 +1941,7 @@ function applyPendingNoteDataToTab(tab, content = "", options = {}) {
   tab.name = title;
   tab.content = content;
   tab.originalContent = "";
+  tab.mergeBaseContent = "";
   tab.isFileSaved = true;
   tab.isWarned = false;
   tab.isMarkdown = false;
@@ -2005,6 +2000,10 @@ async function writeTabAutosave(tab, content = null, options = {}) {
         index: tabData.indexOf(tab),
         ownerId: myWindowId,
         tabId: tab.sessionTabId,
+        mergeBaseContent: tab.mergeBaseContent,
+        originalHasBom: Boolean(tab._lastExternalHasBom),
+        hasBom: Boolean(tab.hasUtf8Bom),
+        eol: tab.model.getEOL(),
         content: nextContent,
         verify: Boolean(options.verify),
       });
@@ -2137,7 +2136,7 @@ async function restoreAutosaveDrafts() {
       const emptyTab = tabData[0];
       await prepareReusableEmptyTabForReplacement(emptyTab);
       tabs.removeChild(emptyTab.element);
-      emptyTab.model?.dispose();
+      disposeTabModel(emptyTab);
       tabData = [];
       currentTab = null;
       layoutTabs({ animate: false });
@@ -2212,13 +2211,19 @@ function confirmAutosaveRestore(fileName) {
   });
 }
 
-function applyRestoredAutosaveContent(tab, savedContent, restoredContent) {
+function applyRestoredAutosaveContent(tab, savedContent, restoredContent, backupInfo = {}) {
   if (!tab?.model) return;
 
   tab._ignoreUnsavedCheck = true;
   tab.model.setValue(savedContent);
+  const eol = backupInfo.eol || (restoredContent.includes("\r\n") ? "\r\n" : restoredContent.includes("\n") ? "\n" : tab.model.getEOL());
+  tab.model.setEOL(eol === "\r\n" ? 1 : 0);
+  const mergeBaseContent = backupInfo.mergeBaseContent ?? null;
+  tab.hasUtf8Bom = backupInfo.hasBom ?? tab.hasUtf8Bom;
   tab.content = savedContent;
-  tab.originalContent = savedContent;
+  tab.originalContent = typeof mergeBaseContent === "string" ? mergeBaseContent : savedContent;
+  tab.mergeBaseContent = mergeBaseContent;
+  tab._lastExternalHasBom = Boolean(backupInfo.originalHasBom ?? tab._lastExternalHasBom);
   tab.isFileSaved = true;
 
   const fullRange = tab.model.getFullModelRange();
@@ -2469,7 +2474,7 @@ async function restorePinnedTabs() {
   ) {
     await prepareReusableEmptyTabForReplacement(initialEmptyTab);
     tabs.removeChild(initialEmptyTab.element);
-    initialEmptyTab.model?.dispose();
+    disposeTabModel(initialEmptyTab);
     tabData = tabData.filter((tab) => tab !== initialEmptyTab);
     if (currentTab === initialEmptyTab) currentTab = null;
     layoutTabs({ animate: false });
@@ -2520,6 +2525,7 @@ monacoEditor.onDidChangeModelContent((event) => {
   updateDeviceShareButtonState();
   scheduleApplyDecorations();
   if (isGlobalSearchActive()) scheduleGlobalSearch();
+  externalChanges?.sync(active);
   scheduleSessionSnapshot();
 });
 monacoEditor.onDidScrollChange(() => {
@@ -2531,6 +2537,7 @@ applyDecorations();
 
 // prevent monaco error that occurs when try to delete all selection includes folding
 monacoEditor.onKeyDown((e) => {
+  if (currentTab?.isDiffView) return;
   const code = e.browserEvent.code;
   if (code !== "Delete" && code !== "Backspace") return;
 
@@ -3335,16 +3342,19 @@ function createSessionTabSnapshot(tab) {
     fontSize: tab.fontSize,
     wordWrap: tab.wordWrap,
     isMarkdown: tab.isMarkdown,
+    isDiffView: Boolean(tab.isDiffView),
+    diffViewState: tab.diffViewState || null,
     sourceEncoding: tab.sourceEncoding,
     isUtf8Valid: tab.isUtf8Valid,
     hasBom: tab.hasUtf8Bom,
+    eol: tab.model.getEOL(),
     viewState: tab.viewState,
     hasReloadButton: tab.element?.classList.contains("has-reload-button"),
     isAutoPlaceholder: Boolean(tab.isAutoPlaceholder),
   };
   if (kind === "file" && dirty) {
-    snapshot.originalContent = tab.originalContent ?? "";
-    snapshot.originalHasBom = Boolean(tab.hasUtf8Bom);
+    if (typeof tab.mergeBaseContent === "string") snapshot.originalContent = tab.mergeBaseContent;
+    snapshot.originalHasBom = Boolean(tab._lastExternalHasBom);
   }
   if (kind !== "file" || dirty) snapshot.content = content;
   return snapshot;
@@ -3420,7 +3430,7 @@ function removeInitialTabForSessionRestore() {
     clearAutosaveTimer(tab);
     releaseWatchedFileForTab(tab);
     tab.element?.remove();
-    tab.model?.dispose();
+    disposeTabModel(tab);
   }
   tabData = [];
   currentTab = null;
@@ -3432,6 +3442,8 @@ function applyCommonSessionTabState(tab, state) {
   tab.fontSize = state.fontSize || persistentFontSize;
   tab.wordWrap = state.wordWrap !== false;
   tab.isMarkdown = Boolean(state.isMarkdown);
+  tab.isDiffView = Boolean(state.isDiffView) && Boolean(tab.path);
+  tab.diffViewState = state.diffViewState || null;
   tab.sourceEncoding = state.sourceEncoding || tab.sourceEncoding;
   tab.isUtf8Valid = state.isUtf8Valid !== false;
   tab.hasUtf8Bom = Boolean(state.hasBom);
@@ -3455,6 +3467,7 @@ async function restoreFileSessionTab(state) {
   });
   tab.draftId = null;
   tab.originalContent = diskContent;
+  tab.mergeBaseContent = diskContent;
   tab.content = diskContent;
   updateExternalFileSnapshot(tab, diskContent, fileInfo || { hasBom: state.hasBom, isUtf8Valid: state.isUtf8Valid });
 
@@ -3462,7 +3475,10 @@ async function restoreFileSessionTab(state) {
   const matchingAutosave = autosaveBackup?.exists && autosaveBackup.meta?.tabId === state.id;
   const restoredContent = matchingAutosave ? autosaveBackup.content : state.dirty ? state.content ?? "" : null;
   if (restoredContent !== null) {
-    applyRestoredAutosaveContent(tab, diskContent, restoredContent);
+    applyRestoredAutosaveContent(tab, diskContent, restoredContent, {
+      hasBom: state.hasBom, eol: state.eol,
+      ...(matchingAutosave ? autosaveBackup.meta : {mergeBaseContent: state.originalContent, originalHasBom: state.fileBaselineHasBom}),
+    });
   } else {
     tab.isFileSaved = true;
   }
@@ -3492,6 +3508,7 @@ async function restoreSessionTab(state) {
     } else {
       tab = createTab(state.name, state.content || "", null, null, { sessionTabId: state.id });
       tab.originalContent = "";
+      tab.mergeBaseContent = "";
       syncTabSaveState(tab, tab.model.getValue());
     }
   } else if (state.kind === "pendingNote") {
@@ -3508,6 +3525,7 @@ async function restoreSessionTab(state) {
     });
     tab.draftId = state.draftId || tab.draftId;
     tab.originalContent = "";
+    tab.mergeBaseContent = "";
     syncTabSaveState(tab, tab.model.getValue());
   }
   return tab ? applyCommonSessionTabState(tab, state) : null;
@@ -4601,7 +4619,7 @@ function enableTabDragging(tab, data) {
     isHandlingMouseDown = true;
     tabPendingDeferredMouseUp = tab;
     dragStartClientPos = { x: e.clientX, y: e.clientY };
-    switchTab(data);
+    if (currentTab !== data) switchTab(data);
     draggingTab = tab;
     // console.log("📌mousedown: draggingTab set");
     draggingTabData = data;
@@ -4806,7 +4824,7 @@ function enableTabDragging(tab, data) {
     const switchIndex = index === -1 ? Math.max(0, Math.min(fallbackIndex, tabData.length - 1)) : index;
 
     targetTabData._autosaveDisabled = true;
-    queueMicrotask(() => targetTabData.model?.dispose());
+    queueMicrotask(() => disposeTabModel(targetTabData));
     releaseWatchedFileForTab(targetTabData);
     clearAutosaveTimer(targetTabData);
     if (index !== -1) tabData.splice(index, 1);
@@ -5157,6 +5175,7 @@ document.addEventListener("mouseup", (e) => {
 });
 
 async function moveTabToWindow(tab, deliver, remove) {
+  await tab?._fileSaveFinished;
   if (!tab || tab._transferring || tab.isPinned) return false;
   tab._transferring = true;
   if (currentTab === tab) monacoEditor.updateOptions({ readOnly: true });
@@ -5171,7 +5190,7 @@ async function moveTabToWindow(tab, deliver, remove) {
     return true;
   } finally {
     tab._transferring = false;
-    if (currentTab === tab) monacoEditor.updateOptions({ readOnly: false });
+    if (currentTab === tab) monacoEditor.updateOptions({ readOnly: Boolean(tab.isDiffView) });
   }
 }
 
@@ -5198,7 +5217,7 @@ function removeTabAndAdjustUI(targetTabData) {
   if (index === -1) return;
 
   targetTabData._autosaveDisabled = true;
-  queueMicrotask(() => targetTabData.model?.dispose());
+  queueMicrotask(() => disposeTabModel(targetTabData));
   releaseWatchedFileForTab(targetTabData);
   clearAutosaveTimer(targetTabData);
   tabs.removeChild(targetTabData.element);
@@ -5356,6 +5375,8 @@ function createTab(name, content = "", path = null, insertIndex = null, options 
     isUtf8Valid: options.isUtf8Valid !== false,
     hasUtf8Bom: Boolean(options.hasBom),
     originalContent: content,
+    mergeBaseContent: path ? content : null,
+    isDiffView: false,
     _lastExternalContent: path ? content : null,
     _lastExternalHasBom: Boolean(options.hasBom),
     _lastExternalIsUtf8Valid: options.isUtf8Valid !== false,
@@ -5398,7 +5419,8 @@ function createTab(name, content = "", path = null, insertIndex = null, options 
 
   tab.onclick = (e) => {
     if (isTabControlTarget(e.target)) return;
-    switchTab(data);
+    if (currentTab !== data) switchTab(data);
+    else if (!data.isDiffView) monacoEditor.focus();
   };
 
   // tab middle click
@@ -5570,6 +5592,7 @@ async function saveAsNote() {
     active.noteDirty = false;
     active.draftId = null;
     active.originalContent = content;
+    active.mergeBaseContent = content;
     active.content = content;
     active.isFileSaved = true;
     active.element.classList.add("note");
@@ -5597,6 +5620,7 @@ async function saveAsNote() {
 
 // close tab
 async function attemptCloseTab(data, options = {}) {
+  await data?._fileSaveFinished;
   if (data?._transferring) return "cancelled";
   return new Promise(async (resolve) => {
     if (data?.isPinned) {
@@ -5931,6 +5955,7 @@ async function finishWindowClose() {
 }
 
 async function attemptCloseWindow(options = {}) {
+  await Promise.all(tabData.map(tab => tab._fileSaveFinished));
   if (currentTab?._transferring || tabData.some(tab => tab._transferring)) { abortWindowClose(); return; }
   if (isClosingForSession) return;
   isClosingForSession = true;
@@ -6124,14 +6149,20 @@ async function confirmWindowClose() {
 }
 
 // switch tab
+function disposeTabModel(tab) {
+  externalChanges?.release(tab);
+  tab.model?.dispose();
+}
+
 function saveCurrentTabViewState() {
+  externalChanges?.saveView();
   const activeTab =
     currentTab && monacoEditor.getModel() === currentTab.model
       ? currentTab
       : tabData.find((tab) => tab.element.classList.contains("active"));
   if (!activeTab?.model || monacoEditor.getModel() !== activeTab.model) return;
   activeTab.content = activeTab.model.getValue();
-  activeTab.viewState = monacoEditor.saveViewState();
+  if (!activeTab.isDiffView) activeTab.viewState = monacoEditor.saveViewState();
   activeTab.fontSize = fontSize;
   activeTab.wordWrap = isWordWrapOn;
 }
@@ -6143,8 +6174,9 @@ function getTabEditorOptions(tab) {
 
   return {
     fontSize,
-    readOnly: Boolean(tab._transferring),
-    wordWrap: isWordWrapOn ? "on" : "off",
+    readOnly: Boolean(tab._transferring || tab.isDiffView),
+    automaticLayout: !tab.isDiffView,
+    wordWrap: !tab.isDiffView && isWordWrapOn ? "on" : "off",
     ...WRAP_MEASURE_OPTIONS,
     scrollbar: {
       horizontal: isWordWrapOn ? "hidden" : "auto",
@@ -6190,8 +6222,8 @@ function switchTab(data) {
   updateActiveTabElement(data);
 
   // update tab content
-  monacoEditor.setModel(data.model);
   monacoEditor.updateOptions(editorOptions);
+  monacoEditor.setModel(data.model);
   attachCtrlWheelListener();
 
   currentTab = data;
@@ -6201,13 +6233,16 @@ function switchTab(data) {
   updateActiveNoteListItem();
 
   // restore selection, scroll position
-  if (data.viewState) monacoEditor.restoreViewState(data.viewState);
-  monacoEditor.focus();
+  if (!data.isDiffView) {
+    if (data.viewState) monacoEditor.restoreViewState(data.viewState);
+    monacoEditor.focus();
+  }
 
   updateStatusBar();
   updateEditorModeUi();
-  applyDecorations();
+  if (!data.isDiffView) applyDecorations();
   syncActiveFileWatcher(data);
+  externalChanges?.sync(data);
   refreshFileTabStateOnActivate(data);
   scheduleSessionSnapshot();
 }
@@ -6221,174 +6256,66 @@ function updateTabAdjacencyClasses(activeTab = currentTab) {
 }
 
 async function refreshFileTabStateOnActivate(tab) {
-  if (!tab?.path || tab.isNote || tab._checkingDiskState) return;
+  if (!tab?.path || tab.isNote || tab._checkingDiskState || tab.model.isDisposed()) return;
   tab._checkingDiskState = true;
-
-  try {
-    tab._needsDiskRefresh = false;
-    let fileInfo = null;
-    let shouldReadFile = true;
-    if (
-      typeof window.electronAPI.getFileMetadata === "function" &&
-      !tab.isWarned &&
-      !tab.element.classList.contains("has-reload-button")
-    ) {
-      const metadata = await window.electronAPI.getFileMetadata(tab.path);
-      if (tab !== currentTab) return;
-      if (metadata && isSameExternalFileMetadata(tab, metadata)) return;
-      if (!metadata) shouldReadFile = false;
-    }
-    if (shouldReadFile) fileInfo = await readFileWithEncodingInfo(tab.path);
-    const content = fileInfo?.content;
-    if (tab !== currentTab) return;
-
-    if (content === null || content === undefined) {
-      tab.isWarned = true;
-      tab.element.querySelector(".name")?.classList.add("warn");
-      reloadButton(tab, null, "remove");
-      if (tabContextMenu.style.display !== "none") updateTabContextMenuState(tabContextMenu, tab);
-      return;
-    }
-
-    tab.isWarned = false;
-    tab.element.querySelector(".name")?.classList.remove("warn");
-    if (tabContextMenu.style.display !== "none") updateTabContextMenuState(tabContextMenu, tab);
-
-    if (isSameExternalFileSnapshot(tab, content, fileInfo)) {
-      applyFileEncodingInfo(tab, fileInfo);
-      updateExternalFileSnapshot(tab, content, fileInfo);
-      reloadButton(tab, null, "remove");
-      return;
-    }
-
-    if (isPendingSelfSaveContent(tab, content)) {
-      acceptSelfSaveFileChange(tab, content, fileInfo);
-      return;
-    }
-
-    if (tab.isFileSaved && normalizeTextForModelComparison(content) === tab.originalContent) {
-      applyFileEncodingInfo(tab, fileInfo);
-      updateExternalFileSnapshot(tab, content, fileInfo);
-      reloadButton(tab, null, "remove");
-      return;
-    }
-
-    if (!tabHasUnsavedContent(tab)) {
-      applyFileEncodingInfo(tab, fileInfo);
-      applyFileContentToEditor(tab, content, fileInfo);
-      return;
-    }
-
-    if (tab.element.classList.contains("has-reload-button")) return;
-
-    showMessage("file-modified");
-    reloadButton(tab, tab.path, "add");
-  } catch (error) {
-    console.warn("Failed to refresh file tab state:", error);
-  } finally {
-    tab._checkingDiskState = false;
-  }
+  try { await handleFileChange(tab, tab.path); }
+  finally { tab._checkingDiskState = false; }
 }
 
-// detect when file is moved, deleted, or renamed
-window.electronAPI.onFileChanged((event, { filePath, eventType }) => {
-  const targetTab = tabData.find((tab) => tab.path === filePath);
-  if (!targetTab) return;
-
-  if (eventType === "rename") {
-    // if file is not found
-    targetTab.isWarned = true;
-    targetTab.element.querySelector(".name").classList.add("warn");
-    reloadButton(targetTab, null, "remove");
-    if (tabContextMenu.style.display !== "none") updateTabContextMenuState(tabContextMenu, targetTab);
-  } else if (eventType === "change") {
-    // if file is changed
-    targetTab.isWarned = false;
-    targetTab.element.querySelector(".name").classList.remove("warn");
-    handleFileChange(targetTab, filePath);
-    if (tabContextMenu.style.display !== "none") updateTabContextMenuState(tabContextMenu, targetTab);
-  }
+window.electronAPI.onFileChanged((_event, { filePath }) => {
+  for (const tab of tabData.filter(tab => tab.path === filePath)) void handleFileChange(tab, filePath);
 });
 
-async function handleFileChange(targetTab, filePath) {
-  let content = null;
-  let fileInfo = null;
-  try {
-    fileInfo = await readFileWithEncodingInfo(filePath);
-    content = fileInfo?.content ?? null;
-  } catch (e) {
-    content = null;
+async function handleFileChange(tab, filePath, { afterSave = false } = {}) {
+  if (tab._fileSaveInProgress && !afterSave) return;
+  const sequence = tab._diskReadSequence = (tab._diskReadSequence || 0) + 1;
+  const info = await readFileWithEncodingInfo(filePath).catch(() => null);
+  if (sequence !== tab._diskReadSequence || tab.model.isDisposed() || tab.path !== filePath) return;
+  tab.isWarned = !info;
+  tab.element.querySelector(".name")?.classList.toggle("warn", !info);
+  externalChanges?.observe(tab, info);
+  const content = info?.content;
+  if (!info) {
+    reloadButton(tab, null, "remove");
+  } else if (normalizeTextForModelComparison(content) === normalizeTextForModelComparison(tab.model.getValue()) && tab.hasUtf8Bom === Boolean(info.hasBom)) {
+    tab.originalContent = tab.model.getValue();
+    tab.mergeBaseContent = content;
+    applyFileEncodingInfo(tab, info);
+    updateExternalFileSnapshot(tab, content, info);
+    syncTabSaveState(tab, tab.model.getValue());
+    reloadButton(tab, null, "remove");
+  } else if (normalizeTextForModelComparison(content) === normalizeTextForModelComparison(tab.originalContent) && Boolean(info.hasBom) === Boolean(tab._lastExternalHasBom)) {
+    reloadButton(tab, null, "remove");
+  } else if (!tabHasUnsavedContent(tab)) {
+    applyFileContentToEditor(tab, content, info);
+  } else {
+    reloadButton(tab, filePath, "add");
   }
-
-  if (content === null) {
-    // line-through name if file is not found. remove reload button
-    targetTab.isWarned = true;
-    targetTab.element.querySelector(".name").classList.add("warn");
-    reloadButton(targetTab, null, "remove");
-    if (tabContextMenu.style.display !== "none") updateTabContextMenuState(tabContextMenu, targetTab);
-    return;
-  }
-
-  // remove line-through if file is found
-  targetTab.isWarned = false;
-  targetTab.element.querySelector(".name").classList.remove("warn");
-  if (tabContextMenu.style.display !== "none") updateTabContextMenuState(tabContextMenu, targetTab);
-
-  // Ignore watcher noise if the on-disk content is unchanged from the last known disk snapshot.
-  if (isSameExternalFileSnapshot(targetTab, content, fileInfo)) {
-    if (fileInfo) applyFileEncodingInfo(targetTab, fileInfo);
-    updateExternalFileSnapshot(targetTab, content, fileInfo);
-    reloadButton(targetTab, null, "remove");
-    return;
-  }
-
-  if (isPendingSelfSaveContent(targetTab, content)) {
-    acceptSelfSaveFileChange(targetTab, content, fileInfo);
-    return;
-  }
-
-  if (targetTab.isFileSaved && normalizeTextForModelComparison(content) === targetTab.originalContent) {
-    reloadButton(targetTab, null, "remove");
-    if (fileInfo) applyFileEncodingInfo(targetTab, fileInfo);
-    updateExternalFileSnapshot(targetTab, content, fileInfo);
-    return;
-  }
-
-  if (!tabHasUnsavedContent(targetTab)) {
-    if (fileInfo) applyFileEncodingInfo(targetTab, fileInfo);
-    applyFileContentToEditor(targetTab, content, fileInfo);
-    return;
-  }
-
-  if (targetTab.element.classList.contains("has-reload-button")) {
-    if (targetTab !== currentTab) switchTab(targetTab);
-    return;
-  }
-
-  // if file modified externally, add reload button and let user to decide to update or not.
-  if (targetTab !== currentTab) switchTab(targetTab);
-  showMessage("file-modified");
-  console.log("handleFileChange: file modified externally. showing reload button");
-  reloadButton(targetTab, filePath, "add");
+  if (rightClickedTab === tab && tabContextMenu.style.display !== "none") updateTabContextMenuState(tabContextMenu, tab);
+  scheduleSessionSnapshot();
 }
 
 function applyFileContentToEditor(tab, content, fileInfo = null) {
   if (!tab?.model || content === null || content === undefined) return false;
 
-  if (tab !== currentTab) switchTab(tab);
-  tab.viewState = monacoEditor.saveViewState();
+  const active = tab === currentTab;
+  if (active) tab.viewState = monacoEditor.saveViewState();
   if (fileInfo) applyFileEncodingInfo(tab, fileInfo);
   updateExternalFileSnapshot(tab, content, fileInfo || { hasBom: tab.hasUtf8Bom, isUtf8Valid: tab.isUtf8Valid });
   tab.originalContent = content;
+  tab.mergeBaseContent = content;
   tab.isFileSaved = true;
 
   const modelContent = replaceModelContentPreservingUndo(tab, content);
   tab.content = modelContent;
   tab.originalContent = modelContent;
+  tab.mergeBaseContent = modelContent;
   tab.isFileSaved = !hasUnsavedChanges(tab, modelContent);
 
-  monacoEditor.restoreViewState(tab.viewState);
-  monacoEditor.focus();
+  if (active) {
+    monacoEditor.restoreViewState(tab.viewState);
+    monacoEditor.focus();
+  }
 
   const close = tab.element.querySelector(".close");
   if (close) close.classList.toggle("show-unsaved", !tab.isFileSaved);
@@ -6421,9 +6348,9 @@ function reloadButton(tab, filePath, mode) {
 
     const button = document.createElement("button");
     button.type = "button";
-    button.classList.add("reload-button", "codicon", "codicon-refresh");
+    button.classList.add("reload-button", "codicon", "codicon-warning");
     tab.element.classList.add("has-reload-button");
-    button.title = i18next.t("message.ReloadButtonTooltip");
+    button.title = i18next.t("external.choose");
     button.addEventListener("mousedown", (event) => {
       event.preventDefault();
       event.stopPropagation();
@@ -6431,11 +6358,8 @@ function reloadButton(tab, filePath, mode) {
     button.addEventListener("click", async (event) => {
       event.preventDefault();
       event.stopPropagation();
-      const fileInfo = await readFileWithEncodingInfo(filePath);
-      const content = fileInfo?.content;
-      if (content === null || content === undefined) return;
-      if (tab !== currentTab) switchTab(tab);
-      applyFileContentToEditor(tab, content, fileInfo);
+      const rect = button.getBoundingClientRect();
+      await openTabContextMenu(tab, rect.left, rect.bottom, true);
     });
 
     const iconEl = tab.element.querySelector(".file-icon");
@@ -6512,9 +6436,10 @@ async function loadFileByPath(filePath, insertIndex = null, options = {}) {
       const modelContent = singleTab.model.getValue();
       singleTab.content = modelContent;
       singleTab.originalContent = modelContent;
+      singleTab.mergeBaseContent = modelContent;
       singleTab.isFileSaved = true;
       if (shouldRestoreAutosave) {
-        applyRestoredAutosaveContent(singleTab, modelContent, autosaveBackup.content);
+        applyRestoredAutosaveContent(singleTab, modelContent, autosaveBackup.content, autosaveBackup.meta);
         showMessage("autosave-restored");
       }
       switchTab(singleTab);
@@ -6537,13 +6462,14 @@ async function loadFileByPath(filePath, insertIndex = null, options = {}) {
   const modelContent = newTabData.model.getValue();
   newTabData.content = modelContent;
   newTabData.originalContent = modelContent;
+  newTabData.mergeBaseContent = modelContent;
   updateExternalFileSnapshot(newTabData, content, fileInfo);
   newTabData.draftId = null;
   newTabData.isFileSaved = true;
   newTabData.isMarkdown = isMarkdownFile;
   newTabData.isWarned = false;
   if (shouldRestoreAutosave) {
-    applyRestoredAutosaveContent(newTabData, modelContent, autosaveBackup.content);
+    applyRestoredAutosaveContent(newTabData, modelContent, autosaveBackup.content, autosaveBackup.meta);
     showMessage("autosave-restored");
   }
 
@@ -6903,6 +6829,9 @@ async function getOpenTabPayload(tab) {
     isFileSaved: tab.isFileSaved,
     originalContent: tab.originalContent,
     ...getTransferredExternalState(tab),
+    mergeBaseContent: tab.mergeBaseContent,
+    diffViewState: tab.diffViewState,
+    isDiffView: Boolean(tab.isDiffView),
     fontSize: tab.fontSize,
     wordWrap: tab.wordWrap,
     isMarkdown: tab.isMarkdown,
@@ -6961,7 +6890,7 @@ async function openTabPayloadInCurrentWindow(payload, placement = { index: null,
     const defaultTab = tabData[0];
     await prepareReusableEmptyTabForReplacement(defaultTab);
     tabs.removeChild(defaultTab.element);
-    defaultTab.model?.dispose();
+    disposeTabModel(defaultTab);
     tabData = [];
     layoutTabs({ animate: false });
   }
@@ -6969,6 +6898,7 @@ async function openTabPayloadInCurrentWindow(payload, placement = { index: null,
   const tab = createTab(payload.name, payload.content, payload.path, insertIndex, payload);
   tab.isFileSaved = payload.isFileSaved;
   tab.originalContent = payload.originalContent;
+  tab.mergeBaseContent = payload.originalContent;
   restoreTransferredExternalState(tab, payload);
   tab.fontSize = payload.fontSize;
   tab.wordWrap = payload.wordWrap;
@@ -7133,6 +7063,9 @@ async function getNoteTabPayload(noteId) {
 function restoreTransferredEditorState(tab, payload) {
   restoreEditorHistory(tab.model, payload.editorHistory);
   tab.viewState = payload.viewState || null;
+  tab.isDiffView = Boolean(payload.isDiffView) && Boolean(tab.path);
+  tab.diffViewState = payload.diffViewState || null;
+  if (tab.path) tab.mergeBaseContent = Object.hasOwn(payload, "mergeBaseContent") ? payload.mergeBaseContent : (payload.originalContent ?? null);
   tab.fontSize = payload.fontSize ?? tab.fontSize;
   tab.wordWrap = payload.wordWrap ?? tab.wordWrap;
   tab.isMarkdown = payload.isMarkdown ?? tab.isMarkdown;
@@ -8452,131 +8385,123 @@ async function populateRecentMenu() {
 populateRecentMenu();
 renderNotesList();
 
+// Commit the exact written snapshot before reading the disk again. Watcher reads
+// started before/during a save must never restore the previous external warning.
+async function saveFileTab(tab, filePath, content, options) {
+  if (tab._fileSaveInProgress || tab._transferring || isTabModelDisposed(tab)) return { success: false };
+  const previousPath = tab.path;
+  const previousDraftId = tab.draftId;
+  tab._fileSaveInProgress = true;
+  let finishSave;
+  tab._fileSaveFinished = new Promise(resolve => { finishSave = resolve; });
+  tab._fileSaveGeneration = (tab._fileSaveGeneration || 0) + 1;
+  tab._diskReadSequence = (tab._diskReadSequence || 0) + 1;
+  clearAutosaveTimer(tab);
+  try {
+    const result = await window.electronAPI.saveToFile(filePath, content, options);
+    if (!result.success || isTabModelDisposed(tab) || tab.path !== previousPath || !tabData.includes(tab)) return result;
+
+    tab.path = filePath;
+    tab.name = filePath.split(/[\\/]/).pop();
+    tab.draftId = null;
+    tab.originalContent = content;
+    tab.mergeBaseContent = content;
+    tab.content = tab.model.getValue();
+    tab.isWarned = false;
+    tab.element.querySelector(".name")?.classList.remove("warn");
+    const writtenInfo = { content, encoding: "UTF-8", isUtf8Valid: true, hasBom: Boolean(options.bom) };
+    applyFileEncodingInfo(tab, writtenInfo);
+    updateExternalFileSnapshot(tab, content, writtenInfo);
+    const dirty = syncTabSaveState(tab, tab.content, { cleanupAutosave: false });
+    updateTabTitleDisplay(tab);
+    reloadButton(tab, null, "remove");
+    if (tab === currentTab) {
+      currentFilePath = filePath;
+      syncActiveFileWatcher(tab);
+      updateStatusBar();
+      showMessage("file-saved");
+    }
+    if (rightClickedTab === tab) updateTabContextMenuState(tabContextMenu, tab);
+    savePinnedTabsState();
+
+    // New edits can arrive while the write or backup cleanup is awaiting IPC.
+    // Keep them dirty and protect them using the newly saved merge base.
+    if (dirty) await writeTabAutosave(tab);
+    else await deleteTabAutosave(tab);
+    if (previousDraftId) await window.electronAPI.deleteAutosaveDraft(previousDraftId);
+    return result;
+  } finally {
+    try {
+      tab._diskReadSequence = (tab._diskReadSequence || 0) + 1;
+      if (!isTabModelDisposed(tab) && tabData.includes(tab)) {
+        if (tab.path) await handleFileChange(tab, tab.path, { afterSave: true });
+        if (!isTabModelDisposed(tab)) syncTabSaveState(tab, tab.model.getValue(), { cleanupAutosave: false });
+      }
+    } finally {
+      tab._fileSaveInProgress = false;
+      delete tab._fileSaveFinished;
+      finishSave();
+      if (!isTabModelDisposed(tab) && tabData.includes(tab)) {
+        scheduleTabAutosave(tab);
+        if (tab === currentTab) updateStatusBar();
+        if (rightClickedTab === tab) updateTabContextMenuState(tabContextMenu, tab);
+        scheduleSessionSnapshot();
+      }
+    }
+  }
+}
+
 // save as
 async function saveAsFile() {
-  const active = tabData.find((t) => t.element.classList.contains("active"));
-  if (!active || !monacoEditor) return;
+  const active = currentTab;
+  if (!active || active._fileSaveInProgress || active._transferring || isTabModelDisposed(active)) return false;
+  const content = active.model.getValue();
+  const defaultName = active.isNote ? getNoteTitleFromContent(content) + ".txt" : active.name;
+  const { filePath } = await window.electronAPI.showSaveDialog(defaultName);
+  if (!filePath || isTabModelDisposed(active)) return false;
 
-  const content = monacoEditor.getValue();
+  const result = active.isNote
+    ? await window.electronAPI.saveToFile(filePath, content, { bom: false })
+    : await saveFileTab(active, filePath, content, { bom: false });
+  if (!result.success) {
+    if (result.error) console.error("Failed to save file:", result.error);
+    return false;
+  }
   if (active.isNote) {
-    const defaultName = `${getNoteTitleFromContent(content)}.txt`;
-    const { filePath } = await window.electronAPI.showSaveDialog(defaultName);
-    if (!filePath) return false;
-
-    const result = await window.electronAPI.saveToFile(filePath, content, { bom: false });
-    if (result.success) {
-      await writeNoteTab(active, content, true);
-      updateRecentFiles(filePath);
-      showMessage("file-saved");
-      return true;
-    }
-
-    console.error("Failed to save note as file:", result.error);
-    return false;
+    await writeNoteTab(active, content, true);
+    if (active === currentTab) showMessage("file-saved");
   }
-
-  const previousDraftId = active.draftId;
-  clearAutosaveTimer(active);
-  const { filePath } = await window.electronAPI.showSaveDialog(active.name);
-  if (!filePath) {
-    scheduleTabAutosave(active, content);
-    return false;
-  }
-
-  const result = await window.electronAPI.saveToFile(filePath, content, { bom: false });
-  if (result.success) {
-    active.path = filePath;
-    active.name = filePath.split(/[\\/]/).pop();
-    updateTabTitleDisplay(active);
-    active.originalContent = content;
-    active.isFileSaved = true;
-    active.draftId = null;
-    const fileInfo = await refreshTabEncodingInfoFromDisk(active);
-    updateExternalFileSnapshot(active, content, fileInfo);
-    clearAutosaveTimer(active);
-    if (previousDraftId) await window.electronAPI.deleteAutosaveDraft(previousDraftId);
-    await window.electronAPI.discardFileAutosaveBackup(filePath);
-    active._autosaveStatus = "none";
-    active._autosaveBackedUpContent = null;
-
-    currentFilePath = filePath;
-    updateStatusBar();
-
-    const activeClose = active.element.querySelector(".close");
-    if (activeClose) activeClose.classList.remove("show-unsaved");
-    updatePinnedTabIcon(active);
-    reloadButton(active, null, "remove");
-    updateRecentFiles(filePath);
-    savePinnedTabsState();
-    showMessage("file-saved");
-    switchTab(active);
-    return true;
-  } else {
-    console.error("Failed to save file:", result.error);
-    return false;
-  }
+  updateRecentFiles(filePath);
+  return true;
 }
 
 // overwrite save
 async function saveFile() {
-  const active = tabData.find((t) => t.element.classList.contains("active"));
-  console.log("Saving file path:", active?.path);
-  if (!active || !monacoEditor) return false;
-
+  const active = currentTab;
+  if (!active || active._fileSaveInProgress || active._transferring || isTabModelDisposed(active)) return false;
+  const content = active.model.getValue();
   if (active.isNote) {
-    const success = await writeNoteTab(active, monacoEditor.getValue(), true);
-    if (success) showMessage("file-saved");
+    const success = await writeNoteTab(active, content, true);
+    if (success && active === currentTab) showMessage("file-saved");
     return success;
   }
+  if (!active.path) return await saveAsFile();
+  if (!hasUnsavedChanges(active, content) && !active.isWarned && !active.element.classList.contains("has-reload-button")) return true;
 
-  // excute saveAsFile when no path
-  if (!active.path) {
-    return await saveAsFile();
-  }
-
-  if (active.isFileSaved && !active.isWarned) {
-    console.log("No changes to save.");
-    return true;
-  }
-
-  const content = monacoEditor.getValue();
-  markPendingSelfSave(active, content);
-  const result = await window.electronAPI.saveToFile(active.path, content, getFileSaveOptions(active));
-  if (result.success) {
-    console.log("File saved successfully");
-
-    // udpate unsaved indicator when saved
-    active.originalContent = content;
-    active.isFileSaved = true;
-    const fileInfo = await refreshTabEncodingInfoFromDisk(active);
-    updateExternalFileSnapshot(active, content, fileInfo);
-    clearAutosaveTimer(active);
-    await window.electronAPI.discardFileAutosaveBackup(active.path);
-    active._autosaveStatus = "none";
-    active._autosaveBackedUpContent = null;
-
-    const activeSaveClose = active.element.querySelector(".close");
-    if (activeSaveClose) activeSaveClose.classList.remove("show-unsaved");
-    updatePinnedTabIcon(active);
-    reloadButton(active, null, "remove");
-    savePinnedTabsState();
-    showMessage("file-saved");
-  } else {
-    clearPendingSelfSave(active);
-    console.error("Failed to save file:", result.error);
-    if (result.error.includes("EPERM")) {
-      return await saveAsFile();
-    }
-  }
+  const result = await saveFileTab(active, active.path, content, getFileSaveOptions(active));
+  if (result.success) return true;
+  if (result.error) console.error("Failed to save file:", result.error);
+  if (result.error?.includes("EPERM") && currentTab === active) return await saveAsFile();
+  return false;
 }
 
 function hasUnsavedChanges(tab, content = null) {
   const nextContent = content ?? tab?.content ?? tab?.model?.getValue() ?? "";
   const savedContent = tab?.originalContent ?? "";
-  return nextContent !== savedContent;
+  return nextContent !== savedContent || Boolean(tab?.path && typeof tab._lastExternalHasBom === "boolean" && tab.hasUtf8Bom !== tab._lastExternalHasBom);
 }
 
-function syncTabSaveState(tab, content = null) {
+function syncTabSaveState(tab, content = null, { cleanupAutosave = true } = {}) {
   if (!tab) return false;
   updateTabHeadingIcon(tab, content);
 
@@ -8593,7 +8518,7 @@ function syncTabSaveState(tab, content = null) {
 
   const hasChanges = hasUnsavedChanges(tab, content);
   tab.isFileSaved = !hasChanges;
-  if (!hasChanges) {
+  if (!hasChanges && cleanupAutosave) {
     deleteTabAutosave(tab);
   }
 
@@ -8737,8 +8662,15 @@ document.addEventListener("contextmenu", async (e) => {
   if (!tabElement) return;
 
   e.preventDefault();
-  rightClickedTab = tabData.find((t) => t.element === tabElement);
-  if (!rightClickedTab) return;
+  const tab = tabData.find(t => t.element === tabElement);
+  if (tab) await openTabContextMenu(tab, e.pageX, e.pageY);
+});
+
+async function openTabContextMenu(contextTab, pageX, pageY, externalOnly = false) {
+  rightClickedTab = contextTab;
+  const request = tabContextMenu._openRequest = (tabContextMenu._openRequest || 0) + 1;
+  tabContextMenu.dataset.externalOnly = String(externalOnly);
+  tabContextMenu.style.display = "none";
 
   syncRecentlyClosedFilesState();
 
@@ -8772,9 +8704,10 @@ document.addEventListener("contextmenu", async (e) => {
   notesController?.closeContextMenu();
 
   // Resolve the source without creating a backup just to show a menu.
-  const contextTab = rightClickedTab;
+  if (request !== tabContextMenu._openRequest || rightClickedTab !== contextTab) return;
   contextTab.sourcePath = await getTabSourcePath(contextTab);
-  if (rightClickedTab !== contextTab) return;
+  await externalChanges.refresh(contextTab);
+  if (request !== tabContextMenu._openRequest || rightClickedTab !== contextTab) return;
   updateTabContextMenuState(tabContextMenu, contextTab);
 
   // menu position
@@ -8786,8 +8719,8 @@ document.addEventListener("contextmenu", async (e) => {
   const pageWidth = window.innerWidth;
   const pageHeight = window.innerHeight;
 
-  let left = e.pageX;
-  let top = e.pageY;
+  let left = pageX;
+  let top = pageY;
 
   if (left + menuWidth > pageWidth) {
     left = Math.max(0, pageWidth - menuWidth);
@@ -8800,7 +8733,7 @@ document.addEventListener("contextmenu", async (e) => {
   tabContextMenu.style.top = `${top}px`;
   tabContextMenu.style.visibility = "visible";
   tabContextMenu.style.display = "flex";
-});
+}
 
 function getTabSourcePath(tab) {
   return window.electronAPI.getTabSourcePath({
@@ -8813,6 +8746,21 @@ function getTabSourcePath(tab) {
 // update copy & open path button based on path existance
 function updateTabContextMenuState(menu, tab) {
   if (!menu) return;
+  for (const button of menu.querySelectorAll("button[data-external-disabled]")) {
+    button.disabled = button.dataset.externalDisabled === "true";
+    delete button.dataset.externalDisabled;
+    button.classList.remove("external-action-disabled");
+  }
+  for (const action of ["diffView", "mergeChanges", "reloadDisk"]) {
+    const button = menu.querySelector(`[data-action="${action}"]`);
+    if (!button) continue;
+    button.disabled = action === "mergeChanges" ? !externalChanges.canMerge(tab) :
+      action === "reloadDisk" ? !externalChanges.canReload(tab) :
+      !(action === "diffView" && tab?.isDiffView) && !externalChanges.canCompare(tab);
+    button.classList.toggle("disabled", button.disabled);
+    if (action === "diffView") button.querySelector(".label").textContent = i18next.t(tab?.isDiffView ? "external.exitDiff" : "external.diff");
+    if (action === "mergeChanges") button.title = typeof tab?.mergeBaseContent === "string" ? "" : i18next.t("external.noBase");
+  }
   const copyPathBtn = menu.querySelector('[data-action="copyPath"]');
   const openPathBtn = menu.querySelector('[data-action="openPath"]');
   const openInNewWindowBtn = menu.querySelector('[data-action="openInNewWindow"]');
@@ -8836,6 +8784,14 @@ function updateTabContextMenuState(menu, tab) {
   if (keepOpenBtn) keepOpenBtn.classList.toggle("disabled", !tab?.isNotePreview);
   if (togglePinBtn)
     togglePinBtn.querySelector(".label").textContent = i18next.t(tab?.isPinned ? "tabMenu.unpin" : "tabMenu.pin");
+  if (menu.dataset.externalOnly === "true") {
+    for (const button of menu.querySelectorAll("button")) {
+      if (["diffView", "mergeChanges", "reloadDisk"].includes(button.dataset.action)) continue;
+      button.dataset.externalDisabled = String(button.disabled);
+      button.disabled = true;
+      button.classList.add("external-action-disabled");
+    }
+  }
 }
 
 // Close multiple tabs one by one (close others, close to the right & close saved)
@@ -8867,6 +8823,9 @@ tabContextMenu.addEventListener("click", async (e) => {
   rightClickedTab = null;
 
   switch (action) {
+    case "diffView": await externalChanges.toggle(targetTab).catch(externalChanges.showError); break;
+    case "mergeChanges": await externalChanges.merge(targetTab).catch(externalChanges.showError); break;
+    case "reloadDisk": await externalChanges.reload(targetTab).catch(externalChanges.showError); break;
     case "close":
       await attemptCloseTab(targetTab);
       break;
@@ -8950,6 +8909,7 @@ function toggleWordWrap() {
       horizontal: isWordWrapOn ? "hidden" : "auto",
     },
   });
+  externalChanges?.sync(currentTab);
   updateWordWrapMenuState();
 }
 
@@ -9003,6 +8963,7 @@ customContextMenu.addEventListener("click", async (e) => {
 
   const model = monacoEditor.getModel();
 
+  if (currentTab?.isDiffView && ["cut", "paste", "undo", "redo"].includes(action)) return;
   switch (action) {
     case "copy": {
       try {
@@ -9153,6 +9114,7 @@ function closeAppMenus() {
   recentMenu.style.display = "none";
   setMenuButtonsPointerEvents("auto");
   monacoEditor?.focus();
+  externalChanges?.focus();
   return true;
 }
 
@@ -9249,6 +9211,13 @@ window.addEventListener("keydown", async (e) => {
     }
   }
 
+  // Monaco handles this while an editor has focus; also allow it from the tab strip.
+  if ((e.ctrlKey || e.metaKey) && e.altKey && !e.shiftKey && e.code === "KeyD") {
+    if (e.defaultPrevented) return;
+    e.preventDefault();
+    if (!e.repeat) await toggleCurrentDiffView();
+    return;
+  }
   // Ctrl + Alt + S
   if ((e.ctrlKey || e.metaKey) && e.altKey && e.code === "KeyS") {
     e.preventDefault();

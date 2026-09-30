@@ -429,3 +429,31 @@ test("session limits count UTF-8 bytes instead of JavaScript characters", async 
     { maxItemBytes: 3, maxTotalBytes: 20 },
   );
 });
+
+test("persists and reuses merge bases across snapshots and restart", async () => {
+  await withManager(async (manager, root) => {
+    const tab = {id:"tab_base1",kind:"file",path:"example.txt",dirty:true,content:"local",originalContent:"base",isDiffView:true,eol:"\r\n",diffViewState:{modified:{viewState:{scrollTop:42}}}};
+    await manager.saveWindow("window_a1", {tabs:[tab]});
+    const original = (await manager.hydrateWindow("window_a1")).tabs[0];
+    assert.equal(original.originalContent,"base");
+    const basePath = path.join(root,original.baselineRef);
+    const stamp = new Date(1000000000000);
+    await fs.promises.utimes(basePath,stamp,stamp);
+    await manager.saveWindow("window_a1", {tabs:[{...tab,content:"more local"}]});
+    assert.equal((await fs.promises.stat(basePath)).mtimeMs,stamp.getTime());
+    const restored = new SessionManager(root);
+    await restored.initialize();
+    const actual = (await restored.hydrateWindow("window_a1")).tabs[0];
+    assert.equal(actual.originalContent,"base"); assert.equal(actual.content,"more local");
+    assert.equal(actual.isDiffView,true);
+    assert.equal(actual.eol,"\r\n"); assert.equal(actual.diffViewState.modified.viewState.scrollTop,42);
+  });
+});
+test("distinguishes empty and unknown merge bases and counts base storage", async () => {
+  await withManager(async manager => {
+    await manager.saveWindow("window_a1",{tabs:[{id:"tab_base1",kind:"file",dirty:true,content:"x",originalContent:""},{id:"tab_base2",kind:"file",dirty:true,content:"y"}]});
+    const tabs=(await manager.hydrateWindow("window_a1")).tabs;
+    assert.equal(tabs[0].originalContent,""); assert.equal(tabs[1].originalContent,undefined);
+    await assert.rejects(manager.saveWindow("window_b1",{tabs:[{id:"tab_base3",kind:"file",dirty:true,content:"12345",originalContent:"1234567890"}]}), /full/i);
+  }, {maxTotalBytes:16,maxItemBytes:16});
+});

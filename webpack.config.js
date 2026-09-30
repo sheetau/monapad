@@ -7,6 +7,7 @@ module.exports = {
     filename: "bundle.js",
     path: path.resolve(__dirname, "src/build"),
     clean: true,
+    globalObject: "globalThis",
   },
   module: {
     rules: [

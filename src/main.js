@@ -36,6 +36,7 @@ const store = createAppSettingsStore(
 const watchers = new Map();
 const watcherRefCounts = new Map();
 const watcherOwnersBySender = new Map();
+const watcherCleanupSenders = new WeakSet();
 const watchTimeouts = new Map();
 const watchEvents = new Map();
 const watchedCssFiles = new Map();
@@ -255,6 +256,9 @@ function addFileWatchOwner(sender, filePath) {
   if (!ownedPaths) {
     ownedPaths = new Set();
     watcherOwnersBySender.set(senderId, ownedPaths);
+  }
+  if (!watcherCleanupSenders.has(sender)) {
+    watcherCleanupSenders.add(sender);
     sender.once("destroyed", () => cleanupFileWatchOwners(senderId));
   }
 
@@ -1149,14 +1153,7 @@ async function cleanupStaleFileBackups(dirs) {
       continue;
     }
 
-    try {
-      const fileStats = await fs.promises.stat(filePath);
-      if (entry.updatedAt <= fileStats.mtimeMs) {
-        await deleteAutosaveEntry(dirs.files, entry.id);
-      }
-    } catch {
-      await deleteAutosaveEntry(dirs.files, entry.id);
-    }
+    // External edits (including deletion) never invalidate an unsaved backup.
   }
 }
 
@@ -1223,6 +1220,7 @@ ipcMain.handle("autosave:write", async (event, payload = {}) => {
       if (payload.kind === "file") {
         if (!payload.filePath) return { success: false, error: "Missing file path." };
         const id = getPathBackupId(payload.filePath);
+        if (typeof payload.mergeBaseContent === "string") assertRecoveryItemSize(payload.mergeBaseContent);
         const result = await writeAutosaveEntry(
           dirs.files,
           id,
@@ -1233,6 +1231,10 @@ ipcMain.handle("autosave:write", async (event, payload = {}) => {
             index: Number.isInteger(payload.index) ? payload.index : null,
             ownerId,
             tabId: typeof payload.tabId === "string" ? payload.tabId : null,
+            mergeBaseContent: typeof payload.mergeBaseContent === "string" ? payload.mergeBaseContent : null,
+            originalHasBom: Boolean(payload.originalHasBom),
+            hasBom: Boolean(payload.hasBom),
+            eol: payload.eol === "\r\n" ? "\r\n" : "\n",
           },
           content,
         );
@@ -1288,11 +1290,7 @@ ipcMain.handle("autosave:get-file-backup", async (event, filePath) => {
     const entry = await readAutosaveEntry(dirs.files, id);
     if (!entry) return { exists: false };
 
-    const fileStats = await fs.promises.stat(filePath);
-    if (entry.updatedAt <= fileStats.mtimeMs) {
-      await deleteAutosaveEntry(dirs.files, id);
-      return { exists: false };
-    }
+    const fileStats = await fs.promises.stat(filePath).catch(() => null);
 
     return {
       exists: true,
@@ -1300,12 +1298,20 @@ ipcMain.handle("autosave:get-file-backup", async (event, filePath) => {
       content: entry.content,
       meta: entry.meta,
       backupMtime: entry.updatedAt,
-      fileMtime: fileStats.mtimeMs,
+      fileMtime: fileStats?.mtimeMs ?? null,
     };
   } catch {
     return { exists: false };
   }
 });
+
+ipcMain.handle("autosave:checkpoint-file", (_event, payload) => enqueueAutosaveOperation(async () => {
+  await autosaveReadyPromise;
+  const dirs = await ensureAutosaveDirs();
+  const result = await writeAutosaveEntry(dirs.trashCurrent, `merge_${crypto.randomUUID()}`,
+    { kind: "file", path: payload.filePath, name: payload.name, reason: "before-merge-or-reload", hasBom: Boolean(payload.hasBom) }, payload.content);
+  return verifyAutosaveWrite(dirs.trashCurrent, result);
+}));
 
 ipcMain.handle("autosave:discard-file-backup", async (event, filePath) => {
   return enqueueAutosaveOperation(async () => {

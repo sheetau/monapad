@@ -1,4 +1,17 @@
 {
+  "external": {
+    "diff": "Vista differenze",
+    "exitDiff": "Esci dalla vista differenze",
+    "merge": "Unisci modifiche",
+    "reload": "Ricarica dal disco",
+    "choose": "Modifiche esterne: ricarica, unisci o confronta.",
+    "noBase": "La base comune non è disponibile in questo vecchio backup. Confronta le modifiche e modifica il documento manualmente.",
+    "missing": "File non disponibile. La copia di lavoro è stata mantenuta.",
+    "failed": "Impossibile completare l’operazione",
+    "backupFailed": "Impossibile proteggere la copia di lavoro. Nessuna modifica applicata.",
+    "stale": "Il documento o il file è cambiato. Nessuna modifica è stata applicata. Riprova con il contenuto aggiornato.",
+    "tooLarge": "Modifica troppo grande o complessa. Usa la vista differenze e modifica il documento manualmente."
+  },
   "tabMove": {
     "failed": "Impossibile spostare la scheda. La scheda originale è stata mantenuta.",
     "alreadyOpen": "Questa scheda è già aperta nella finestra di destinazione."
@@ -66,6 +79,7 @@
       "scrollLineUp": "Scorri riga verso l'alto",
       "scrollLineDown": "Scorri riga verso il basso",
       "toggleWordWrap": "A capo automatico",
+      "toggleDiffView": "Attiva/disattiva vista differenze",
       "quickOpen": "Apertura rapida",
       "showCommands": "Elenco comandi"
     },
@@ -81,8 +95,7 @@
     "fileUpdated": "File ricaricato",
     "fileModified": "File modificato esternamente!",
     "fileNotFound": "File non trovato",
-    "autosaveRestored": "Modifiche non salvate ripristinate",
-    "ReloadButtonTooltip": "Ricarica file"
+    "autosaveRestored": "Modifiche non salvate ripristinate"
   },
   "deviceShare": {
     "title": "Condividi con altri dispositivi",

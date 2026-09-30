@@ -1,6 +1,6 @@
 // Run with: electron test/electron-smoke.cjs
 // Uses a temporary profile and hidden windows; never opens the user's notes or installs updates.
-const { app, BrowserWindow, dialog } = require("electron");
+const { app, BrowserWindow, dialog, ipcMain } = require("electron");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const os = require("node:os");
@@ -18,6 +18,7 @@ process.argv = [process.execPath, "."];
 const failures = [];
 let expectedMoveFailure = false;
 let moveFailureCount = 0;
+let expectedExternalError = null, externalErrorCount = 0;
 const updatePhase = process.env.MONAPAD_SMOKE_PHASE?.startsWith("update-");
 let fakeUpdater;
 let updateStaged = process.env.MONAPAD_SMOKE_PHASE === "update-start";
@@ -48,8 +49,9 @@ if (updatePhase) {
 }
 app.on("browser-window-created", (_event, win) => {
   win.show = () => {};
+  win.webContents.setBackgroundThrottling(false);
   win.webContents.on("console-message", (event) => {
-    if (event.level === "error") failures.push(event.message);
+    if (event.level === "error") { failures.push(event.message); console.error("Renderer error:", event.message); }
   });
 });
 dialog.showMessageBox = async (_owner, options) => {
@@ -61,6 +63,9 @@ dialog.showMessageBox = async (_owner, options) => {
     expectedMoveFailure = false;
     moveFailureCount++;
     return { response: 0 };
+  }
+  if (expectedExternalError && (options || _owner).detail?.includes(expectedExternalError)) {
+    expectedExternalError = null; externalErrorCount++; return {response:0};
   }
   failures.push(`Unexpected native dialog: ${(options || _owner).message}`);
   console.error(failures.at(-1), (options || _owner).detail || "");
@@ -99,7 +104,22 @@ async function menu(win) {
 if (process.env.MONAPAD_SMOKE_PHASE === "settings-failure") {
   require("../src/session-manager").SessionManager.prototype.initialize = async () => { throw new Error("Simulated session storage failure"); };
 }
+let checkpointHook = null;
+let fileSaveHook = null;
+let fileReadHook = null;
+const registerHandler = ipcMain.handle.bind(ipcMain);
+ipcMain.handle = (channel, handler) => registerHandler(channel, channel === "autosave:checkpoint-file" ? async (...args) => {
+  if (checkpointHook) { const hook = checkpointHook; checkpointHook = null; await hook(); }
+  return handler(...args);
+} : channel === "file:save" ? async (...args) => {
+  const hook = fileSaveHook; fileSaveHook = null;
+  return hook ? hook(() => handler(...args), args) : handler(...args);
+} : channel === "file:readWithEncoding" ? async (...args) => {
+  const hook = fileReadHook; fileReadHook = null;
+  return hook ? hook(() => handler(...args), args) : handler(...args);
+} : handler);
 require("../src/main.js");
+ipcMain.handle = registerHandler;
 (async () => {
   await app.whenReady();
   const first = await ready(await until(() => BrowserWindow.getAllWindows()[0], "initial window"));
@@ -115,6 +135,36 @@ require("../src/main.js");
       expectMoveFailure: () => { expectedMoveFailure = true; }, moveFailures: () => moveFailureCount });
     assert.deepEqual(failures, []);
     pass();
+    return;
+  }
+  if (process.env.MONAPAD_SMOKE_PHASE === "external-save") {
+    await require("./electron-external-save-checks.cjs")({ first, profile, evaluate, until, type, menu, delay,
+      setFileSaveHook: hook => { fileSaveHook = hook; }, setFileReadHook: hook => { fileReadHook = hook; } });
+    assert.deepEqual(failures, []); pass(); return;
+  }
+  if (process.env.MONAPAD_SMOKE_PHASE === "diff-performance") {
+    await require("./electron-diff-performance-checks.cjs")({ first, profile, evaluate, until, type, menu, delay });
+    assert.deepEqual(failures, []); pass(); return;
+  }
+  if (process.env.MONAPAD_SMOKE_PHASE === "diff-commands") {
+    await require("./electron-diff-command-checks.cjs")({ first, profile, evaluate, until, type, menu, delay });
+    assert.deepEqual(failures, []); pass(); return;
+  }
+  if (process.env.MONAPAD_SMOKE_PHASE === "diff-layout") {
+    await require("./electron-diff-layout-checks.cjs")({ first, profile, evaluate, until, type, menu, delay });
+    assert.deepEqual(failures, []); pass(); return;
+  }
+  if (process.env.MONAPAD_SMOKE_PHASE === "merge-edges") {
+    await require("./electron-merge-edge-checks.cjs")({ first, profile, evaluate, until, type, menu, delay, ready,
+      setCheckpointHook: hook => { checkpointHook = hook; },
+      expectExternalError: text => { expectedExternalError = text; }, externalErrors: () => externalErrorCount });
+    assert.deepEqual(failures, []); pass(); return;
+  }
+  if (process.env.MONAPAD_SMOKE_PHASE?.startsWith("merge")) {
+    await require("./electron-merge-checks.cjs")({ first, profile, phase: process.env.MONAPAD_SMOKE_PHASE, evaluate, until, type, menu, delay });
+    assert.deepEqual(failures, []);
+    app.once("will-quit", () => pass());
+    app.quit();
     return;
   }
   if (updatePhase) {
@@ -288,7 +338,11 @@ require("../src/main.js");
     })().catch(error => { console.error(error); app.exit(1); });
   });
   app.quit();
-})().catch(error => {
+})().catch(async error => {
+  for (const win of BrowserWindow.getAllWindows()) {
+    try { fs.writeFileSync(path.join(profile, "failure-"+win.id+".png"),(await win.webContents.capturePage(undefined, {stayHidden:true, stayAwake:true})).toPNG());
+      console.error(await evaluate(win,'document.querySelector(".file-merge-status")?.textContent')); } catch {}
+  }
   console.error(error);
   console.error(failures);
   console.error(`Profile for diagnosis: ${profile}`);

@@ -1,4 +1,17 @@
 {
+  "external": {
+    "diff": "Diff-Ansicht",
+    "exitDiff": "Diff-Ansicht schließen",
+    "merge": "Änderungen zusammenführen",
+    "reload": "Von Datenträger neu laden",
+    "choose": "Externe Änderungen: neu laden, zusammenführen oder vergleichen.",
+    "noBase": "Die gemeinsame Basis fehlt in dieser älteren Sicherung. Vergleichen und bearbeiten Sie das Dokument manuell.",
+    "missing": "Die Datei ist nicht verfügbar. Ihre Arbeitskopie bleibt erhalten.",
+    "failed": "Der Vorgang konnte nicht abgeschlossen werden",
+    "backupFailed": "Die Arbeitskopie konnte nicht gesichert werden. Es wurden keine Änderungen übernommen.",
+    "stale": "Das Dokument oder die Datei wurde geändert. Es wurde nichts angewendet. Versuchen Sie es mit dem aktuellen Inhalt erneut.",
+    "tooLarge": "Die Änderung ist zu groß oder komplex. Verwenden Sie die Diff-Ansicht und bearbeiten Sie das Dokument manuell."
+  },
   "tabMove": {
     "failed": "Der Tab konnte nicht verschoben werden. Der ursprüngliche Tab bleibt erhalten.",
     "alreadyOpen": "Dieser Tab ist im Zielfenster bereits geöffnet."
@@ -66,6 +79,7 @@
       "scrollLineUp": "Zeile nach oben scrollen",
       "scrollLineDown": "Zeile nach unten scrollen",
       "toggleWordWrap": "Zeilenumbruch umschalten",
+      "toggleDiffView": "Diff-Ansicht umschalten",
       "quickOpen": "Schnell öffnen",
       "showCommands": "Befehlsliste"
     },
@@ -81,8 +95,7 @@
     "fileUpdated": "Datei neu geladen",
     "fileModified": "Datei wurde extern geändert!",
     "fileNotFound": "Datei nicht gefunden",
-    "autosaveRestored": "Ungespeicherte Änderungen wiederhergestellt",
-    "ReloadButtonTooltip": "Datei neu laden"
+    "autosaveRestored": "Ungespeicherte Änderungen wiederhergestellt"
   },
   "deviceShare": {
     "title": "Mit anderen Geräten teilen",
