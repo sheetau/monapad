@@ -7,7 +7,7 @@ const diffOptions = {
   useShadowDOM: false,
   renderSideBySide: true, useInlineViewWhenSpaceIsLimited: true, renderSideBySideInlineBreakpoint: 900,
   ignoreTrimWhitespace: false, renderOverviewRuler: true, scrollBeyondLastLine: false,
-  occurrencesHighlight: "off", diffWordWrap: "inherit", lineDecorationsWidth: 18,
+  occurrencesHighlight: "off", diffWordWrap: "inherit", lineNumbersMinChars: 1, lineDecorationsWidth: 26,
   padding: { top: 12, bottom: 0 }, stickyScroll: { enabled: false },
   minimap: { enabled: false }, diffCodeLens: false, renderMarginRevertIcon: false,
 };
@@ -16,7 +16,6 @@ export function createExternalChangesController(api) {
   const { monaco, editor, host, t } = api;
   let active, layoutFrame = null;
   const views = new Map();
-  const digitWidths = new Map();
   const pending = new WeakSet();
   const element = (tag, className, text) => {
     const node = document.createElement(tag);
@@ -61,25 +60,6 @@ export function createExternalChangesController(api) {
     if (layoutFrame !== null) return;
     layoutFrame = requestAnimationFrame(() => { layoutFrame = null; layout(false); });
   }
-  function lineNumberChars(side) {
-    if (!side.getModel()) return 1;
-    const font = side.getOption(monaco.editor.EditorOption.fontInfo);
-    const key = JSON.stringify([font.fontSize, font.fontWeight, font.letterSpacing]);
-    let digitWidth = digitWidths.get(key);
-    if (digitWidth === undefined) {
-      // The line-number CSS deliberately uses Consolas instead of the text font.
-      // Measure that font and reserve enough Monaco character slots for it.
-      const probe = element("span", "line-numbers", "0123456789");
-      Object.assign(probe.style, { position: "absolute", visibility: "hidden", width: "max-content",
-        fontSize: font.fontSize + "px", fontWeight: font.fontWeight,
-        letterSpacing: font.letterSpacing + "px", fontVariantNumeric: "tabular-nums" });
-      side.getDomNode().append(probe);
-      digitWidth = probe.getBoundingClientRect().width / 10;
-      probe.remove(); digitWidths.set(key, digitWidth);
-    }
-    const digits = String(side.getModel()?.getLineCount() || 1).length;
-    return Math.max(1, Math.ceil(Math.ceil(digitWidth * digits) / font.maxDigitWidth));
-  }
   function layout(resizeNow = true) {
     if (!active || active.pane.hidden) return;
     const { pane, surface, diff } = active;
@@ -105,7 +85,7 @@ export function createExternalChangesController(api) {
     }
     const sideBySide = surface.querySelector(".monaco-diff-editor").classList.contains("side-by-side");
     for (const [side, original] of [[diff.getOriginalEditor(), true], [diff.getModifiedEditor(), false]]) {
-      const desired = { glyphMargin: !original, lineNumbersMinChars: lineNumberChars(side),
+      const desired = { glyphMargin: !original,
         wordWrapOverride2: original && !sideBySide ? "off" : "inherit" };
       const changes = {};
       for (const [name, value] of Object.entries(desired)) {
@@ -124,19 +104,12 @@ export function createExternalChangesController(api) {
     const view = { tab, pane, surface, diff, diskModel, diskContent: tab._diskContent,
       optionsKey: JSON.stringify(options), diffViewModel: null, disposables: [] };
     view.disposables.push(tab.model.onWillDispose(() => disposeView(view)));
-    for (const side of [diff.getOriginalEditor(), diff.getModifiedEditor()]) {
-      view.disposables.push(side.onDidChangeModelContent(scheduleLayout));
-      view.disposables.push(side.onDidChangeConfiguration(event => {
-        if (event.hasChanged(monaco.editor.EditorOption.fontInfo)) scheduleLayout();
-      }));
-    }
     views.set(tab, view);
     return view;
   }
   new ResizeObserver(scheduleLayout).observe(host);
   window.addEventListener("resize", scheduleLayout);
   editor.onDidLayoutChange(scheduleLayout);
-  document.fonts.addEventListener("loadingdone", () => { digitWidths.clear(); scheduleLayout(); });
   function sync(tab = api.currentTab()) {
     if (!tab?.isDiffView || !tab.path || tab.isNote || tab.model.isDisposed()) {
       hideDiff();

@@ -36,6 +36,7 @@ import i18next from "i18next";
 import { OPEN_FENCE, CLOSE_FENCE, scanStructure, computeFoldingRanges } from "./monapad-structure.js";
 import { createExternalChangesController } from "./external-changes.js";
 import { captureEditorHistory, restoreEditorHistory } from "./editor-transfer.js";
+import { installLineNumberLayout } from "./line-number-layout.js";
 import { getTransferredExternalState, restoreTransferredExternalState } from "./tab-transfer.js";
 
 const toolbar = document.getElementById("toolbar");
@@ -906,6 +907,7 @@ function createCustomTheme() {
 }
 monaco.editor.defineTheme("custom-theme", createCustomTheme());
 
+installLineNumberLayout(monaco);
 monacoEditor = monaco.editor.create(editor, {
   language: "monapad",
   wordWrap: "on",

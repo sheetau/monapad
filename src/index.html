@@ -104,6 +104,7 @@
         --status-bar-height: 25px;
         --side-panel-width: 240px;
         --editor-line-number-offset: 0px;
+        --line-number-font-family: "Consolas", "Courier New", monospace;
         --editor-side-panel-offset: 0px;
         --editor-gutter-background: var(--vscode-editorGutter-background, var(--color1));
 
@@ -249,7 +250,7 @@
         color: var(--editorText) !important;
       }
       .monaco-editor .line-numbers {
-        font-family: "Consolas", "Courier New", monospace !important;
+        font-family: var(--line-number-font-family) !important;
         user-select: none;
       }
       .monaco-editor .find-widget {
@@ -1115,7 +1116,7 @@
         display: flex;
         flex-direction: column;
         box-sizing: border-box;
-        padding-left: var(--editor-line-number-offset);
+        padding-left: 20px; /* Diff line numbers stay visible regardless of the editor setting. */
         border-top: 1px solid var(--color3);
         background: var(--editor-gutter-background);
         color: var(--editorText);
