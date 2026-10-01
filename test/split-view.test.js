@@ -11,11 +11,34 @@ test("fixed tab focus never replaces the normal pane; selecting other tabs does"
   const a = step(c.layout, "c", { type: "select", tabId: "a" });
   assert.deepEqual(a, { activeTabId: "a", layout: { primaryTabId: "c", split: initial.split } });
 });
-test("fixing the normal tab chooses the most recent other tab, hidden replacement keeps normal", () => {
+test("fixing the normal tab retains the old fixed tab, hidden same-side replacement keeps normal", () => {
   assert.deepEqual(step(initial, "b", { type: "split", tabId: "b", side: "top" }).layout,
     { primaryTabId: "a", split: { tabId: "b", side: "top" } });
-  assert.equal(step(initial, "a", { type: "split", tabId: "c", side: "left" }).layout.primaryTabId, "b");
+  assert.equal(step(initial, "a", { type: "split", tabId: "c", side: "right" }).layout.primaryTabId, "b");
 });
+test("fixing a different tab opposite the fixed pane preserves the old fixed document in place", () => {
+  for (const [side, opposite] of [["left", "right"], ["right", "left"], ["top", "bottom"], ["bottom", "top"]]) {
+    const layout = { primaryTabId: "b", split: { tabId: "a", side } };
+    // Both the visible normal document and a hidden document must preserve A,
+    // regardless of which document is active or most recent.
+    for (const tabId of ["b", "c"]) for (const active of ["a", "b"]) {
+      const next = step(layout, active, { type: "split", tabId, side: opposite }, tabs, ["b", "c", "a"]);
+      assert.deepEqual(next, { activeTabId: tabId, layout: { primaryTabId: "a", split: { tabId, side: opposite } } });
+      assert.equal(layout.primaryTabId, "b");
+    }
+  }
+});
+
+test("fixing the normal tab on the fixed side swaps the visible documents regardless of history", () => {
+  for (const side of ["left", "right", "top", "bottom"]) {
+    const layout = { primaryTabId: "b", split: { tabId: "a", side } };
+    for (const active of ["a", "b"]) {
+      assert.deepEqual(step(layout, active, { type: "split", tabId: "b", side }, tabs, ["b", "c", "a"]),
+        { activeTabId: "b", layout: { primaryTabId: "a", split: { tabId: "b", side } } });
+    }
+  }
+});
+
 test("all directions retain the same documents and un-splitting keeps the active one", () => {
   for (const side of ["left", "right", "top", "bottom"]) {
     const next = step(initial, "b", { type: "split", tabId: "a", side });

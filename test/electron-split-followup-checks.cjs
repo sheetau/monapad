@@ -44,45 +44,106 @@ module.exports = async ({ win, q, open, select, split, action, key, focus, tabMe
   await tabMenu('follow-a.txt');
   assert.deepEqual(await q("Array.from(document.querySelectorAll('#tab-split-menu button.active'),b=>b.dataset.splitSide)"), ['right']);
   assert.equal(await q("document.querySelector('.split-indicator')"), null);
-  assert.equal(await q("document.querySelector('.split-button').classList.contains('codicon-split-horizontal')"), true);
+  assert.equal(await q("getComputedStyle(document.querySelector('.split-button'),'::before').content.includes(String.fromCharCode(0xebf4))"), true);
   await q("document.querySelector('.split-button').click()");
   assert.equal(await q("document.querySelector('#editor-area').dataset.split"), '');
+  // The displayed normal tab must swap with the fixed tab, not a recent hidden tab.
+  for (const side of ['left','right','top','bottom']) {
+    await select('follow-b.txt'); await split('follow-a.txt', side);
+    await select('follow-c.txt'); await select('follow-b.txt');
+    const bounds = await q("Array.from(document.querySelectorAll('.editor-pane:not([hidden])'),p=>{const r=p.getBoundingClientRect();return {x:r.x,y:r.y,width:r.width,height:r.height}})");
+    await split('follow-b.txt', side);
+    const state = await visible();
+    assert.ok(state.find(p=>p.name==='primary').text.includes('FOLLOW A'));
+    assert.ok(state.find(p=>p.name==='split').text.includes('FOLLOW B'));
+    assert.deepEqual(await q("Array.from(document.querySelectorAll('.editor-pane:not([hidden])'),p=>{const r=p.getBoundingClientRect();return {x:r.x,y:r.y,width:r.width,height:r.height}})"), bounds);
+    await action('clearSplit', 'follow-b.txt');
+  }
+  // Replacing the fixed document from the opposite side keeps it in its
+  // physical location, including when a hidden tab becomes the new fixed tab.
+  for (const [side, opposite] of [['left','right'],['right','left'],['top','bottom'],['bottom','top']]) {
+    for (const target of ['follow-b.txt', 'follow-c.txt']) {
+      await select('follow-b.txt'); await split('follow-a.txt', side);
+      const before = await q("(() => {const r=document.querySelector('.editor-pane[data-pane=split]').getBoundingClientRect();return {x:r.x,y:r.y,width:r.width,height:r.height}})()");
+      await split(target, opposite);
+      const glyph = {left:0xebf3,right:0xebf4,top:0xebf2,bottom:0xebf2}[opposite];
+      assert.equal(await q(`getComputedStyle(document.querySelector('.split-button'),'::before').content.includes(String.fromCharCode(${glyph}))`), true, 'direction selects its dedicated codicon');
+      assert.equal(await q("getComputedStyle(document.querySelector('.split-button'),'::before').transform"), opposite === 'top' ? 'matrix(-1, 0, 0, -1, 0, 0)' : 'none');
+      if (opposite === 'top') assert.notEqual(await q("getComputedStyle(document.querySelector('.split-button'),'::before').display"), 'inline', 'rotation needs a transformable box');
+      if (target === 'follow-b.txt') await capture(`followup-icon-${opposite}`);
+      const state = await visible();
+      assert.ok(state.find(p=>p.name==='primary').text.includes('FOLLOW A'));
+      assert.ok(state.find(p=>p.name==='split').text.includes(target==='follow-b.txt' ? 'FOLLOW B' : 'FOLLOW C'));
+      assert.equal(await activeName(), target);
+      assert.deepEqual(await q("(() => {const r=document.querySelector('.editor-pane[data-pane=primary]').getBoundingClientRect();return {x:r.x,y:r.y,width:r.width,height:r.height}})()"), before, 'previously fixed document stays at the same bounds');
+      await action('clearSplit', target);
+    }
+  }
+  await select('follow-b.txt'); await split('follow-a.txt', 'right');
+  await split('follow-c.txt', 'left'); await capture('followup-opposite-fixed');
+  await action('clearSplit', 'follow-c.txt');
   // Monaco bindings and chord target the editor that invoked them.
   await select('follow-a.txt'); await focus('primary'); await key('\\', ['control']);
   await until(() => q("document.querySelector('#editor-area').dataset.split==='right'"), 'Ctrl-backslash');
   await focus('split'); await key('k', ['control']); await key('\\', ['control']);
   await until(() => q("document.querySelector('#editor-area').dataset.split==='top'"), 'Ctrl-K Ctrl-backslash');
-  assert.equal(await q("document.querySelector('.split-button').classList.contains('codicon-split-vertical')"), true);
+  assert.equal(await q("getComputedStyle(document.querySelector('.split-button'),'::before').content.includes(String.fromCharCode(0xebf2))"), true);
   await key('F1'); await win.webContents.insertText('Split Down');
   await until(() => q("Array.from(document.querySelectorAll('.quick-input-list .monaco-list-row')).filter(n=>n.offsetHeight&&n.textContent.includes('Split Down')).length===1"), 'split command in palette');
   await key('Enter');
   await until(() => q("document.querySelector('#editor-area').dataset.split==='bottom'"), 'palette split down');
 
-  // External warning replaces the split button; only closing the split remains enabled.
+  // The dedicated warning menu shares the four actions and styling with the tab menu.
+  async function warningMenu() {
+    await q("document.querySelector('.reload-button').click()");
+    await until(() => q("document.querySelector('#warning-context-menu').style.display==='flex'"), 'warning menu');
+    assert.equal(await q("document.querySelector('#tab-context-menu').style.display"), 'none');
+  }
+  async function warningAction(name) {
+    await warningMenu();
+    await q(`document.querySelector('#warning-context-menu [data-action=${name}]').click()`);
+  }
   await focus('split'); await win.webContents.insertText('LOCAL ');
   fs.writeFileSync(a, 'EXTERNAL A', 'utf8');
   await until(() => q("Boolean(document.querySelector('.tab[data-split=bottom] .reload-button'))"), 'fixed warning');
   assert.equal(await q("document.querySelectorAll('.tab[data-split=bottom] .split-button').length"), 0);
-  await q("document.querySelector('.tab[data-split=bottom] .reload-button').click()");
-  await until(() => q("document.querySelector('#tab-context-menu').style.display==='flex'"), 'warning menu');
-  assert.equal(await q("Array.from(document.querySelectorAll('#tab-context-menu [data-action=openSplitMenu],#tab-context-menu [data-split-side]')).every(b=>b.disabled&&b.classList.contains('external-action-disabled'))"), true);
-  assert.equal(await q("document.querySelector('[data-action=clearSplit]').disabled"), false);
-  await q("document.querySelector('[data-action=openSplitMenu]').dispatchEvent(new MouseEvent('mouseenter'))");
-  assert.equal(await q("document.querySelector('#tab-split-menu').style.display"), 'none');
+  await warningMenu();
+  assert.deepEqual(await q("Array.from(document.querySelectorAll('#warning-context-menu button'),b=>b.dataset.action)"), ['diffView','mergeChanges','reloadDisk','clearSplit']);
+  assert.equal(await q("document.querySelectorAll('#warning-context-menu .hr').length"), 1);
+  assert.equal(await q("document.querySelector('#warning-context-menu [data-action=diffView] .shortcut').textContent"), 'Ctrl + Alt + D');
+  assert.equal(await q("document.querySelector('#warning-context-menu [data-action=clearSplit]').disabled"), false);
+  assert.equal(await q(`(() => {
+    const menu=document.querySelector('#warning-context-menu'), full=document.querySelector('#tab-context-menu');
+    const props=['fontSize','lineHeight','backgroundColor','borderRadius','paddingTop','paddingBottom','boxShadow'];
+    const same=(a,b,keys)=>keys.every(k=>getComputedStyle(a)[k]===getComputedStyle(b)[k]);
+    return same(menu,full,props) && same(menu.querySelector('button'),full.querySelector('button'),['fontSize','height','lineHeight','paddingLeft','paddingRight']) &&
+      same(menu.querySelector('.hr'),full.querySelector('.hr'),['height','backgroundColor','marginTop','marginBottom']);
+  })()`), true, 'warning menu uses the same menu, row, and separator styling');
   await capture('followup-warning-menu');
-  await q("document.querySelector('[data-action=clearSplit]').click()");
+  await q("document.querySelector('#warning-context-menu [data-action=clearSplit]').click()");
   assert.equal(await q("document.querySelector('#editor-area').dataset.split"), '');
-  await q("document.querySelector('.tab.active .reload-button').click()");
-  await until(() => q("document.querySelector('#tab-context-menu').style.display==='flex'"), 'unsplit warning menu');
-  assert.equal(await q("document.querySelector('[data-action=clearSplit]').matches(':disabled.disabled')"), true);
+  await warningMenu();
+  assert.equal(await q("document.querySelector('#warning-context-menu [data-action=clearSplit]').matches(':disabled.disabled')"), true);
+  await key('Escape');
+  assert.equal(await q("document.querySelector('#warning-context-menu').style.display"), 'none');
+  await warningMenu();
+  await q("document.body.dispatchEvent(new MouseEvent('mousedown',{bubbles:true}))");
+  assert.equal(await q("document.querySelector('#warning-context-menu').style.display"), 'none');
   await split('follow-a.txt', 'left');
-  await action('diffView', 'follow-a.txt');
+  await select('follow-c.txt');
+  await warningAction('diffView');
+  await until(() => q("Boolean(document.querySelector('.editor-pane[data-pane=split] .file-diff-host:not([hidden])'))"), 'warning action targets its tab while another is active');
+  await warningMenu();
+  assert.equal(await q("document.querySelector('#warning-context-menu [data-action=diffView] .label').textContent"), 'Exit Diff View');
+  await q("document.querySelector('#warning-context-menu [data-action=diffView]').click()");
+  await until(() => q("!document.querySelector('.file-diff-host:not([hidden])')"), 'warning menu exits diff');
+  await warningAction('diffView');
   await until(() => q("Boolean(document.querySelector('.file-diff-host:not([hidden])'))"), 'fixed diff');
   await q("document.querySelector('.editor-pane[data-pane=split] .modified .native-edit-context').focus()");
   await key('\\', ['control']);
   await until(() => q("document.querySelector('#editor-area').dataset.split==='right'"), 'shortcut from diff');
-  await action('reloadDisk', 'follow-a.txt');
-  await until(() => q("Boolean(document.querySelector('.tab[data-split=right] .split-button'))"), 'split button returns after warning');
+  await warningAction('reloadDisk');
+  await until(() => q("Boolean(document.querySelector('.tab[data-split=right] .split-button'))"), 'warning menu reloads disk');
   await capture('followup-fixed-button');
 
   // Use the real renderer drag path. Only the OS hit-test is substituted so a

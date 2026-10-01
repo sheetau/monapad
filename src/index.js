@@ -86,6 +86,8 @@ const notesList = document.getElementById("notes-list");
 const noteContextMenu = document.getElementById("note-context-menu");
 const customContextMenu = document.getElementById("custom-context-menu");
 const tabContextMenu = document.getElementById("tab-context-menu");
+const warningContextMenu = document.getElementById("warning-context-menu");
+const tabActionMenus = [tabContextMenu, warningContextMenu];
 const excludedIds = ["changeTheme", "openRecent"]; // buttons that dont close menu on click
 const TAB_PATH_SEPARATOR = navigator.platform.toLowerCase().startsWith("win") ? "\\" : "/";
 
@@ -262,6 +264,7 @@ let dragCounter = 0;
 
 // store right clicked tab
 let rightClickedTab = null;
+let activeTabContextMenu = tabContextMenu;
 let notesIndexCache = [];
 let globalSearchController = null;
 let notesController = null;
@@ -568,6 +571,7 @@ function getI18nUiContext() {
       notesListRefreshButton,
       sidePanelClose,
       tabContextMenu,
+      warningContextMenu,
     },
     state: {
       rightClickedTab,
@@ -1000,7 +1004,7 @@ externalChanges = createExternalChangesController({
   },
   changed: () => {
     scheduleSessionSnapshot(); updateStatusBar();
-    if (rightClickedTab && tabContextMenu.style.display !== "none") updateTabContextMenuState(tabContextMenu, rightClickedTab);
+    if (rightClickedTab && activeTabContextMenu.style.display !== "none") updateTabContextMenuState(activeTabContextMenu, rightClickedTab);
   },
 });
 
@@ -1482,7 +1486,7 @@ function keepOpenNoteTab(tab = currentTab) {
   if (!tab?.isNotePreview) return false;
   setNoteTabPreview(tab, false);
   updateRecentNote(tab.noteId);
-  if (tabContextMenu.style.display !== "none") updateTabContextMenuState(tabContextMenu, tab);
+  if (rightClickedTab === tab && activeTabContextMenu.style.display !== "none") updateTabContextMenuState(activeTabContextMenu, tab);
   scheduleGlobalSearchAfterTabSetChange();
   return true;
 }
@@ -1993,7 +1997,7 @@ function setTabPinned(tab, pinned, options = {}) {
     moveTabToIndex(tab, tabData.filter((candidate) => candidate !== tab && candidate.isPinned).length);
   if (!options.skipNormalize) normalizePinnedTabs();
   savePinnedTabsState();
-  if (tabContextMenu.style.display !== "none") updateTabContextMenuState(tabContextMenu, tab);
+  if (rightClickedTab === tab && activeTabContextMenu.style.display !== "none") updateTabContextMenuState(activeTabContextMenu, tab);
   if (!options.skipMove) scheduleGlobalSearchAfterTabSetChange();
   return true;
 }
@@ -3326,8 +3330,8 @@ document.addEventListener("mousedown", (e) => {
   if (noteContextMenu && !noteContextMenu.contains(e.target)) {
     notesController?.closeContextMenu();
   }
-  if (!tabContextMenu.contains(e.target)) {
-    tabContextMenu.style.display = "none";
+  if (!activeTabContextMenu.contains(e.target)) {
+    activeTabContextMenu.style.display = "none";
     rightClickedTab = null;
   }
   if (!menu.contains(e.target) && !themeMenu.contains(e.target) && !recentMenu.contains(e.target)) {
@@ -3346,8 +3350,8 @@ document.addEventListener("click", (e) => {
   if (customContextMenu.contains(e.target) && button) {
     customContextMenu.style.display = "none";
   }
-  if (tabContextMenu.contains(e.target) && button && button.dataset.action !== "openSplitMenu") {
-    tabContextMenu.style.display = "none";
+  if (activeTabContextMenu.contains(e.target) && button && button.dataset.action !== "openSplitMenu") {
+    activeTabContextMenu.style.display = "none";
     rightClickedTab = null;
   }
   if (noteContextMenu?.contains(e.target) && button && !button.dataset.edge) {
@@ -5818,7 +5822,7 @@ async function handleFileChange(tab, filePath, { afterSave = false } = {}) {
   } else {
     reloadButton(tab, filePath, "add");
   }
-  if (rightClickedTab === tab && tabContextMenu.style.display !== "none") updateTabContextMenuState(tabContextMenu, tab);
+  if (rightClickedTab === tab && activeTabContextMenu.style.display !== "none") updateTabContextMenuState(activeTabContextMenu, tab);
   scheduleSessionSnapshot();
 }
 
@@ -5867,13 +5871,12 @@ function updateSplitButton(tab) {
   if (!button) {
     button = document.createElement("button");
     button.type = "button";
-    button.className = "split-button codicon";
     button.addEventListener("mousedown", event => { event.preventDefault(); event.stopPropagation(); });
     button.addEventListener("click", event => { event.preventDefault(); event.stopPropagation(); clearSplitView(); });
     tab.element.querySelector(".name-wrap").prepend(button);
   }
-  button.classList.toggle("codicon-split-horizontal", side === "left" || side === "right");
-  button.classList.toggle("codicon-split-vertical", side === "top" || side === "bottom");
+  const icon = { left: "layout-sidebar-left", right: "layout-sidebar-right", top: "layout-panel", bottom: "layout-panel" }[side];
+  button.className = `split-button codicon codicon-${icon}`;
   button.title = i18next.t("split.clear");
   button.setAttribute("aria-label", button.title);
 }
@@ -5905,7 +5908,7 @@ function reloadButton(tab, filePath, mode) {
       event.preventDefault();
       event.stopPropagation();
       const rect = button.getBoundingClientRect();
-      await openTabContextMenu(tab, rect.left, rect.bottom, true);
+      await openTabContextMenu(tab, rect.left, rect.bottom, warningContextMenu);
     });
 
     const iconEl = tab.element.querySelector(".file-icon");
@@ -6193,7 +6196,7 @@ notesController = createNotesPanelController({
   onNotesIndexUpdated: syncOpenNoteTabsWithNotesIndex,
   onShowContextMenu: () => {
     customContextMenu.style.display = "none";
-    tabContextMenu.style.display = "none";
+    activeTabContextMenu.style.display = "none";
     rightClickedTab = null;
   },
 });
@@ -7997,7 +8000,7 @@ async function saveFileTab(tab, filePath, content, options) {
       updateStatusBar();
       showMessage("file-saved");
     }
-    if (rightClickedTab === tab) updateTabContextMenuState(tabContextMenu, tab);
+    if (rightClickedTab === tab) updateTabContextMenuState(activeTabContextMenu, tab);
     savePinnedTabsState();
 
     // New edits can arrive while the write or backup cleanup is awaiting IPC.
@@ -8020,7 +8023,7 @@ async function saveFileTab(tab, filePath, content, options) {
       if (!isTabModelDisposed(tab) && tabData.includes(tab)) {
         scheduleTabAutosave(tab);
         if (tab === currentTab) updateStatusBar();
-        if (rightClickedTab === tab) updateTabContextMenuState(tabContextMenu, tab);
+        if (rightClickedTab === tab) updateTabContextMenuState(activeTabContextMenu, tab);
         scheduleSessionSnapshot();
       }
     }
@@ -8242,74 +8245,59 @@ document.addEventListener("contextmenu", async (e) => {
   if (tab) await openTabContextMenu(tab, e.pageX, e.pageY);
 });
 
-async function openTabContextMenu(contextTab, pageX, pageY, externalOnly = false) {
+async function openTabContextMenu(contextTab, pageX, pageY, contextMenu = tabContextMenu) {
+  for (const menu of tabActionMenus) menu.style.display = "none";
+  activeTabContextMenu = contextMenu;
   rightClickedTab = contextTab;
-  const request = tabContextMenu._openRequest = (tabContextMenu._openRequest || 0) + 1;
-  tabContextMenu.dataset.externalOnly = String(externalOnly);
-  tabContextMenu.style.display = "none";
-
-  syncRecentlyClosedFilesState();
-
-  // update reopen closed tab button
-  const validItems = [];
-  for (const item of recentlyClosedFiles) {
-    if (item?.type === "trash") {
-      const trash = await window.electronAPI.readAutosaveTrash(item.trashId);
-      if (trash?.exists) validItems.push(item);
-      continue;
-    }
-
-    if (item?.type === "note") {
-      const exists = await window.electronAPI.noteExists(item.noteId);
-      if (exists) validItems.push(item);
-      continue;
-    }
-
-    if (item?.path) {
-      const exists = await window.electronAPI.fileExists(item.path);
-      if (exists) validItems.push(item);
-    }
-  }
-  if (validItems.length !== recentlyClosedFiles.length) {
-    recentlyClosedFiles = validItems;
-    updateReopenClosedTabButtonState();
-  }
-
-  // Hide editor context menu
+  const request = contextMenu._openRequest = (contextMenu._openRequest || 0) + 1;
+  const isCurrentRequest = () => activeTabContextMenu === contextMenu &&
+    request === contextMenu._openRequest && rightClickedTab === contextTab && tabData.includes(contextTab);
   customContextMenu.style.display = "none";
   notesController?.closeContextMenu();
-
-  // Resolve the source without creating a backup just to show a menu.
-  if (request !== tabContextMenu._openRequest || rightClickedTab !== contextTab) return;
-  contextTab.sourcePath = await getTabSourcePath(contextTab);
-  await externalChanges.refresh(contextTab);
-  if (request !== tabContextMenu._openRequest || rightClickedTab !== contextTab) return;
-  updateTabContextMenuState(tabContextMenu, contextTab);
-
-  // menu position
   hideTabSplitMenu();
-  tabContextMenu.style.display = "block";
-  tabContextMenu.style.visibility = "hidden";
 
-  const menuWidth = tabContextMenu.offsetWidth;
-  const menuHeight = tabContextMenu.offsetHeight;
-  const pageWidth = window.innerWidth;
-  const pageHeight = window.innerHeight;
+  if (contextMenu === tabContextMenu) {
+    syncRecentlyClosedFilesState();
 
-  let left = pageX;
-  let top = pageY;
+    // update reopen closed tab button
+    const validItems = [];
+    for (const item of recentlyClosedFiles) {
+      if (item?.type === "trash") {
+        const trash = await window.electronAPI.readAutosaveTrash(item.trashId);
+        if (trash?.exists) validItems.push(item);
+        continue;
+      }
 
-  if (left + menuWidth > pageWidth) {
-    left = Math.max(0, pageWidth - menuWidth);
+      if (item?.type === "note") {
+        const exists = await window.electronAPI.noteExists(item.noteId);
+        if (exists) validItems.push(item);
+        continue;
+      }
+
+      if (item?.path) {
+        const exists = await window.electronAPI.fileExists(item.path);
+        if (exists) validItems.push(item);
+      }
+    }
+    if (validItems.length !== recentlyClosedFiles.length) {
+      recentlyClosedFiles = validItems;
+      updateReopenClosedTabButtonState();
+    }
+    if (!isCurrentRequest()) return;
+    contextTab.sourcePath = await getTabSourcePath(contextTab);
   }
-  if (top + menuHeight > pageHeight) {
-    top = Math.max(0, pageHeight - menuHeight);
-  }
+  await externalChanges.refresh(contextTab);
+  if (!isCurrentRequest()) return;
+  updateTabContextMenuState(contextMenu, contextTab);
+  positionTabContextMenu(contextMenu, pageX, pageY);
+}
 
-  tabContextMenu.style.left = `${left}px`;
-  tabContextMenu.style.top = `${top}px`;
-  tabContextMenu.style.visibility = "visible";
-  tabContextMenu.style.display = "flex";
+function positionTabContextMenu(menu, pageX, pageY) {
+  menu.style.display = "flex";
+  menu.style.visibility = "hidden";
+  menu.style.left = `${Math.max(0, Math.min(pageX, innerWidth - menu.offsetWidth))}px`;
+  menu.style.top = `${Math.max(0, Math.min(pageY, innerHeight - menu.offsetHeight))}px`;
+  menu.style.visibility = "visible";
 }
 
 function getTabSourcePath(tab) {
@@ -8323,11 +8311,6 @@ function getTabSourcePath(tab) {
 // update copy & open path button based on path existance
 function updateTabContextMenuState(menu, tab) {
   if (!menu) return;
-  for (const button of menu.querySelectorAll("button[data-external-disabled]")) {
-    button.disabled = button.dataset.externalDisabled === "true";
-    delete button.dataset.externalDisabled;
-    button.classList.remove("external-action-disabled");
-  }
   for (const action of ["diffView", "mergeChanges", "reloadDisk"]) {
     const button = menu.querySelector(`[data-action="${action}"]`);
     if (!button) continue;
@@ -8335,7 +8318,8 @@ function updateTabContextMenuState(menu, tab) {
       action === "reloadDisk" ? !externalChanges.canReload(tab) :
       !(action === "diffView" && tab?.isDiffView) && !externalChanges.canCompare(tab);
     button.classList.toggle("disabled", button.disabled);
-    if (action === "diffView") button.querySelector(".label").textContent = i18next.t(tab?.isDiffView ? "external.exitDiff" : "external.diff");
+    button.querySelector(".label").textContent = i18next.t(action === "diffView"
+      ? (tab?.isDiffView ? "external.exitDiff" : "external.diff") : action === "mergeChanges" ? "external.merge" : "external.reload");
     if (action === "mergeChanges") button.title = typeof tab?.mergeBaseContent === "string" ? "" : i18next.t("external.noBase");
   }
   for (const button of menu.querySelectorAll("[data-split-side]")) {
@@ -8351,8 +8335,10 @@ function updateTabContextMenuState(menu, tab) {
     clearButton.classList.toggle("disabled", clearButton.disabled);
   }
   const splitButton = menu.querySelector('[data-action="openSplitMenu"]');
-  splitButton.disabled = menu.querySelector("[data-split-side]").disabled;
-  splitButton.classList.toggle("disabled", splitButton.disabled);
+  if (splitButton) {
+    splitButton.disabled = menu.querySelector("[data-split-side]").disabled;
+    splitButton.classList.toggle("disabled", splitButton.disabled);
+  }
   const copyPathBtn = menu.querySelector('[data-action="copyPath"]');
   const openPathBtn = menu.querySelector('[data-action="openPath"]');
   const openInNewWindowBtn = menu.querySelector('[data-action="openInNewWindow"]');
@@ -8376,14 +8362,7 @@ function updateTabContextMenuState(menu, tab) {
   if (keepOpenBtn) keepOpenBtn.classList.toggle("disabled", !tab?.isNotePreview);
   if (togglePinBtn)
     togglePinBtn.querySelector(".label").textContent = i18next.t(tab?.isPinned ? "tabMenu.unpin" : "tabMenu.pin");
-  if (menu.dataset.externalOnly === "true") {
-    for (const button of menu.querySelectorAll("button")) {
-      if (["diffView", "mergeChanges", "reloadDisk", "clearSplit"].includes(button.dataset.action)) continue;
-      button.dataset.externalDisabled = String(button.disabled);
-      button.disabled = true;
-      button.classList.add("external-action-disabled");
-    }
-  }
+
 }
 
 // Close multiple tabs one by one (close others, close to the right & close saved)
@@ -8420,7 +8399,7 @@ function positionTabSplitMenu() {
   positionSubmenu(tabSplitMenu, trigger.top - 5);
 }
 function showTabSplitMenu() {
-  if (tabSplitMenuButton.disabled || tabContextMenu.style.display === "none") return;
+  if (tabSplitMenuButton.disabled || activeTabContextMenu !== tabContextMenu || tabContextMenu.style.display === "none") return;
   tabSplitMenu.style.display = "flex";
   tabSplitMenuButton.setAttribute("aria-expanded", "true");
   positionTabSplitMenu();
@@ -8437,7 +8416,8 @@ tabContextMenu.addEventListener("scroll", positionTabSplitMenu, { passive: true 
 window.addEventListener("resize", positionTabSplitMenu);
 
 // Tab context menu click handler
-tabContextMenu.addEventListener("click", async (e) => {
+for (const contextMenu of tabActionMenus) contextMenu.addEventListener("click", async (e) => {
+  if (contextMenu !== activeTabContextMenu) return;
   const button = e.target.closest("button");
   const action = button?.dataset.action;
   if (!action || !rightClickedTab || button.disabled || button.classList.contains("disabled")) return;
@@ -8445,7 +8425,7 @@ tabContextMenu.addEventListener("click", async (e) => {
   if (action === "openSplitMenu") { showTabSplitMenu(); return; }
   const targetTab = rightClickedTab;
 
-  tabContextMenu.style.display = "none";
+  activeTabContextMenu.style.display = "none";
   rightClickedTab = null;
 
   switch (action) {
@@ -8544,7 +8524,7 @@ editorArea.addEventListener("contextmenu", (e) => {
   editorMenuTarget = { editor: pane.editor, tab: pane.tab };
   e.preventDefault();
 
-  tabContextMenu.style.display = "none";
+  activeTabContextMenu.style.display = "none";
   rightClickedTab = null;
   notesController?.closeContextMenu();
 
@@ -8729,8 +8709,8 @@ function closeContextMenus({ focus = true } = {}) {
     closed = true;
   }
 
-  if (isElementOpen(tabContextMenu)) {
-    tabContextMenu.style.display = "none";
+  if (isElementOpen(activeTabContextMenu)) {
+    activeTabContextMenu.style.display = "none";
     rightClickedTab = null;
     closed = true;
   }

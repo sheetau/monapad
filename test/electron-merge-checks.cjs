@@ -32,11 +32,10 @@ module.exports = async ({first:win,profile,phase,evaluate,until,type,menu,delay}
   fs.writeFileSync(file,"\ufeff"+disk,"utf8");
   await until(()=>q('Boolean(document.querySelector(".tab.active .reload-button"))'),"warning");
   await q('document.querySelector(".tab.active .reload-button").click()');
-  await until(()=>q('document.querySelector("#tab-context-menu").style.display === "flex"'),"warning menu");
-  assert.deepEqual(await q('Array.from(document.querySelectorAll("#tab-context-menu button:not(:disabled)"),b=>b.dataset.action)'),["diffView","mergeChanges","reloadDisk"]);
-  assert.equal(await q('getComputedStyle(document.querySelector("[data-action=close]")).color === getComputedStyle(document.querySelector("[data-action=keepOpen]")).color && getComputedStyle(document.querySelector("[data-action=keepOpen]")).opacity === "1"'),true);
-  const count=await q('document.querySelectorAll(".tab").length');
-  await q('document.querySelector("[data-action=close]").click()');assert.equal(await q('document.querySelectorAll(".tab").length'),count);
+  await until(()=>q('document.querySelector("#warning-context-menu").style.display === "flex"'),"warning menu");
+  assert.deepEqual(await q('Array.from(document.querySelectorAll("#warning-context-menu button"),b=>b.dataset.action)'),["diffView","mergeChanges","reloadDisk","clearSplit"]);
+  assert.deepEqual(await q('Array.from(document.querySelectorAll("#warning-context-menu button:not(:disabled)"),b=>b.dataset.action)'),["diffView","mergeChanges","reloadDisk"]);
+  assert.equal(await q('document.querySelector("#tab-context-menu").style.display'),"none");
   await noDialog();
   await menu(win);
   assert.equal(await q('document.querySelector("[data-action=close]").disabled || document.querySelector("[data-action=copyPath]").disabled'),false);
@@ -75,7 +74,10 @@ module.exports = async ({first:win,profile,phase,evaluate,until,type,menu,delay}
   await q('Array.from(document.querySelectorAll(".tab")).find(t=>t.querySelector(".tab-name-label").textContent==="merge.txt").click()');
   await until(()=>q('!document.querySelector("#file-diff-view").hidden'),"retained mode");
   console.log("PASS merge eligibility, warning-only menu restriction, normal menu reset, editor-only diff and dedicated gutter options");
-  await action("mergeChanges");assert.equal((await content(merged)).dirty,true); await noDialog();
+  await q('document.querySelector(".tab.active .reload-button").click()');
+  await until(()=>q('document.querySelector("#warning-context-menu").style.display === "flex" && !document.querySelector("#warning-context-menu [data-action=mergeChanges]").disabled'),"warning merge enabled");
+  await q('document.querySelector("#warning-context-menu [data-action=mergeChanges]").click()');
+  assert.equal((await content(merged)).dirty,true); await noDialog();
   assert.equal(fs.readFileSync(file,"utf8"),"\ufeff"+disk);
   await menu(win);assert.equal(await q('document.querySelector("[data-action=mergeChanges]").disabled'),true);
   await action("diffView");

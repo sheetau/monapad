@@ -111,9 +111,6 @@ export function updateStaticUiText({
     ['button[data-action="closeOthers"] .label', "tabMenu.closeOthers"],
     ['button[data-action="closeToRight"] .label', "tabMenu.closeToRight"],
     ['button[data-action="closeSaved"] .label', "tabMenu.closeSaved"],
-    ['button[data-action="diffView"] .label', "external.diff"],
-    ['button[data-action="mergeChanges"] .label', "external.merge"],
-    ['button[data-action="reloadDisk"] .label', "external.reload"],
     ['button[data-action="copyPath"] .label', "tabMenu.copyPath"],
     ['button[data-action="copyBackupPath"] .label', "tabMenu.copyBackupPath"],
     ['button[data-action="openBackupPath"] .label', "tabMenu.openBackupPath"],
@@ -167,6 +164,7 @@ export function updateStaticUiText({
   callbacks.updateSessionRestoreChoices?.();
   callbacks.updateMainMenuState();
   callbacks.updateTabContextMenuState(refs.tabContextMenu, state.rightClickedTab);
+  callbacks.updateTabContextMenuState(refs.warningContextMenu, state.rightClickedTab);
   callbacks.updateGlobalSearchPlaceholder(document.activeElement === refs.globalSearchInput);
   callbacks.updateGlobalSearchLabels();
   callbacks.updateGlobalSearchResultHeaderLabels();

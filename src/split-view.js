@@ -1,5 +1,6 @@
 // Window layout contains IDs only; models and Undo belong to the tabs.
 const SPLIT_SIDES = new Set(["left", "right", "top", "bottom"]);
+const OPPOSITE_SIDE = { left: "right", right: "left", top: "bottom", bottom: "top" };
 const idOf = tab => tab.sessionTabId || tab.id;
 
 function normalizeSplitLayout(layout, tabs, activeTabId, history = []) {
@@ -26,7 +27,12 @@ function transitionSplitLayout(layout, tabs, activeTabId, history, action) {
     active = action.tabId;
     if (next.split?.tabId !== active) next = { ...next, primaryTabId: active };
   } else if (action.type === "split" && target && !target._transferring && SPLIT_SIDES.has(action.side)) {
-    const proposed = normalizeSplitLayout({ ...next, split: { tabId: action.tabId, side: action.side } }, tabs, active, history);
+    // Keep the other visible document when fixing the normal pane. If a hidden
+    // tab is fixed opposite the old fixed pane, keep the old fixed document too.
+    const primaryTabId = next.split && next.split.tabId !== action.tabId &&
+      (next.primaryTabId === action.tabId || OPPOSITE_SIDE[next.split.side] === action.side)
+      ? next.split.tabId : next.primaryTabId;
+    const proposed = normalizeSplitLayout({ primaryTabId, split: { tabId: action.tabId, side: action.side } }, tabs, active, history);
     if (proposed.split) { next = proposed; active = action.tabId; }
   } else if (action.type === "unsplit") {
     next = normalizeSplitLayout({ primaryTabId: active, split: null }, tabs, active, history);
