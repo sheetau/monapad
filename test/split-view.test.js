@@ -67,3 +67,20 @@ test("old or corrupt layouts preserve documents and normalize IDs", () => {
 test("tab order and pin flags have no effect on an established split", () => {
   assert.deepEqual(normalizeSplitLayout(initial, tabs.slice().reverse().map(t => ({ ...t, isPinned: true })), "a"), initial);
 });
+
+
+test("physical split ratios survive tab swaps, direction changes and removing the split", () => {
+  const layout = { ...initial, ratios: { left: 0.7, top: 0.36 } };
+  for (const side of ["left", "right", "top", "bottom"]) {
+    const next = step(layout, "b", { type: "split", tabId: "b", side }).layout;
+    assert.deepEqual(next.ratios, layout.ratios);
+    assert.deepEqual(step(next, "b", { type: "unsplit" }).layout.ratios, layout.ratios);
+  }
+  assert.deepEqual(normalizeSplitLayout(layout, [tabs[0]], "a").ratios, layout.ratios);
+});
+test("corrupt ratios are finite and bounded, and old sessions keep the default layout", () => {
+  for (const value of [null, "0.7", Infinity, NaN]) {
+    assert.deepEqual(normalizeSplitLayout({ ...initial, ratios: { left: value } }, tabs, "a").ratios, { left: 0.5, top: 0.5 });
+  }
+  assert.deepEqual(normalizeSplitLayout({ ...initial, ratios: { left: -5, top: 9 } }, tabs, "a").ratios, { left: 0, top: 1 });
+});

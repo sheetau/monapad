@@ -1,5 +1,6 @@
 {
   "split": {
+    "resize": "Ajustar divisão (clique duplo para redefinir)",
     "menu": "Exibição dividida",
     "left": "Dividir à esquerda",
     "right": "Dividir à direita",

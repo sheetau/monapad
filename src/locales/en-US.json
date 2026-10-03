@@ -1,5 +1,6 @@
 {
   "split": {
+    "resize": "Resize split panes (double-click to reset)",
     "menu": "Split View",
     "left": "Split Left",
     "right": "Split Right",

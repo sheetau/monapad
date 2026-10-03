@@ -132,6 +132,10 @@ ipcMain.handle = registerHandler;
     app.quit();
     return;
   }
+  if (["split-resize", "split-resize-restore"].includes(process.env.MONAPAD_SMOKE_PHASE)) {
+    await require("./electron-split-resize-checks.cjs")({ first, profile, phase: process.env.MONAPAD_SMOKE_PHASE, evaluate, until, delay, ready });
+    assert.deepEqual(failures, []); pass(); return;
+  }
   if (["split", "split-restore", "split-edges", "split-audit", "split-followup"].includes(process.env.MONAPAD_SMOKE_PHASE)) {
     await require("./electron-split-checks.cjs")({ first, profile, phase: process.env.MONAPAD_SMOKE_PHASE, evaluate, until, delay, ready,
       expectMoveFailure: () => { expectedMoveFailure = true; }, moveFailures: () => moveFailureCount });

@@ -1,5 +1,6 @@
 {
   "split": {
+    "resize": "Ridimensiona riquadri (doppio clic per ripristinare)",
     "menu": "Vista divisa",
     "left": "Dividi a sinistra",
     "right": "Dividi a destra",

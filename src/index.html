@@ -1089,6 +1089,7 @@
         outline: none;
       }
       #editor-area {
+        position: relative;
         flex: 1;
         min-height: 0;
         min-width: 0;
@@ -1103,12 +1104,12 @@
       }
       #editor-area[data-split="left"],
       #editor-area[data-split="right"] {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
+        grid-template-columns: var(--split-first-size, minmax(0, 1fr)) minmax(0, 1fr);
         column-gap: 1px;
       }
       #editor-area[data-split="top"],
       #editor-area[data-split="bottom"] {
-        grid-template-rows: repeat(2, minmax(0, 1fr));
+        grid-template-rows: var(--split-first-size, minmax(0, 1fr)) minmax(0, 1fr);
         row-gap: 1px;
       }
       #editor-area[data-split="left"] > [data-pane="split"],
@@ -1909,7 +1910,7 @@
         cursor: w-resize;
         pointer-events: auto;
       }
-      #side-panel-resize-handle::after {
+      :is(#side-panel-resize-handle, #split-resize-handle)::after {
         content: "";
         position: absolute;
         top: 0;
@@ -1934,6 +1935,30 @@
       body:not(.tab-dragging):not(.note-dragging):not(.note-external-dragging).side-panel-resizing
         #side-panel-resize-handle::after {
         transition-delay: 0ms;
+      }
+      #split-resize-handle {
+        position: absolute;
+        /* Above Monaco minimap (5) and scrollbars (11). */
+        z-index: 12;
+        touch-action: none;
+        -webkit-app-region: no-drag;
+        cursor: ew-resize;
+      }
+      #split-resize-handle[data-axis="top"] { cursor: ns-resize; }
+      #split-resize-handle[data-axis="top"]::after { transform: scaleY(0.35); }
+      body:not(.tab-dragging):not(.note-dragging):not(.note-external-dragging) #split-resize-handle:hover::after,
+      body.split-resizing #split-resize-handle::after {
+        opacity: 1;
+        transform: scale(1);
+      }
+      body.split-resizing #split-resize-handle::after { transition-delay: 0ms; }
+      body.split-resizing, body.split-resizing * {
+        cursor: var(--split-resize-cursor) !important;
+        user-select: none !important;
+      }
+      body.split-resizing #editor-area { transition: none !important; }
+      body:is(.tab-dragging, .note-dragging, .note-external-dragging, .side-panel-resizing) #split-resize-handle {
+        pointer-events: none;
       }
       #side-panel-tools {
         flex: 0 0 auto;

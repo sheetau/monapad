@@ -1,9 +1,13 @@
-// Window layout contains IDs only; models and Undo belong to the tabs.
+// Window layout contains tab IDs and physical pane ratios; models and Undo belong to the tabs.
 const SPLIT_SIDES = new Set(["left", "right", "top", "bottom"]);
 const OPPOSITE_SIDE = { left: "right", right: "left", top: "bottom", bottom: "top" };
 const idOf = tab => tab.sessionTabId || tab.id;
 
 function normalizeSplitLayout(layout, tabs, activeTabId, history = []) {
+  const ratios = layout?.ratios ? { ratios: Object.fromEntries(["left", "top"].map(axis => {
+    const value = layout.ratios[axis];
+    return [axis, Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0.5];
+  })) } : {};
   const available = tabs.filter(tab => !tab._closing);
   const ids = new Set(available.map(idOf));
   const candidate = excluded => [...history, activeTabId, ...available.map(idOf)].find(id =>
@@ -14,9 +18,9 @@ function normalizeSplitLayout(layout, tabs, activeTabId, history = []) {
   if (split && (!primaryTabId || primaryTabId === split.tabId)) primaryTabId = candidate(split.tabId);
   if (!split || !primaryTabId) {
     primaryTabId = ids.has(activeTabId) ? activeTabId : primaryTabId || candidate(null) || available.map(idOf)[0] || null;
-    return { primaryTabId, split: null };
+    return { ...ratios, primaryTabId, split: null };
   }
-  return { primaryTabId, split };
+  return { ...ratios, primaryTabId, split };
 }
 
 function transitionSplitLayout(layout, tabs, activeTabId, history, action) {
@@ -32,10 +36,10 @@ function transitionSplitLayout(layout, tabs, activeTabId, history, action) {
     const primaryTabId = next.split && next.split.tabId !== action.tabId &&
       (next.primaryTabId === action.tabId || OPPOSITE_SIDE[next.split.side] === action.side)
       ? next.split.tabId : next.primaryTabId;
-    const proposed = normalizeSplitLayout({ primaryTabId, split: { tabId: action.tabId, side: action.side } }, tabs, active, history);
+    const proposed = normalizeSplitLayout({ ...next, primaryTabId, split: { tabId: action.tabId, side: action.side } }, tabs, active, history);
     if (proposed.split) { next = proposed; active = action.tabId; }
   } else if (action.type === "unsplit") {
-    next = normalizeSplitLayout({ primaryTabId: active, split: null }, tabs, active, history);
+    next = normalizeSplitLayout({ ...next, primaryTabId: active, split: null }, tabs, active, history);
   }
   const visible = [next.primaryTabId, next.split?.tabId];
   if (!visible.includes(active)) active = next.primaryTabId;

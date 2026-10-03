@@ -1,5 +1,6 @@
 {
   "split": {
+    "resize": "Teilungsposition anpassen (Doppelklick zum Zurücksetzen)",
     "menu": "Geteilte Ansicht",
     "left": "Nach links teilen",
     "right": "Nach rechts teilen",

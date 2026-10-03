@@ -2930,6 +2930,7 @@ function queueSessionSnapshot(options = {}) {
 }
 
 function scheduleSessionSnapshot({ immediate = false } = {}) {
+  if (editorPanes?.resizing && !immediate) return;
   if (settings.sessionRestoreMode === "none" || !stableSessionWindowId || isRestoringSession || isClosingForSession) return;
   if (sessionSnapshotTimer) clearTimeout(sessionSnapshotTimer);
   sessionSnapshotTimer = null;
@@ -3081,6 +3082,10 @@ async function initializeSessionRestore() {
 editorPanes = createEditorPanes({
   root: editorArea, host: editor, editor: monacoEditor,
   createEditor: createNormalEditor,
+  ratios: () => splitLayout.ratios,
+  resize: (axis, value) => { splitLayout.ratios = { left: 0.5, top: 0.5, ...splitLayout.ratios, [axis]: value }; },
+  resizeEnd: () => scheduleSessionSnapshot(),
+  resizeLabel: () => i18next.t("split.resize"),
   options: getTabEditorOptions,
   activate: activateTab,
   install: (ed, pane) => {
@@ -5772,7 +5777,7 @@ function setSplitTab(tab, side) {
 }
 
 function clearSplitView() {
-  splitLayout = { primaryTabId: currentTab?.sessionTabId, split: null };
+  splitLayout = { ...splitLayout, primaryTabId: currentTab?.sessionTabId, split: null };
   applySplitLayout(currentTab?.sessionTabId, true);
 }
 

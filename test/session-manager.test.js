@@ -44,7 +44,7 @@ test("persists both split views and normalizes missing or placeholder-only targe
       { id: "tab_aaaa1", kind: "draft", dirty: true, content: "A", viewState: { cursor: 1 } },
       { id: "tab_bbbb1", kind: "draft", dirty: true, content: "B", viewState: { cursor: 2 } },
     ];
-    const editorLayout = { primaryTabId: "tab_aaaa1", split: { tabId: "tab_bbbb1", side: "bottom" } };
+    const editorLayout = { ratios: { left: 0.7, top: 0.36 }, primaryTabId: "tab_aaaa1", split: { tabId: "tab_bbbb1", side: "bottom" } };
     await manager.saveWindow("window_a1", { tabs, editorLayout, activeTabId: "tab_bbbb1" });
     const restored = await manager.hydrateWindow("window_a1");
     assert.deepEqual(restored.editorLayout, editorLayout);
@@ -52,7 +52,7 @@ test("persists both split views and normalizes missing or placeholder-only targe
     assert.deepEqual(restored.tabs.map(t => t.viewState), [{ cursor: 1 }, { cursor: 2 }]);
     await manager.saveWindow("window_a1", { tabs: tabs.slice(0, 1), editorLayout, activeTabId: "tab_bbbb1" });
     const missing = await manager.hydrateWindow("window_a1");
-    assert.deepEqual(missing.editorLayout, { primaryTabId: "tab_aaaa1", split: null });
+    assert.deepEqual(missing.editorLayout, { ratios: editorLayout.ratios, primaryTabId: "tab_aaaa1", split: null });
     assert.equal(missing.activeTabId, "tab_aaaa1");
     await manager.saveWindow("window_a1", { tabs: [tabs[0], {
       id: "tab_bbbb1", kind: "draft", content: "", dirty: false, isAutoPlaceholder: true,

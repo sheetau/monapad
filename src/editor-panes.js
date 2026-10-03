@@ -1,3 +1,5 @@
+import { createSplitResizer } from "./split-resizer.js";
+
 // Physical panes are independent of the active command target.
 export function createEditorPanes(api) {
   const panes = [];
@@ -38,6 +40,7 @@ export function createEditorPanes(api) {
   function layout() {
     if (frame !== null) cancelAnimationFrame(frame);
     frame = null;
+    resizer.layout();
     for (const pane of panes) {
       if (pane.element.hidden) continue;
       const width = pane.host.clientWidth, height = pane.host.clientHeight;
@@ -96,11 +99,15 @@ export function createEditorPanes(api) {
       layout();
     } finally { applying = false; }
   }
+  const resizer = createSplitResizer({ root: api.root, ratios: api.ratios, change: api.resize,
+    commit: api.resizeEnd, label: api.resizeLabel, schedule: scheduleLayout });
+  observer.observe(api.root);
   create("primary", api.host);
   return { panes, apply, saveAll: () => panes.forEach(save), save,
     find: tab => panes.find(pane => pane.tab === tab),
     layout: scheduleLayout, layoutNow: layout,
     updateOptions: () => panes.forEach(options),
     get applying() { return applying; },
+    get resizing() { return resizer.dragging; },
   };
 }
