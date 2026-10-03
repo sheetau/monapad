@@ -1,4 +1,5 @@
 import { normalize, renderMerge } from "./merge-model.js";
+import { installViewportWrapping } from "./viewport-wrapping.js";
 
 const sameDisk = (a, b) => a && b && a.content === b.content && Boolean(a.hasBom) === Boolean(b.hasBom) && a.isUtf8Valid === b.isUtf8Valid;
 const diffOptions = {
@@ -43,7 +44,6 @@ export function createExternalChangesController(api) {
   function disposeView(view) {
     saveView(view);
     views.delete(view.tab);
-    clearTimeout(view.resizeTimer);
     view.disposables.forEach(d => d.dispose());
     clearDiffModel(view);
     view.diff.dispose(); view.diskModel.dispose(); view.pane.remove();
@@ -51,7 +51,7 @@ export function createExternalChangesController(api) {
   function optionsFor(tab) {
     return { ...api.editorOptions(tab), ...diffOptions, renderSideBySide: !api.split() };
   }
-  function layoutView(view, immediate = false, render = false) {
+  function layoutView(view, render = false) {
     if (view.pane.hidden) return;
     const { surface, diff } = view;
     // The hidden original editor switches wrapping mode during inline layout.
@@ -60,11 +60,6 @@ export function createExternalChangesController(api) {
     const dimension = { width: surface.clientWidth, height: surface.clientHeight };
     const size = `${dimension.width},${dimension.height}`;
     if (view.size !== size) {
-      clearTimeout(view.resizeTimer);
-      if (!immediate && view.size) {
-        view.resizeTimer = setTimeout(() => layoutView(view, true), 80);
-        return;
-      }
       resizeState = diff.getModifiedEditor().saveViewState();
       view.size = size;
       diff.layout(dimension);
@@ -105,6 +100,7 @@ export function createExternalChangesController(api) {
       optionsKey: JSON.stringify(options), diffViewModel: null, disposables: [], restoring: false };
     view.disposables.push(tab.model.onWillDispose(() => disposeView(view)));
     for (const ed of [diff.getOriginalEditor(), diff.getModifiedEditor()]) {
+      view.disposables.push(installViewportWrapping(ed));
       view.disposables.push(ed.onDidFocusEditorWidget(() => {
         if (!syncing && !pane.hidden) { view.focusedEditor = ed; api.activate(tab, ed); }
       }));
@@ -132,7 +128,7 @@ export function createExternalChangesController(api) {
       const visibleTabs = new Set(visiblePanes.map(p => p.tab));
       for (const view of views.values()) {
         if (!visibleTabs.has(view.tab) && !view.pane.hidden) {
-          saveView(view); clearTimeout(view.resizeTimer); view.pane.hidden = true;
+          saveView(view); view.pane.hidden = true;
         }
       }
       for (const parent of visiblePanes) {
@@ -162,7 +158,7 @@ export function createExternalChangesController(api) {
         const optionsChanged = view.optionsKey !== key;
         if (optionsChanged) { view.optionsKey = key; diff.updateOptions(options); }
         view.pane.title = readable ? "" : t("external.missing");
-        layoutView(view, true, showing || attached || optionsChanged);
+        layoutView(view, showing || attached || optionsChanged);
         if (state) {
           diff.restoreViewState(state);
           diff.getOriginalEditor().render(true); diff.getModifiedEditor().render(true);

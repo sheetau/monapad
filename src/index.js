@@ -40,6 +40,7 @@ import { OPEN_FENCE, CLOSE_FENCE, scanStructure, computeFoldingRanges } from "./
 import { createExternalChangesController } from "./external-changes.js";
 import { captureEditorHistory, restoreEditorHistory } from "./editor-transfer.js";
 import { installLineNumberLayout } from "./line-number-layout.js";
+import { installViewportWrapping } from "./viewport-wrapping.js";
 import { getTransferredExternalState, restoreTransferredExternalState } from "./tab-transfer.js";
 
 const toolbar = document.getElementById("toolbar");
@@ -921,7 +922,7 @@ monaco.editor.defineTheme("custom-theme", createCustomTheme());
 
 installLineNumberLayout(monaco);
 function createNormalEditor(host) {
-  return monaco.editor.create(host, {
+  const instance = monaco.editor.create(host, {
   model: null,
   language: "monapad",
   wordWrap: "on",
@@ -961,6 +962,8 @@ function createNormalEditor(host) {
   copyWithSyntaxHighlighting: false,
   cursorSmoothCaretAnimation: false,
   });
+  installViewportWrapping(instance);
+  return instance;
 }
 monacoEditor = createNormalEditor(editor);
 

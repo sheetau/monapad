@@ -32,6 +32,18 @@ module.exports = async ({ first: win, profile, evaluate, until, type, menu, dela
     const file=path.join(profile,name);
     fs.writeFileSync(file,base,"utf8");win.webContents.send("open-file",file);
     await until(()=>q(`document.querySelector('.tab.active .tab-name-label').textContent===${JSON.stringify(name)}`),name);
+    if (name === "perf-a.txt") {
+      for (const width of [1300, 1120, 1400]) {
+        win.setSize(width, 900);
+        await until(() => q('document.querySelector("#editor .monaco-editor").getBoundingClientRect().width === document.querySelector("#editor").clientWidth'), "live normal resize");
+      }
+      for (let i = 0; i < 2; i++) {
+        win.webContents.focus();
+        for (const type of ["keyDown", "keyUp"]) win.webContents.sendInputEvent({ type, keyCode: "b", modifiers: ["control"] });
+        await delay(350);
+        await until(() => q('document.querySelector("#editor .monaco-editor").getBoundingClientRect().width === document.querySelector("#editor").clientWidth'), "normal sidebar resize");
+      }
+    }
     await type(win,"LOCAL ");fs.writeFileSync(file,base+"\nDISK","utf8");
     await action("diffView");
     await until(()=>q('document.querySelector("#file-diff-view")?.hidden === false'),"comparison visible");
@@ -71,6 +83,12 @@ module.exports = async ({ first: win, profile, evaluate, until, type, menu, dela
     assert.equal(await q('document.querySelector("#file-diff-view .monaco-diff-editor") === __diffNodes["perf-b.txt"]'),true,"reuse second comparison");
     await delay(150);
     assert.deepEqual(await viewport(),before,"switching tabs preserves both scroll positions");
+  }
+  for (let i = 0; i < 2; i++) {
+    win.webContents.focus();
+    for (const type of ["keyDown", "keyUp"]) win.webContents.sendInputEvent({ type, keyCode: "b", modifiers: ["control"] });
+    await delay(350);
+    await until(() => q('document.querySelector("#file-diff-view .monaco-diff-editor").getBoundingClientRect().width === document.querySelector("#file-diff-view .file-diff-surface").clientWidth'), "diff sidebar resize");
   }
   const resizeStart=Date.now();
   for(let width=1380;width>=1200;width-=20){win.setSize(width,900);await delay(20);}
