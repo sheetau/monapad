@@ -1,0 +1,9 @@
+{
+  "cssvar.files": ["styles/**/*.css"],
+  "cssvar.ignore": [
+    "**/node_modules/**",
+    "**/.next/**",
+    "**/out/**",
+    "**/.history/**"
+  ]
+}

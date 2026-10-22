@@ -2,7 +2,13 @@
   <div class="header-wrapper w-full flex items-center">
     <div class="logo flex items-center select-none" onclick="location.reload()">
       <svg viewBox="0 0 22.91 22.91" fill="none" aria-hidden="true">
-        <path d="M7.37 15.54 21.41 1.5v19.91l-9.96-9.96M7.37 7.37 1.5 1.5v19.91" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />
+        <path
+          d="M7.37 15.54 21.41 1.5v19.91l-9.96-9.96M7.37 7.37 1.5 1.5v19.91"
+          stroke="currentColor"
+          stroke-width="3"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        />
       </svg>
       <span>Monapad</span>
     </div>
@@ -20,9 +26,7 @@
           Built to give you absolute control over your words, Monapad is the ultimate text editor.
         </h1>
         <div class="hero-buttons flex">
-          <a href="#" class="app-download download-main btn flex items-center justify-center">
-            Download for Windows
-          </a>
+          <a href="#" class="app-download download-main btn flex items-center justify-center"> Download for Windows </a>
           <a
             href="https://github.com/sheetau/monapad/tree/main"
             target="_blank"
@@ -117,8 +121,8 @@
         <div class="feature-copy">
           <h3>Language designed for text</h3>
           <p>
-            Structured highlighting and heading-level folding give your writing shape. Navigate, scan, and manage
-            long documents the way developers manage code.
+            Structured highlighting and heading-level folding give your writing shape. Navigate, scan, and manage long
+            documents the way developers manage code.
           </p>
         </div>
         <figure class="feature-media relative">
@@ -141,8 +145,60 @@
         <div class="feature-copy">
           <h3>Your notes, always there</h3>
           <p>
-            Zero-file management. Pure writing. Everything saves itself, stays organized, and is ready the moment
-            you need it.
+            Zero-file management. Pure writing. Everything saves itself, stays organized, and is ready the moment you
+            need it.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- split view -->
+  <section class="split-view">
+    <div class="container feature-block relative flex flex-col items-start text-left">
+      <div class="feature-showcase media-panel-showcase comparison-showcase items-center overflow-hidden">
+        <div class="feature-copy">
+          <h3>Keep both in view</h3>
+          <p>
+            Keep your reference beside your draft. Split View lets you edit side by side or top and bottom, with a
+            draggable divider to give each pane the space it needs.
+          </p>
+        </div>
+        <figure class="feature-media relative">
+          <div class="feature-media-inner overflow-hidden">
+            <img
+              src="media/split-view.png"
+              width="1061"
+              height="668"
+              loading="lazy"
+              alt="Split View showing Commonplace Notes and Studio Journal side by side"
+            />
+          </div>
+        </figure>
+      </div>
+    </div>
+  </section>
+
+  <!-- diff view -->
+  <section class="diff-view">
+    <div class="container feature-block relative flex flex-col items-start text-left">
+      <div class="feature-showcase media-panel-showcase comparison-showcase media-left items-center overflow-hidden">
+        <figure class="feature-media relative">
+          <div class="feature-media-inner overflow-hidden">
+            <img
+              src="media/diff-view.png"
+              width="1031"
+              height="666"
+              loading="lazy"
+              alt="Diff View highlighting removed lines in red and added lines in green"
+            />
+          </div>
+        </figure>
+        <div class="feature-copy">
+          <h3>See exactly what changed</h3>
+          <p>
+            Compare your working copy with the file on disk. Diff View highlights additions and deletions, so you can
+            review your edits without losing track of the original.
           </p>
         </div>
       </div>
@@ -156,8 +212,8 @@
         <div class="shortcuts-copy">
           <h3>Every shortcut developers use</h3>
           <p>
-            Powered by the same Monaco Editor used in VSCode, Monapad brings the powerful shortcut ecosystem and
-            precise editing features directly to your writing workflow.<br />
+            Powered by the same Monaco Editor used in VSCode, Monapad brings the powerful shortcut ecosystem and precise
+            editing features directly to your writing workflow.<br />
             <a href="https://github.com/sheetau/monapad/blob/main/README.md#shortcuts" target="_blank">
               See all shortcuts
               <svg width="8" height="13" viewBox="0 0 8 13" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -181,135 +237,52 @@
       <div class="shortcuts-images-wrapper w-full overflow-visible">
         <div class="shortcuts-images flex flex-row w-full">
           <div class="shortcut-img relative flex flex-col items-start overflow-hidden">
+            <div class="shortcut-label">Find and Replace</div>
+            <div class="shortcut-key">Ctrl + F/H</div>
             <div class="shortcut-img-container relative overflow-hidden">
               <img src="media/shortcuts_1.png" alt="Find and Replace" />
             </div>
-            <div class="shortcut-label">Find and Replace</div>
-            <div class="shortcut-key">Ctrl + F/H</div>
           </div>
           <div class="shortcut-img relative flex flex-col items-start overflow-hidden">
+            <div class="shortcut-label">Multi Cursor</div>
+            <div class="shortcut-key">Alt + Click</div>
             <div class="shortcut-img-container relative overflow-hidden">
               <img src="media/shortcuts_2.png" alt="Multi Cursor" />
             </div>
-            <div class="shortcut-label">Multi Cursor</div>
-            <div class="shortcut-key">Alt + Click</div>
           </div>
           <div class="shortcut-img relative flex flex-col items-start overflow-hidden">
+            <div class="shortcut-label">Go to Heading</div>
+            <div class="shortcut-key">Ctrl + Shift + O</div>
             <div class="shortcut-img-container relative overflow-hidden">
               <img src="media/shortcuts_3.png" alt="Go to Heading" />
             </div>
-            <div class="shortcut-label">Go to Heading</div>
-            <div class="shortcut-key">Ctrl + Shift + O</div>
           </div>
         </div>
       </div>
     </div>
   </section>
 
-  <!-- workflow cards -->
-  <section class="card-slider">
+  <!-- QR sharing -->
+  <section class="qr-sharing">
     <div class="container feature-block relative flex flex-col items-start text-left">
-      <div class="card-slider-shell relative w-full">
-        <div class="card-slider-viewport" id="workflowSlider">
-          <div class="card-slider-track flex items-stretch">
-            <article class="slider-card tabs-card relative flex flex-col overflow-hidden">
-              <div class="slider-card-copy relative">
-                <h3>Tabs that flow</h3>
-                <p>
-                  Monapad's tabs are smooth and fully fluid. Close, rearrange, reopen, pin, pop out, or merge across
-                  windows without missing a beat.
-                </p>
-              </div>
-              <div class="slider-card-media relative overflow-visible">
-                <div class="tabs-video relative flex items-start justify-center w-full h-full overflow-hidden">
-                  <div class="video-wrapper absolute w-full h-full overflow-hidden text-center">
-                    <video id="tabsVideo" src="media/tabs.mp4" muted loop playsinline preload="auto"></video>
-                  </div>
-                </div>
-              </div>
-            </article>
-
-            <article class="slider-card search-card relative flex flex-col overflow-hidden">
-              <div class="slider-card-copy relative">
-                <h3>Search everything, instantly</h3>
-                <p>Find any word across all open tabs and notes at once. Jump to any file by name, instantly.</p>
-              </div>
-              <figure class="slider-card-media relative overflow-visible">
-                <img src="media/search.png" alt="" />
-              </figure>
-            </article>
-
-            <article class="slider-card qr-card relative flex flex-col overflow-hidden">
-              <div class="slider-card-copy relative">
-                <h3>One click to your phone</h3>
-                <p>
-                  Generate a QR code over your local network and scan to send any text to your phone instantly. No
-                  cloud account required.
-                </p>
-              </div>
-              <figure class="slider-card-media relative flex items-end justify-center overflow-visible">
-                <img src="media/qr.png" alt="" />
-              </figure>
-            </article>
+      <div class="feature-showcase media-panel-showcase qr-showcase media-left items-center overflow-hidden">
+        <figure class="feature-media flex items-center justify-center">
+          <div class="feature-media-inner overflow-hidden">
+            <img
+              src="media/qr.png"
+              width="456"
+              height="434"
+              loading="lazy"
+              alt="Monapad sharing dialog with a QR code and a local sharing link"
+            />
           </div>
-        </div>
-        <div class="card-slider-controls flex items-center justify-center" aria-label="Workflow cards">
-          <button
-            class="card-slider-dot is-active inline-flex items-center justify-center"
-            type="button"
-            data-slider-index="0"
-            aria-label="Show tabs card"
-          >
-            <span class="sr-only">Tabs</span>
-          </button>
-          <button
-            class="card-slider-dot inline-flex items-center justify-center"
-            type="button"
-            data-slider-index="1"
-            aria-label="Show search card"
-          >
-            <span class="sr-only">Search</span>
-          </button>
-          <button
-            class="card-slider-dot inline-flex items-center justify-center"
-            type="button"
-            data-slider-index="2"
-            aria-label="Show QR card"
-          >
-            <span class="sr-only">QR</span>
-          </button>
-          <button
-            class="card-slider-toggle inline-flex items-center justify-center"
-            type="button"
-            aria-label="Pause slider"
-            aria-pressed="false"
-          >
-            <svg
-              class="pause-icon"
-              xmlns="http://www.w3.org/2000/svg"
-              width="24"
-              height="24"
-              viewBox="0 0 24 24"
-              fill="currentColor"
-              aria-hidden="true"
-            >
-              <path stroke="none" d="M0 0h24v24H0z" fill="none" />
-              <path d="M9 4h-2a2 2 0 0 0 -2 2v12a2 2 0 0 0 2 2h2a2 2 0 0 0 2 -2v-12a2 2 0 0 0 -2 -2z" />
-              <path d="M17 4h-2a2 2 0 0 0 -2 2v12a2 2 0 0 0 2 2h2a2 2 0 0 0 2 -2v-12a2 2 0 0 0 -2 -2z" />
-            </svg>
-            <svg
-              class="play-icon hidden"
-              xmlns="http://www.w3.org/2000/svg"
-              width="24"
-              height="24"
-              viewBox="0 0 24 24"
-              fill="currentColor"
-              aria-hidden="true"
-            >
-              <path stroke="none" d="M0 0h24v24H0z" fill="none" />
-              <path d="M6 4v16a1 1 0 0 0 1.524 .852l13 -8a1 1 0 0 0 0 -1.704l-13 -8a1 1 0 0 0 -1.524 .852z" />
-            </svg>
-          </button>
+        </figure>
+        <div class="feature-copy">
+          <h3>One click to your phone</h3>
+          <p>
+            Generate a QR code over your local network and scan to send any text to your phone instantly. No cloud
+            account required.
+          </p>
         </div>
       </div>
     </div>
@@ -346,12 +319,11 @@
               <div class="themes-content">
                 <span class="themes-h1"><span class="marker"># </span>Evening Notes</span><br /><br />
                 <span class="themes-h2"><span class="marker">## </span>Desk Routine</span><br /><br />
-                The room grows quieter after midnight, especially once the rain starts against the window and the
-                sound of traffic fades into the background. Revisiting old notes at this hour often reveals details
-                that felt insignificant during the day but suddenly seem worth preserving.<br /><br />
-                <span class="list-marker">1. </span>Finish the draft.<br /><span class="list-marker">2. </span
-                >Organize scattered notes.<br /><span class="list-marker">3. </span>Back up everything before
-                sleep.<br /><br />
+                The room grows quieter after midnight, especially once the rain starts against the window and the sound
+                of traffic fades into the background. Revisiting old notes at this hour often reveals details that felt
+                insignificant during the day but suddenly seem worth preserving.<br /><br />
+                <span class="list-marker">1. </span>Finish the draft.<br /><span class="list-marker">2. </span>Organize
+                scattered notes.<br /><span class="list-marker">3. </span>Back up everything before sleep.<br /><br />
                 <span class="subtext"
                   ><span class="marker">-# </span>Reminder: unfinished thoughts are easier to lose than files.</span
                 >
@@ -367,12 +339,11 @@
               <div class="themes-content">
                 <span class="themes-h1"><span class="marker"># </span>Evening Notes</span><br /><br />
                 <span class="themes-h2"><span class="marker">## </span>Desk Routine</span><br /><br />
-                The room grows quieter after midnight, especially once the rain starts against the window and the
-                sound of traffic fades into the background. Revisiting old notes at this hour often reveals details
-                that felt insignificant during the day but suddenly seem worth preserving.<br /><br />
-                <span class="list-marker">1. </span>Finish the draft.<br /><span class="list-marker">2. </span
-                >Organize scattered notes.<br /><span class="list-marker">3. </span>Back up everything before
-                sleep.<br /><br />
+                The room grows quieter after midnight, especially once the rain starts against the window and the sound
+                of traffic fades into the background. Revisiting old notes at this hour often reveals details that felt
+                insignificant during the day but suddenly seem worth preserving.<br /><br />
+                <span class="list-marker">1. </span>Finish the draft.<br /><span class="list-marker">2. </span>Organize
+                scattered notes.<br /><span class="list-marker">3. </span>Back up everything before sleep.<br /><br />
                 <span class="subtext"
                   ><span class="marker">-# </span>Reminder: unfinished thoughts are easier to lose than files.</span
                 >
@@ -388,12 +359,11 @@
               <div class="themes-content">
                 <span class="themes-h1"><span class="marker"># </span>Evening Notes</span><br /><br />
                 <span class="themes-h2"><span class="marker">## </span>Desk Routine</span><br /><br />
-                The room grows quieter after midnight, especially once the rain starts against the window and the
-                sound of traffic fades into the background. Revisiting old notes at this hour often reveals details
-                that felt insignificant during the day but suddenly seem worth preserving.<br /><br />
-                <span class="list-marker">1. </span>Finish the draft.<br /><span class="list-marker">2. </span
-                >Organize scattered notes.<br /><span class="list-marker">3. </span>Back up everything before
-                sleep.<br /><br />
+                The room grows quieter after midnight, especially once the rain starts against the window and the sound
+                of traffic fades into the background. Revisiting old notes at this hour often reveals details that felt
+                insignificant during the day but suddenly seem worth preserving.<br /><br />
+                <span class="list-marker">1. </span>Finish the draft.<br /><span class="list-marker">2. </span>Organize
+                scattered notes.<br /><span class="list-marker">3. </span>Back up everything before sleep.<br /><br />
                 <span class="subtext"
                   ><span class="marker">-# </span>Reminder: unfinished thoughts are easier to lose than files.</span
                 >
@@ -405,8 +375,8 @@
 
       <div class="feature-showcase custom-themes items-center overflow-hidden">
         <div class="feature-copy custom-theme-text flex flex-col items-start">
-          <h3>Make it yours</h3>
-          <p>Bring your own theme via CSS, or build one from scratch. Monapad looks the way you want it to.</p>
+          <h3>{{customThemes.title}}</h3>
+          <p>{{customThemes.description}}</p>
           <a
             href="https://github.com/sheetau/monapad?tab=contributing-ov-file#how-to-setup-custom-theme"
             target="_blank"

@@ -333,6 +333,50 @@ Most revisions involved removing unnecessary layers rather than adding new mater
     if (!editorCode) return;
 
     const state = renderEditor(editorCode);
+    const scroller = editorCode.closest(".editor-canvas-scroller");
+    const scrollbar = document.createElement("div");
+    const thumb = document.createElement("div");
+    scrollbar.className = "editor-scrollbar";
+    scrollbar.setAttribute("aria-hidden", "true");
+    thumb.className = "editor-scrollbar-thumb";
+    scrollbar.append(thumb);
+    scroller.parentElement.append(scrollbar);
+
+    // Hidden overflow leaves wheel and touch gestures to the page.
+    // Only dragging this thumb changes the demo's scroll position.
+    const syncScrollbar = () => {
+      const viewport = scroller.clientHeight;
+      const content = scroller.scrollHeight;
+      const maxScroll = Math.max(0, content - viewport);
+      const thumbHeight = Math.min(viewport, Math.max(32, viewport * viewport / content));
+      scrollbar.hidden = maxScroll === 0;
+      thumb.style.height = `${thumbHeight}px`;
+      thumb.style.transform = `translateY(${maxScroll ? scroller.scrollTop / maxScroll * (viewport - thumbHeight) : 0}px)`;
+    };
+    let drag = null;
+    thumb.addEventListener("pointerdown", (event) => {
+      if (event.button !== 0 || drag) return;
+      event.preventDefault();
+      thumb.setPointerCapture(event.pointerId);
+      drag = { pointerId: event.pointerId, y: event.clientY, scrollTop: scroller.scrollTop };
+      thumb.classList.add("is-dragging");
+    });
+    thumb.addEventListener("pointermove", (event) => {
+      if (drag?.pointerId !== event.pointerId) return;
+      const travel = scroller.clientHeight - thumb.offsetHeight;
+      const maxScroll = scroller.scrollHeight - scroller.clientHeight;
+      if (travel > 0) scroller.scrollTop = drag.scrollTop + (event.clientY - drag.y) * maxScroll / travel;
+    });
+    const endDrag = (event) => {
+      if (drag?.pointerId !== event.pointerId) return;
+      drag = null;
+      thumb.classList.remove("is-dragging");
+      if (thumb.hasPointerCapture(event.pointerId)) thumb.releasePointerCapture(event.pointerId);
+    };
+    thumb.addEventListener("pointerup", endDrag);
+    thumb.addEventListener("pointercancel", endDrag);
+    thumb.addEventListener("lostpointercapture", endDrag);
+    scroller.addEventListener("scroll", syncScrollbar);
     const headingLine = state.lines.find((line) => line.headingLevel === 1);
     const carets = state.selectionTargets.map(() => createCaret(editorCode));
     const caretAnchors = new Map();
@@ -390,6 +434,7 @@ Most revisions involved removing unnecessary layers rather than adding new mater
         state.lines.forEach((line) => {
           line.gutterRow.style.minHeight = `${line.contentRow.getBoundingClientRect().height}px`;
         });
+        syncScrollbar();
         scheduleCaretSync();
       });
     };
@@ -552,6 +597,7 @@ Most revisions involved removing unnecessary layers rather than adding new mater
 
     if (window.ResizeObserver) {
       const resizeObserver = new ResizeObserver(scheduleLayoutSync);
+      resizeObserver.observe(scroller);
       state.lines.forEach((line) => resizeObserver.observe(line.contentRow));
       state.resizeObserver = resizeObserver;
     }

@@ -160,7 +160,7 @@
   --button-padding-xs: 0.15em 0.5em;
   --site-header-height: 52px;
   --site-sticky-top: 64px;
-  --max-width-container: 1100px; /* 1024, 1100, 1200, 1300 */
+  --max-width-container: 1200px; /* 1024, 1100, 1200, 1300 */
   --color-theme-bg: #14120b;
   --color-theme-fg: #edecec;
   --color-theme-fg-02: #d0d6e0;
@@ -235,9 +235,6 @@ main > section:first-child {
 }
 section:nth-child(1 of :has(.feature-showcase)) {
   padding-top: var(--spacing-v3);
-}
-section:has(.feature-showcase) {
-  padding: 0 var(--spacing-g2) var(--spacing-v4);
 }
 section:last-child {
   padding-block-end: var(--spacing-v6);
@@ -488,7 +485,7 @@ header .app-download:hover {
   --mockup-ui: #565b66;
   --mockup-status: #b6b9bf;
   width: 100%;
-  aspect-ratio: 1125 / 672;
+  aspect-ratio: 1125 / 590;
   background: #000;
   border: 1px solid var(--color-theme-border-02);
   border-radius: var(--radius-lg);
@@ -621,20 +618,25 @@ header .app-download:hover {
 .editor-canvas-scroller {
   position: absolute;
   inset: 0;
-  overflow: auto;
+  overflow: hidden;
 }
-.editor-canvas-scroller::-webkit-scrollbar {
+.editor-scrollbar {
+  position: absolute;
+  inset: 0 0 0 auto;
   width: var(--spacing-g1\.25);
-}
-.editor-canvas-scroller::-webkit-scrollbar-track {
-  background: transparent;
   border-left: 1px solid #18191d;
+  z-index: 3;
 }
-.editor-canvas-scroller::-webkit-scrollbar-thumb {
+.editor-scrollbar-thumb {
+  position: absolute;
+  top: 0;
+  width: 100%;
   background: color-mix(in oklab, var(--color-white) 15%, transparent);
-  border-radius: 0;
+  touch-action: none;
+  user-select: none;
 }
-.editor-canvas-scroller::-webkit-scrollbar-thumb:hover {
+.editor-scrollbar-thumb:hover,
+.editor-scrollbar-thumb.is-dragging {
   background: color-mix(in oklab, var(--color-white) 30%, transparent);
 }
 .editor-code {
@@ -882,9 +884,10 @@ header .app-download:hover {
   grid-template-columns: repeat(12, minmax(0, 1fr));
   column-gap: var(--spacing-g2);
   row-gap: var(--spacing-v2);
+}
+.feature-showcase.custom-themes {
   padding: var(--spacing-g1\.75);
   background: var(--color-theme-02-hex);
-  border: 1px solid var(--color-theme-border-01);
   border-radius: var(--radius-sm);
 }
 .feature-copy {
@@ -1035,9 +1038,8 @@ header .app-download:hover {
 .shortcut-img {
   flex: 1;
   min-width: 14rem;
-  padding: 0 0 var(--spacing-g1\.75) 0;
+  padding: var(--spacing-g1\.75);
   background: var(--color-theme-02-hex);
-  border: 1px solid var(--color-theme-border-01);
   border-radius: var(--radius-sm);
   pointer-events: none;
 }
@@ -1046,6 +1048,7 @@ header .app-download:hover {
   aspect-ratio: 8/5.5;
   background: var(--color-theme-02-hex);
   isolation: isolate; /* for blend-mode containment */
+  margin-top: var(--spacing-g1\.75);
 }
 .shortcut-img-container::after {
   content: "";
@@ -1067,145 +1070,38 @@ header .app-download:hover {
   mix-blend-mode: screen;
 }
 .shortcut-label {
-  padding: var(--spacing-g2) 0 0 var(--spacing-g1\.75);
   font-size: var(--text-base);
   color: var(--color-theme-fg);
-  line-height: var(--leading-snug-plus);
+  line-height: var(--leading-normal);
 }
 .shortcut-key {
-  padding-left: var(--spacing-g1\.75);
   font-size: var(--text-base);
-  color: var(--color-theme-fg-04);
-  line-height: var(--leading-snug-plus);
+  color: var(--color-theme-fg-03);
+  line-height: var(--leading-normal);
 }
 
-/* card slider */
-.card-slider-shell {
-  --slider-card-width: min(44rem, calc(100vw - var(--spacing-g2) * 4));
-}
-.card-slider-viewport {
+.qr-showcase {
   width: 100%;
-  overflow-x: auto;
-  padding-bottom: var(--spacing-g2);
-  margin-bottom: calc(var(--spacing-g2) * -1);
-  scrollbar-width: none;
-  -ms-overflow-style: none;
-  scroll-behavior: smooth;
-  scroll-snap-type: x mandatory;
 }
-.card-slider-viewport::-webkit-scrollbar {
-  display: none;
-}
-.card-slider-track {
-  gap: var(--spacing-g1);
-  width: max-content;
-}
-.card-slider-track::after {
-  content: "";
-  flex: 0 0 max(0px, calc(var(--max-width-container) - var(--slider-card-width)));
-}
-.slider-card {
-  flex: 0 0 auto;
-  width: var(--slider-card-width);
-  height: 32rem;
-  padding: var(--spacing-g1\.75);
-  scroll-snap-align: start;
+.feature-showcase.qr-showcase .feature-media-inner {
+  width: 100%;
+  height: auto;
   background: var(--color-theme-02-hex);
-  border: 1px solid var(--color-theme-border-01);
   border-radius: var(--radius-sm);
+  padding: var(--spacing-v2) var(--spacing-v2) 0 var(--spacing-v2);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
 }
-.slider-card-copy {
-  z-index: 1;
-  max-width: 35rem;
-  padding-left: var(--spacing-g0\.25);
-  padding-right: var(--spacing-g3);
-}
-.slider-card-copy h3 {
-  margin-bottom: 0;
-}
-.slider-card-media {
-  flex: 1;
-  min-height: 16rem;
-  margin-top: var(--spacing-v2);
-  margin-bottom: calc((var(--spacing-g1\.75) + var(--spacing-g2)) * -1);
-  line-height: 0;
-}
-.slider-card-media img,
-.slider-card-media > .tabs-video {
-  display: block;
-  width: calc(100% / 0.85);
-  height: calc(100% + var(--radius-lg));
-  object-fit: cover;
-  object-position: top left;
-  mix-blend-mode: screen;
-  border: 1px solid var(--color-theme-border-02);
-  border-radius: var(--radius-lg);
-  overflow: hidden;
-}
-.slider-card-media .video-wrapper video {
-  border: 0;
-  border-radius: 0;
-}
-.qr-card .slider-card-media img {
-  width: auto;
-  max-width: calc(100% + var(--radius-lg));
-  height: calc(100% + var(--radius-lg));
+.feature-showcase.qr-showcase .feature-media img {
+  flex: 0 0 auto;
+  width: 100%;
+  height: auto;
+  max-width: calc((25rem - var(--spacing-v2) + 1px) * 456 / 434);
+  margin-bottom: -1px;
   object-fit: contain;
-  object-position: center bottom;
-}
-.card-slider-controls {
-  gap: var(--spacing-g0\.75);
-  margin-top: var(--spacing-g1);
-}
-.card-slider-dot,
-.card-slider-toggle {
-  position: relative;
-  border: 0;
-  cursor: pointer;
-}
-.card-slider-dot {
-  width: 0.55rem;
-  height: 0.55rem;
-  overflow: hidden;
-  border-radius: 999px;
-  background: color-mix(in oklab, var(--color-theme-fg-04) 25%, transparent);
-  transition:
-    width 0.24s ease,
-    background 0.15s ease;
-}
-.card-slider-dot.is-active {
-  width: 2.6rem;
-  cursor: default;
-}
-.card-slider-dot:not(.is-active):hover {
-  background: var(--color-theme-fg-04);
-}
-.card-slider-dot::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  width: calc(var(--slider-progress, 0) * 100%);
-  height: 100%;
-  background: var(--color-theme-fg-04);
-  border-radius: inherit;
-}
-.card-slider-toggle {
-  width: 2rem;
-  height: 2rem;
-  border-radius: 50%;
-  background: transparent;
-  color: color-mix(in oklab, var(--color-theme-fg-04) 25%, transparent);
-  transition: color 0.15s ease;
-}
-.card-slider-toggle:hover {
-  color: var(--color-theme-fg-04);
-}
-.card-slider-toggle svg {
-  width: 1.1rem;
-  height: 1.1rem;
-}
-.card-slider-toggle .hidden {
-  display: none;
+  mix-blend-mode: screen;
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
 }
 .sr-only {
   position: absolute;
@@ -1217,20 +1113,6 @@ header .app-download:hover {
   clip: rect(0, 0, 0, 0);
   white-space: nowrap;
   border: 0;
-}
-
-.video-wrapper {
-  object-fit: cover;
-  object-position: top;
-  mix-blend-mode: screen;
-}
-.video-wrapper video {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  object-position: top left;
-  border: 1px solid var(--color-theme-border-02);
-  border-radius: var(--radius-lg);
 }
 
 /* default themes */
@@ -1416,7 +1298,6 @@ footer {
   justify-content: space-between;
   margin: 0 auto;
   gap: var(--spacing-v2);
-  margin-top: var(--spacing-v4\.5);
 }
 footer a {
   color: var(--color-theme-fg-04);
@@ -1583,7 +1464,6 @@ footer a:hover {
   }
   .feature-showcase {
     grid-template-columns: 1fr;
-    padding: var(--spacing-g1\.75);
   }
   .feature-copy,
   .feature-media {
@@ -1609,20 +1489,6 @@ footer a:hover {
   .shortcuts-images {
     width: 95vw;
     padding-right: 5vw;
-  }
-  .slider-card {
-    width: var(--slider-card-width);
-    height: 27rem;
-  }
-  .card-slider-shell {
-    --slider-card-width: min(82vw, 34rem);
-  }
-  .slider-card-copy {
-    padding-left: var(--spacing-g0\.25);
-    padding-right: var(--spacing-g0\.25);
-  }
-  .slider-card-media {
-    min-height: 16rem;
   }
   .themes-text,
   .themes-group {

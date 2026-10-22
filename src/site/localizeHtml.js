@@ -49,6 +49,13 @@ export function localizeHtml(template, locale) {
     html = replaceText(html, source, translation);
   }
 
+  html = html.replace(/{{customThemes\.(title|description)}}/g, (_, key) => {
+    const value = locale.customThemes[key];
+    return value.replace(/[&<>"']/g, (char) => ({
+      "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+    })[char]);
+  });
+
   return html.replace(
     /(\s*)<\/div>(\s*)<\/div>(\s*)<\/footer>\s*$/,
     `$1${createLanguageSwitcher(locale, assetBase)}$1</div>$2</div>$3</footer>`,
