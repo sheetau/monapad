@@ -83,13 +83,16 @@
   --default-transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
   --default-font-family: var(--font-sans);
   --default-mono-font-family: var(--font-mono);
-  --font-system: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  --font-system:
+    system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue",
+    Arial, sans-serif;
   --shadow-outline-theme: 0 0 0 1px var(--color-theme-border-02);
   --shadow-flyout: 0 0 1rem #00000005, 0 0 0.5rem #00000002;
   --duration: 0.14s;
   --duration-slow: 0.25s;
   --ease-out-spring: cubic-bezier(0.25, 1, 0.5, 1);
-  --animate-gallery-marquee-item-slide-up: gallery-marquee-item-slide-up 1s var(--ease-out-spring) both;
+  --animate-gallery-marquee-item-slide-up: gallery-marquee-item-slide-up 1s
+    var(--ease-out-spring) both;
   --tracking-sm: 0.01em;
   --tracking-base: 0.005em;
   --tracking-md: -0.005em;
@@ -164,7 +167,11 @@
   --color-theme-bg: #14120b;
   --color-theme-fg: #edecec;
   --color-theme-fg-02: #d0d6e0;
-  --color-theme-fg-03: color-mix(in oklab, var(--color-theme-fg) 60%, transparent);
+  --color-theme-fg-03: color-mix(
+    in oklab,
+    var(--color-theme-fg) 60%,
+    transparent
+  );
   --color-theme-fg-04: #62666d;
   --color-theme-01-hex: #0a0a0a;
   --color-theme-02-hex: #121212;
@@ -180,18 +187,44 @@
   --color-theme-product-chrome: var(--color-theme-bg);
   --color-theme-product-editor: var(--color-theme-card-hex);
   --color-theme-product-text: #26251eeb;
-  --color-theme-border-01: color-mix(in oklab, var(--color-theme-fg) 2.5%, transparent);
-  --color-theme-border-02: color-mix(in oklab, var(--color-theme-fg) 7%, transparent);
+  --color-theme-border-01: color-mix(
+    in oklab,
+    var(--color-theme-fg) 2.5%,
+    transparent
+  );
+  --color-theme-border-02: color-mix(
+    in oklab,
+    var(--color-theme-fg) 7%,
+    transparent
+  );
   /* cursor variables end */
 
-  --font-sans: Inter, system-ui, Helvetica Neue, Helvetica, Arial, "M PLUS 2", sans-serif;
+  --font-sans:
+    Inter, system-ui, Helvetica Neue, Helvetica, Arial, "M PLUS 2", sans-serif;
   --font-mono: Iosevka Web, monospace;
   --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
   --theme-hover-lift: 2rem;
 }
 
 :root:lang(ja) {
-  --font-sans: Inter, "M PLUS 2", system-ui, Helvetica Neue, Helvetica, Arial, sans-serif;
+  --font-sans:
+    Inter, "M PLUS 2", system-ui, Helvetica Neue, Helvetica, Arial, sans-serif;
+}
+
+@font-face {
+  font-family: Inter;
+  src: url("./fonts/Inter-Variable.ttf") format("truetype");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "M PLUS 2";
+  src: url("./fonts/MPLUS2-Variable.ttf") format("truetype");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
 }
 
 @font-face {
@@ -340,7 +373,11 @@ header {
   margin: 0 auto;
   height: var(--site-header-height);
   pointer-events: none;
-  background: linear-gradient(to bottom, var(--color-theme-01-hex), transparent);
+  background: linear-gradient(
+    to bottom,
+    var(--color-theme-01-hex),
+    transparent
+  );
   width: 100%;
   padding-inline: var(--spacing-g2);
 }
@@ -386,7 +423,12 @@ header .app-download:hover {
   z-index: 0;
   opacity: 0.86;
   transition: opacity 1.6s ease;
-  -webkit-mask-image: linear-gradient(to bottom, #000 0, #000 100vh, transparent 122vh);
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    #000 0,
+    #000 100vh,
+    transparent 122vh
+  );
   mask-image: linear-gradient(to bottom, #000 0, #000 100vh, transparent 122vh);
 }
 .hero > :not(.hero-particles) {
@@ -414,14 +456,16 @@ header .app-download:hover {
   position: relative;
   overflow: hidden;
   font-size: var(--text-base);
-  box-shadow: 0 0 2rem color-mix(in srgb, var(--color-theme-fg), transparent 100%);
+  box-shadow: 0 0 2rem
+    color-mix(in srgb, var(--color-theme-fg), transparent 100%);
   transition:
     background 0.3s ease,
     box-shadow 0.3s ease;
 }
 .download-main:hover {
   background: var(--color-theme-fg-02);
-  box-shadow: 0 0 2rem color-mix(in srgb, var(--color-theme-fg), transparent 80%);
+  box-shadow: 0 0 2rem
+    color-mix(in srgb, var(--color-theme-fg), transparent 80%);
 }
 .download-main::before {
   content: "";
@@ -646,7 +690,9 @@ header .app-download:hover {
   position: relative;
   display: grid;
   grid-template-columns: calc(3ch + var(--editor-fold-width)) minmax(0, 1fr);
-  padding: var(--spacing-g1) calc(var(--spacing-g1) + var(--editor-minimap-width)) var(--spacing-g1) var(--spacing-g2);
+  padding: var(--spacing-g1)
+    calc(var(--spacing-g1) + var(--editor-minimap-width)) var(--spacing-g1)
+    var(--spacing-g2);
   font-size: var(--text-base);
   line-height: var(--editor-line-height);
   color: var(--color-theme-fg-02);
@@ -969,7 +1015,11 @@ header .app-download:hover {
 }
 .command-list-overlay {
   inset: 0;
-  background: linear-gradient(to bottom, transparent 75%, var(--color-theme-01-hex) 100%);
+  background: linear-gradient(
+    to bottom,
+    transparent 75%,
+    var(--color-theme-01-hex) 100%
+  );
   pointer-events: none;
   z-index: 2;
   will-change: opacity, filter;
@@ -1167,13 +1217,15 @@ header .app-download:hover {
   line-height: var(--leading-snug-plus);
   color: var(--color-theme-fg-02);
   -webkit-mask-image:
-    linear-gradient(to right, black 50%, transparent 100%), linear-gradient(to top, black 70%, transparent 100%);
+    linear-gradient(to right, black 50%, transparent 100%),
+    linear-gradient(to top, black 70%, transparent 100%);
   -webkit-mask-composite: destination-in;
   mask-composite: intersect;
   -webkit-mask-repeat: no-repeat;
   mask-repeat: no-repeat;
   mask-image:
-    linear-gradient(to right, black 50%, transparent 100%), linear-gradient(to top, black 70%, transparent 100%);
+    linear-gradient(to right, black 50%, transparent 100%),
+    linear-gradient(to top, black 70%, transparent 100%);
 }
 .themes-shadow {
   --theme-x: 0%;
@@ -1204,7 +1256,8 @@ header .app-download:hover {
 }
 .themes-shadow:hover,
 .themes-shadow.hover {
-  transform: skewY(-10deg) translate(var(--theme-x), calc(var(--theme-y) - var(--theme-hover-lift)));
+  transform: skewY(-10deg)
+    translate(var(--theme-x), calc(var(--theme-y) - var(--theme-hover-lift)));
 }
 .themes-wrapper {
   padding: var(--spacing-g2) var(--spacing-g1\.75);
@@ -1425,6 +1478,25 @@ footer a:hover {
   :root {
     --text-sm: 0.9rem;
   }
+  .hero-text {
+    max-width: min(65ch, 100%);
+  }
+  .hero-buttons {
+    max-width: 100%;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+  .prefooter-buttons {
+    justify-content: center;
+  }
+  .hero-buttons .btn {
+    font-size: clamp(0.8125rem, 4vw, 0.875rem);
+    white-space: nowrap;
+  }
+  header .app-download {
+    font-size: 0.8125rem;
+    white-space: nowrap;
+  }
   h1 {
     font-size: var(--text-md-lg);
     letter-spacing: var(--tracking-md-lg);
@@ -1477,6 +1549,9 @@ footer a:hover {
   }
   .feature-media {
     order: 1;
+  }
+  .media-panel-showcase:not(.qr-showcase) .feature-media-inner {
+    height: calc(32rem * 2 / 3);
   }
   .feature-showcase.media-panel-showcase.media-left .feature-copy,
   .feature-showcase.media-panel-showcase.media-left .feature-media {
